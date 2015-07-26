@@ -2,7 +2,7 @@
 layout: post
 title:  "Import CSV to in-memory DB"
 date:   2015-07-03 20:13:16
-tags: java csv "apache derby"
+tags: ['java', 'csv', 'apache derby']
 ---
 This is for all those times when you need to run some quick tests on a data file in CSV format. You could open it in excel, apply some filters on those columns, but I'm talking about those times when you need to bring the data into a programming language and be able to quickly run some queries on it or convert it into objects. With the new IO from Java 7 it's already really easy to read a file, parse the lines and convert them into objects. You could also just parse the lines and write a short program that searches for the exact lines you are looking for, but now it's starting to get verbose.
 

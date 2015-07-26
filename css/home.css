@@ -1,0 +1,137 @@
+body, div {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+body > div {
+    display: block;
+    width: 100%;
+    float: left;
+    clear: both;
+}
+
+p, h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    padding: 0;
+}
+h1 {
+    margin-top: 1.5em;
+    font-size: 1.5em;
+    line-height: 1.5em;
+}
+h2 {
+    font-size: 1.5em;
+    line-height: 1.5em;
+    padding-bottom: 1em;
+}
+h3 {
+    font-size: 1.17em;
+}
+h4 {
+    font-size: 1.12em;
+}
+h5 {
+    font-size: .83em;
+}
+h6 {
+    font-size: .75em;
+}
+p {
+    font-size: 1em;
+    line-height: 1.5em;
+    margin-bottom: 2.25em;
+}
+ul, ol {
+    font-size: 1em;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-bottom: 1.5em;
+}
+div.center {
+    width: 800px;
+    margin: 0 auto;
+}
+@media (max-width: 800px) {
+
+    div.center {
+        width: 90%;
+        padding: 0 5% 0 5%;
+    }
+}
+a:hover {
+    text-decoration: underline;
+}
+pre {
+    padding-top: 1em;
+    padding-bottom: 1em;
+}
+div.logo {
+    padding-top: 1.5em;
+    padding-bottom: 1.5em;
+}
+p.logo {
+    text-align: center;
+    margin-bottom: 0;
+}
+p.about {
+    text-align: center;
+}
+h1, h2 {
+    font-family: sans-serif;
+}
+span.date, span.tag {
+    display: inline-block;
+    background-color: #1a1a1a;
+    text-transform: lowercase;
+    font-family: monospace;
+    color: white;
+    padding: .5em .8em;
+    margin-right: .5em;
+    margin-bottom: .5em;
+}
+div.even {
+    background: url("pattern3.png") repeat fixed 0 0;
+}
+div.even span.tag {
+    background-color: #ffffff;
+    color: black;
+}
+div.odd span.tag {
+    background: url("pattern3.png") repeat fixed 0 0;
+    color: black;
+}
+a {
+    color: black;
+}
+div.logo a {
+    font-size: 1.5em;
+    font-family: serif;
+}
+h1 a {
+    text-decoration: none;
+}
+p.logo img {
+    max-width: 100%;
+}
+div.description p {
+    text-align: center;
+    font-size: 1.5em;
+    font-family: "Times New Roman",Times,serif;
+    letter-spacing: 0.05em;
+}
+
+div.search p {
+    text-align: center;
+    font-size: 1.5em;
+    font-family: "Times New Roman",Times,serif;
+    letter-spacing: 0.05em;
+}
+div.search label {
+    margin-right: 1em;
+}
+div.search input {
+    width: 50%;
+    font-size: 1em;
+    height: 1.2em;
+}

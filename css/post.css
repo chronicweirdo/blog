@@ -1,0 +1,134 @@
+/* http://www.stripegenerator.com */
+
+body, div {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+body > div {
+    display: block;
+    width: 100%;
+    float: left;
+    clear: both;
+}
+
+p, h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    padding: 0;
+    font-family: "Times New Roman",Times,serif;
+}
+h1 {
+    font-size: 2em;
+    line-height: 1.5em;
+    padding-bottom: 1em;
+    padding-top: 1em;
+    text-transform: uppercase;
+}
+h2 {
+    font-size: 1.5em;
+    line-height: 1.5em;
+    padding-bottom: 1em;
+}
+h3 {
+    font-size: 1.17em;
+}
+h4 {
+    font-size: 1.12em;
+}
+h5 {
+    font-size: .83em;
+}
+h6 {
+    font-size: .75em;
+}
+p {
+    font-size: 1.3em;
+    line-height: 1.4em;
+    padding-bottom: 1.5em;
+    letter-spacing: 0.05em;
+}
+ul, ol {
+    font-size: 1em;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-bottom: 1.5em;
+}
+div.center {
+    width: 800px;
+    margin: 0 auto;
+}
+@media (max-width: 800px) {
+
+    div.center {
+        width: 90%;
+        padding: 0 5% 0 5%;
+    }
+}
+pre {
+    padding-top: 1em;
+    padding-bottom: 1em;
+}
+div.code {
+    background: url("stripe_ecru.png") repeat fixed 0 0;
+    margin-bottom: 1.5em;
+}
+div.title {
+    background-color: #1a1a1a;
+    color: white;
+    margin-bottom: 1.5em;
+}
+p.logo {
+    text-align: center;
+    padding-top: 1.5em;
+}
+p.logo img {
+    width: 100px;
+}
+div.image {
+    background: url("pattern3.png") repeat fixed 0 0;
+    margin-bottom: 1.5em;
+}
+p.image {
+    padding-top: 1.5em;
+    text-align: center;
+}
+p.image img {
+    max-width: 100%;
+}
+p.links {
+    text-align: center;
+}
+p.links a {
+    margin-left: 2em;
+    margin-right: 2em;
+}
+h1, h2 {
+    font-family: sans-serif;
+}
+span.date, span.tag {
+    display: inline-block;
+    background-color: #1a1a1a;
+    text-transform: lowercase;
+    font-family: monospace;
+    color: white;
+    padding: .5em .8em;
+    margin-right: .5em;
+    margin-bottom: .5em;
+}
+p.tag {
+    padding-bottom: 0;
+    font-size: 1em;
+    line-height: 1.5em;
+    letter-spacing: 0;
+}
+span.tag {
+    background: url("stripe_ecru.png") repeat fixed 0 0;
+    color: black;
+}
+code.hljs {
+    background: transparent;
+}
+a {
+    color: black;
+}
