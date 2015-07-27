@@ -1,15 +1,49 @@
----
-layout: default
----
-<div class="post">
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <header class="post-header">
-    <h1 class="post-title">{{ page.title }}</h1>
-    <p class="post-meta">{{ page.date | date: "%b %-d, %Y" }}{% if page.author %} • {{ page.author }}{% endif %}{% if page.meta %} • {{ page.meta }}{% endif %}</p>
-  </header>
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" type="text/css" href="{{ "/css/highlight.default.css" | prepend: site.baseurl }}">
+    <link rel="stylesheet" type="text/css" href="{{ "/css/post.css" | prepend: site.baseurl }}"/>
+    <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
+    <script src="{{ "/js/highlight.pack.js" | prepend: site.baseurl }}"></script>
+    <script>
+        hljs.initHighlightingOnLoad();
 
-  <article class="post-content">
+        $(window).load(function() {
+            setPadding();
+            $(window).resize(setPadding);
+        });
+
+        function setPadding() {
+            var width = document.documentElement.clientWidth;
+            var padding = 0;
+            if (width > 800) {
+                padding = (width - 800) / 2;
+            }
+
+            $('body').children().each(function(index, child) {
+                $(child).css('padding-left', padding + 'px');
+                $(child).css('padding-right', padding + 'px');
+            });
+        }
+    </script>
+</head>
+<body>
+
+    <p class="logo"><a href="/"><img src="{{ "/css/heuristics.png" | prepend: site.baseurl }}"/></a></div></p>
+    <p class="tag">
+        <span class="date">{{ page.date | date: "%Y.%b.%d %H:%M" }}</span>
+        {% for tag in page.tags %}
+            <span class="tag">{{ tag }}</span>
+        {% endfor %}
+    </p>
+    <h1 class="title">{{ page.title }}</h1>
+
     {{ content }}
-  </article>
 
-</div>
+</body>
+</html>
