@@ -65,7 +65,7 @@ while (resultSet.next()) {
 Assert.assertEquals(resultSetRowCount, 1);
 ~~~
 
-The test passes, we can use Apache Derby to build our in-memory database on top of a CSV file. Download the test file [here](/assets/201507/ApacheDerbyTest.java).
+The test passes, we can use Apache Derby to build our in-memory database on top of a CSV file. Download the test file [here](/assets/2015.07/ApacheDerbyTest.java).
 
 Designing a database on top of CSV
 ---
@@ -188,12 +188,12 @@ private String getDbName() {
 }
 ~~~
 
-That is almost everything, but if you want to see everything, get the [file](/assets/201507/Database.java).
+That is almost everything, but if you want to see everything, get the [file](/assets/2015.07/Database.java).
 
 Testing the CSV database
 ---
 
-Let's see if this works, I'll write another [test](/assets/201507/DatabaseTest.java) to verify the Database class, using files [csvdatabasetest.txt](/assets/201507/csvdatabasetest.txt) and [csvdatabasetest2.txt](/assets/201507/csvdatabasetest2.txt), that does the following:
+Let's see if this works, I'll write another [test](/assets/2015.07/DatabaseTest.java) to verify the Database class, using files [csvdatabasetest.txt](/assets/2015.07/csvdatabasetest.txt) and [csvdatabasetest2.txt](/assets/2015.07/csvdatabasetest2.txt), that does the following:
 - read the two files in a new Database object;
 - run queries to load and print data in each of the tables (use Database methods to map the file path to a table name and to get the name of the columns of each table);
 - run a complex join query on the two tables in the database and print the results.
