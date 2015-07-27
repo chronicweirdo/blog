@@ -13,7 +13,37 @@ $(window).load(function() {
     setLogoPadding();
     $(window).scroll(scrollFunction);
     $(window).resize(setLogoPadding);
+
+    $("#searchField").on('change keyup paste', function() {
+        delay(function() {
+            filterPosts();
+        }, 1000);
+    });
 });
+
+function filterPosts() {
+  //var searchTokens = $("#searchField").val().split(" ");
+  var token = $("#searchField").val();
+
+  $('.post').each(function(index, post){
+    var matches = false;
+    if($('h1', post).text().contains(token)) {
+      matches = true;
+    } else {
+      $('span.tag', post).each(function(index, tagEl) {
+        if($(tagEl).text().contains(token)) {
+          matches = true;
+        }
+      });
+    }
+
+    if (matches) {
+      $(post).css('display', 'block');
+    } else {
+      $(post).css('display', 'none');
+    }
+  });
+}
 
 function pageEndReached() {
     return ($(window).height() + $(document).scrollTop() >= $(document).height());

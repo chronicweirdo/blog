@@ -25,6 +25,10 @@
       <em>{{ site.description }}</em>
   </p></div></div>
 
+  <div class="search"><div class="center"><p>
+      <label for="searchField">Search:</label><input id="searchField" type="text" />
+  </p></div></div>
+
   {% for post in site.posts %}
   <div class="post {% cycle 'even', 'odd' %}"><div class="center">
       <h1><a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a></h1>
