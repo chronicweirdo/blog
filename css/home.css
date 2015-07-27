@@ -4,9 +4,9 @@ body, div {
     border: 0;
 }
 
-body > div {
+body > div.post {
     display: block;
-    width: 100%;
+    width: 800px;
     float: left;
     clear: both;
 }
@@ -48,13 +48,9 @@ ul, ol {
     margin-bottom: 0;
     padding-bottom: 1.5em;
 }
-div.center {
-    width: 800px;
-    margin: 0 auto;
-}
 @media (max-width: 800px) {
 
-    div.center {
+    div.post {
         width: 90%;
         padding: 0 5% 0 5%;
     }
@@ -66,16 +62,18 @@ pre {
     padding-top: 1em;
     padding-bottom: 1em;
 }
-div.logo {
+.logo {
     padding-top: 1.5em;
     padding-bottom: 1.5em;
-}
-p.logo {
     text-align: center;
     margin-bottom: 0;
 }
-p.about {
-    text-align: center;
+
+.description {
+  text-align: center;
+  font-size: 1.5em;
+  font-family: "Times New Roman",Times,serif;
+  letter-spacing: 0.05em;
 }
 h1, h2 {
     font-family: sans-serif;
@@ -104,7 +102,7 @@ div.odd span.tag {
 a {
     color: black;
 }
-div.logo a {
+p.logo a {
     font-size: 1.5em;
     font-family: serif;
 }
@@ -114,23 +112,17 @@ h1 a {
 p.logo img {
     max-width: 100%;
 }
-div.description p {
-    text-align: center;
-    font-size: 1.5em;
-    font-family: "Times New Roman",Times,serif;
-    letter-spacing: 0.05em;
-}
 
-div.search p {
+p.search {
     text-align: center;
     font-size: 1.5em;
     font-family: "Times New Roman",Times,serif;
     letter-spacing: 0.05em;
 }
-div.search label {
+.search label {
     margin-right: 1em;
 }
-div.search input {
+.search input {
     width: 50%;
     font-size: 1em;
     height: 1.2em;

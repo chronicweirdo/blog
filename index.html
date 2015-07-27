@@ -11,26 +11,26 @@
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?">
 
     <link rel="stylesheet" type="text/css" href="{{ "/css/home.css" | prepend: site.baseurl }}"/>
+
     <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
+    <script src="{{ "/js/padding.js" | prepend: site.baseurl }}"></script>
     <script src="{{ "/js/home.js" | prepend: site.baseurl }}"></script>
 </head>
 <body>
-  <div class="logo"><div class="center">
-      <p class="logo">
-          <img src="{{ "/css/heuristics_full.png" | prepend: site.baseurl }}"/>
-      </p>
-  </div></div>
+  <p class="logo">
+      <img src="{{ "/css/heuristics_full.png" | prepend: site.baseurl }}"/>
+  </p>
 
-  <div class="description"><div class="center"><p>
+  <p class="description">
       <em>{{ site.description }}</em>
-  </p></div></div>
+  </p>
 
-  <div class="search"><div class="center"><p>
+  <p class="search">
       <label for="searchField">Search:</label><input id="searchField" type="text" />
-  </p></div></div>
+  </p>
 
   {% for post in site.posts %}
-  <div class="post {% cycle 'even', 'odd' %}"><div class="center">
+  <div class="post {% cycle 'even', 'odd' %}">
       <h1><a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a></h1>
       <p class="tag">
           <span class="date">{{ post.date | date: "%Y.%b.%d %H:%M" }}</span>
@@ -38,7 +38,7 @@
               <span class="tag">{{ tag }}</span>
           {% endfor %}
       </p>
-  </div></div>
+  </div>
   {% endfor %}
 </div>
 </body>

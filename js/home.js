@@ -55,7 +55,7 @@ function scrollFunction() {
 
 function getMaxLogoPadding() {
     var wh = document.documentElement.clientHeight;//$(window).height();
-    var dh = $("div.logo").height();
+    var dh = $(".logo").height();
 
     var pad = (wh - dh) / 2;
     return pad;
@@ -69,12 +69,12 @@ function setLogoPadding() {
     var maxLogoPadding = getMaxLogoPadding();
     var minLogoPadding = getMinLogoPadding();
 
-    $("div.logo").css("padding-top", maxLogoPadding + "px");
+    $(".logo").css("padding-top", maxLogoPadding + "px");
     var pad = maxLogoPadding - $(document).scrollTop();
     if (pad <= minLogoPadding) {
-        $("div.logo").css("padding-bottom", minLogoPadding + "px");
+        $(".logo").css("padding-bottom", minLogoPadding + "px");
     } else {
-        $("div.logo").css("padding-bottom", pad + "px");
+        $(".logo").css("padding-bottom", pad + "px");
     }
 }
 

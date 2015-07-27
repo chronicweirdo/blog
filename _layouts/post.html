@@ -7,31 +7,14 @@
 
     <title>{{ page.title }}</title>
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?">
-    
+
     <link rel="stylesheet" type="text/css" href="{{ "/css/highlight.default.css" | prepend: site.baseurl }}">
     <link rel="stylesheet" type="text/css" href="{{ "/css/post.css" | prepend: site.baseurl }}"/>
     <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
+    <script src="{{ "/js/padding.js" | prepend: site.baseurl }}"></script>
     <script src="{{ "/js/highlight.pack.js" | prepend: site.baseurl }}"></script>
     <script>
         hljs.initHighlightingOnLoad();
-
-        $(window).load(function() {
-            setPadding();
-            $(window).resize(setPadding);
-        });
-
-        function setPadding() {
-            var width = document.documentElement.clientWidth;
-            var padding = 0;
-            if (width > 800) {
-                padding = (width - 800) / 2;
-            }
-
-            $('body').children().each(function(index, child) {
-                $(child).css('padding-left', padding + 'px');
-                $(child).css('padding-right', padding + 'px');
-            });
-        }
     </script>
 </head>
 <body>
