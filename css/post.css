@@ -106,13 +106,22 @@ h1, h2 {
 }
 span.date, span.tag {
     display: inline-block;
-    background-color: #1a1a1a;
     text-transform: lowercase;
     font-family: monospace;
-    color: white;
     padding: .5em .8em;
+    background-color: #1a1a1a;
+    color: white;
     margin-right: .5em;
     margin-bottom: .5em;
+}
+a.logo {
+    display: inline-block;
+    width: 30px;
+    height: 40px;
+}
+a.logo img {
+    width: 30px;
+    height: 40px;
 }
 p.tag {
     padding-bottom: 0;
