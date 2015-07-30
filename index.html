@@ -17,13 +17,10 @@
     <script src="{{ "/js/home.js" | prepend: site.baseurl }}"></script>
 </head>
 <body>
-  <p class="logo">
-      <img src="{{ "/css/heuristics_full.png" | prepend: site.baseurl }}"/>
-  </p>
-
-  <p class="description">
-      <em>{{ site.description }}</em>
-  </p>
+  <div class="welcome">
+      <p class="description"><em>{{ site.description }}</em></p>
+      <p class="signature">by <a href="">S.C.</a></p>
+  </div>
 
   <p class="search">
       <label for="searchField">Search:</label><input id="searchField" type="text" />

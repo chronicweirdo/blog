@@ -10,9 +10,9 @@ var delay = (function(){
 })();
 
 $(window).load(function() {
-    setLogoPadding();
+    setWelcomePadding();
     $(window).scroll(scrollFunction);
-    $(window).resize(setLogoPadding);
+    $(window).resize(setWelcomePadding);
 
     $("#searchField").on('change keyup paste', function() {
         delay(function() {
@@ -50,31 +50,31 @@ function pageEndReached() {
 }
 
 function scrollFunction() {
-    setLogoPadding();
+    setWelcomePadding();
 }
 
-function getMaxLogoPadding() {
+function getMaxWelcomePadding() {
     var wh = document.documentElement.clientHeight;//$(window).height();
-    var dh = $(".logo").height();
+    var dh = $(".welcome").height();
 
     var pad = (wh - dh) / 2;
     return pad;
 }
 
-function getMinLogoPadding() {
+function getMinWelcomePadding() {
     return 24;
 }
 
-function setLogoPadding() {
-    var maxLogoPadding = getMaxLogoPadding();
-    var minLogoPadding = getMinLogoPadding();
+function setWelcomePadding() {
+    var maxLogoPadding = getMaxWelcomePadding();
+    var minLogoPadding = getMinWelcomePadding();
 
-    $(".logo").css("padding-top", maxLogoPadding + "px");
+    $(".welcome").css("padding-top", maxLogoPadding + "px");
     var pad = maxLogoPadding - $(document).scrollTop();
     if (pad <= minLogoPadding) {
-        $(".logo").css("padding-bottom", minLogoPadding + "px");
+        $(".welcome").css("padding-bottom", minLogoPadding + "px");
     } else {
-        $(".logo").css("padding-bottom", pad + "px");
+        $(".welcome").css("padding-bottom", pad + "px");
     }
 }
 

@@ -62,19 +62,23 @@ pre {
     padding-top: 1em;
     padding-bottom: 1em;
 }
-.logo {
+.welcome {
     padding-top: 1.5em;
     padding-bottom: 1.5em;
-    text-align: center;
+    font-family: "Times New Roman",Times,serif;
     margin-bottom: 0;
 }
-
 .description {
-  text-align: center;
-  font-size: 1.5em;
-  font-family: "Times New Roman",Times,serif;
-  letter-spacing: 0.05em;
+    font-size: 2em;
+    letter-spacing: 0.05em;
+    text-align: center;
+    margin-bottom: 0.4em;
 }
+.signature {
+    font-size: 1.4em;
+    text-align: right;
+}
+
 h1, h2 {
     font-family: sans-serif;
 }

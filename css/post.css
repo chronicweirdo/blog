@@ -104,7 +104,7 @@ p.links a {
 h1, h2 {
     font-family: sans-serif;
 }
-span.date, span.tag {
+a.home, span.date, span.tag {
     display: inline-block;
     text-transform: lowercase;
     font-family: monospace;
@@ -113,6 +113,14 @@ span.date, span.tag {
     color: white;
     margin-right: .5em;
     margin-bottom: .5em;
+}
+a.home {
+    background-color: white;
+    color: black;
+}
+span.tag {
+    background: url("stripe_ecru.png") repeat fixed 0 0;
+    color: black;
 }
 a.logo {
     display: inline-block;
@@ -124,14 +132,16 @@ a.logo img {
     height: 40px;
 }
 p.tag {
+    margin-top: 4em;
     padding-bottom: 0;
     font-size: 1em;
     line-height: 1.5em;
     letter-spacing: 0;
 }
-span.tag {
-    background: url("stripe_ecru.png") repeat fixed 0 0;
-    color: black;
+@media (max-width: 800px) {
+    p.tag {
+        margin-top: 1em;
+    }
 }
 code.hljs {
     background: transparent;

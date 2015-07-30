@@ -19,9 +19,8 @@
 </head>
 <body>
 
-    <p class="logo"><a href="/"><img src="{{ "/css/b.png" | prepend: site.baseurl }}"/></a></p>
     <p class="tag">
-        <a class="logo" href="/"><img src="{{ "/css/b_small.png" | prepend: site.baseurl }}"/></a>
+        <a class="home" href="/">home</a>
         <span class="date">{{ page.date | date: "%Y.%b.%d %H:%M" }}</span>
         {% for tag in page.tags %}
             <span class="tag">{{ tag }}</span>
