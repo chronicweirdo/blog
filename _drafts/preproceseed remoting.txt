@@ -1,0 +1,4 @@
+idea for a sort of more advanced design idea (not really a pattern): an implementation of spring remoting service that has a partial implementation in the api jar.
+The preprocessing implementation is running some validation code on the client, before making the call to the server. Also, the preprocessing part may be run on the service server before running the service itself (although this may not be necessary since all calls to that service are done through our preprocessing implementation).
+
+Point of this: we may be able to do something before making a call to the service to ensure that the call is even necessary; we save the time it takes to make the call.
