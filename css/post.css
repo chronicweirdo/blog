@@ -113,6 +113,8 @@ a.home, span.date, span.tag {
     color: white;
     margin-right: .5em;
     margin-bottom: .5em;
+    vertical-align: middle;
+    height: 1.8em;
 }
 a.home {
     background-color: white;
