@@ -23,7 +23,7 @@
         <a class="home" href="/">
             <img src="{{ "/css/home.png" | prepend: site.baseurl }}" alt="home"/>
         </a>
-        <span class="date">{{ page.date | date: "%Y.%b.%d %H:%M" }}</span>
+        <span class="date">{{ page.date | date: "%Y.%m.%d %H:%M" }}</span>
         {% for tag in page.tags %}
             <span class="tag">{{ tag }}</span>
         {% endfor %}

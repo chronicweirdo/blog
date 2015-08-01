@@ -31,7 +31,7 @@
   <div class="post {% cycle 'even', 'odd' %}">
       <h1><a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a></h1>
       <p class="tag">
-          <span class="date">{{ post.date | date: "%Y.%b.%d %H:%M" }}</span>
+          <span class="date">{{ post.date | date: "%Y.%m.%d %H:%M" }}</span>
           {% for tag in post.tags %}
               <span class="tag">{{ tag }}</span>
           {% endfor %}
