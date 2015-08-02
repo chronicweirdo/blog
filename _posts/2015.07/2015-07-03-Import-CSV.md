@@ -32,7 +32,8 @@ Connection connection = null;
 try {
     // Class.forName("org.apache.derby.jdbc.EmbeddedDriver").newInstance();
     // jdbc:derby:[subsubprotocol:][databaseName][;attribute=value]*
-    connection = DriverManager.getConnection("jdbc:derby:memory:testdb;create=true");
+    connection = DriverManager.getConnection(
+		"jdbc:derby:memory:testdb;create=true");
 } catch (Exception ex) {
     ex.printStackTrace();
     Assert.fail("Exception during database startup.");
@@ -118,7 +119,8 @@ public static String getTableName(Path path) {
 The **createTable** method will split the line in tokens, the column names, and build the create table query. We do a little processing of the column name, trim the empty spaces on the exterior and replace interior spaces with underscores. We add each column to the create table query as a new varchar column (since we assume all data is string). As we add the column names to the query, we also add them to our collection of column names. Hope this runs since we have no exception handling in this implementation.
 
 ~~~ java
-private void createTable(String tableName, String line) throws SQLException {
+private void createTable(String tableName, String line)
+        throws SQLException {
     String[] columnNames = line.split(",");
     this.columnNames.put(tableName, new ArrayList<>());
 
@@ -146,7 +148,8 @@ private void createTable(String tableName, String line) throws SQLException {
 Next, the **insertRow** method takes each row in the CSV file, except the header, breaks it down and inserts it into the table as string values. We don't trim these values, maybe they are supposed to have spaces in all sorts of places. This is not very efficient right now because we open up a new connection, create a new statement and run a query for each row. To improve it we could create a single bulk insert query, or some paginated bulk query. But we'll get away with it for now, the database is stored in memory so it is fast enough. We'll improve as we extend the tool.
 
 ~~~ java
-private void insertRow(String tableName, String line) throws SQLException {
+private void insertRow(String tableName, String line)
+        throws SQLException {
     String[] values = line.split(",");
 
     StringBuilder query = new StringBuilder();

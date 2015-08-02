@@ -86,29 +86,29 @@ private void addFolder(File folder) {
 
 The last step is to handle changes as they get detected by the watch service. This is done in the *run* method (if you did not notice, our service implements **Runnable**). The method will start an infinite loop that will try call the **take** method on the **WatchService**. This method blocks the execution of the thread until a **WatchKey** containing some events can be returned. Once we have that key we need to find out in what sub-folder were changes detected. Then we can go over all watch events, find out which files or sub-folders were changed (we need to resolve their path against the changed folder path) and handle the event using **handleEventOnFile** method. The last thing we must do after we have processed the changed key is to reset it. This is crucial! If we do not reset the key, the folder corresponding to that key will no longer be watched for changes. The **reset** method returns false if the key is no longer valid, when the folder was deleted. We could do something with this information, log it or stop the service, but in the current implementation we don't. We can also see that the **take** method throws an **InterruptedException**. This is the way we can exit the infinite loop and stop watching the folder if we want.
 
-<pre><code class="java">
+~~~ java
 public void run() {
-	for (;;) {
-		try {
-			WatchKey changedKey = watcher.take();
-			Path changedFolder = (Path) changedKey.watchable();
+    for (;;) {
+        try {
+            WatchKey changedKey = watcher.take();
+            Path changedFolder = (Path) changedKey.watchable();
 
-			for (WatchEvent event : changedKey.pollEvents()) {
-				WatchEvent&lt;Path&gt; pathEvent = (WatchEvent&lt;Path&gt;) event;
-				Path changedChildPath = changedFolder.resolve(pathEvent.context());
+            for (WatchEvent event : changedKey.pollEvents()) {
+                WatchEvent&lt;Path&gt; pathEvent = (WatchEvent&lt;Path&gt;) event;
+                Path changedChildPath = changedFolder.resolve(pathEvent.context());
                 File changedChild = changedChildPath.toFile();
 
                 handleEventOnFile(event, changedChild);
-			}
+            }
 
-			boolean valid = changedKey.reset();
+            boolean valid = changedKey.reset();
         } catch (InterruptedException e) {
             // log error
             break;
         }
-	}
+    }
 }
-</code></pre>
+~~~
 
 As for the **handleEventOnFile** method, there is not much to say except that this method will notify the database of new events. One note, when a new sub-folder has been added we must handle it with the **addFolder** method, that way it will be registered with the watcher service.
 

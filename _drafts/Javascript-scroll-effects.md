@@ -41,6 +41,7 @@ Bird's-eye view of the script
 ---
 
 When implementing this, we have two things to take care of:
+
 1. Initialize the elements: set up the size of the elements based on the size of the window. This function needs to run when the page loads and every time the window size changes.
 2. The scroll function: called on every scroll event, is responsible with bringing each element of the page to the correct state for the current scroll value.
 
