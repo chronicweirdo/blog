@@ -50,6 +50,15 @@ p {
     padding-bottom: 1.2em;
     letter-spacing: 0.05em;
 }
+p.video {
+    text-align: center;
+}
+p.video iframe {
+    max-width: 100%;
+}
+em {
+    font-size: 1em;
+}
 ul, ol {
     font-size: 1em;
     line-height: 1.5em;
