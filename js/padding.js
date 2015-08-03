@@ -1,6 +1,16 @@
 var MIN_WIDTH = 800;
 
-function setPadding() {
+function updatePadding() {
+    var setup = computePaddingAndWidth();
+
+    $('body').children().each(function(index, child) {
+        $(child).css('padding-left', setup.padding);
+        $(child).css('padding-right', setup.padding);
+        $(child).css('width', setup.width);
+    });
+}
+
+function computePaddingAndWidth() {
     var clientWidth = document.documentElement.clientWidth;
     var padding = "5%";
     var width = "90%";
@@ -9,14 +19,19 @@ function setPadding() {
       width = MIN_WIDTH + "px";
     }
 
-    $('body').children().each(function(index, child) {
-        $(child).css('padding-left', padding);
-        $(child).css('padding-right', padding);
-        $(child).css('width', width);
-    });
+    return { 'padding': padding, 'width': width};
 }
 
-$(window).load(function() {
-    setPadding();
-    $(window).resize(setPadding);
+function buildDynamicStyle() {
+    var style = document.createElement("style");
+    style.appendChild(document.createTextNode(""));
+    document.head.appendChild(style);
+    var setup = computePaddingAndWidth();
+    var sheet = style.sheet;
+    sheet.insertRule('body > * { padding-left:' + setup.padding + '; padding-right:' + setup.padding + '; width:' + setup.width + '; }', 0);
+}
+
+$('head').ready(function() {
+    buildDynamicStyle();
+    $(window).resize(updatePadding);
 });
