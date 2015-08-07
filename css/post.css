@@ -106,8 +106,13 @@ div.image {
     margin-bottom: 1.5em;
 }
 p.image {
+    background: url("pattern3.png") repeat fixed 0 0;
     padding-top: 1.5em;
     text-align: center;
+    margin-bottom: 1.5em;
+}
+img {
+    max-width: 100%;
 }
 p.image img {
     max-width: 100%;
