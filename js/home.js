@@ -12,6 +12,8 @@ var delay = (function(){
 $(window).load(function() {
     setWelcomePadding();
     $(window).scroll(scrollFunction);
+    jQuery(window).on("scrollstart", scrollFunction);
+    jQuery(window).on("scrollstop", scrollFunction);
     $(window).resize(setWelcomePadding);
 
     $("#searchField").on('change keyup paste', function() {
