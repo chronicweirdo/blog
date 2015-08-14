@@ -18,10 +18,12 @@
     </script>
 </head>
 <body>
-    <p class="tag">
+    <p class="logo">
         <a class="home" href="/">
-            <img src="{{ "/css/home.png" | prepend: site.baseurl }}" alt="home"/>
+            <img src="{{ "/css/heuristics.png" | prepend: site.baseurl }}" alt="home"/>
         </a>
+    </p>
+    <p class="tag">
         <span class="date">{{ page.date | date: "%Y.%m.%d %H:%M" }}</span>
         {% for tag in page.tags %}
             <span class="tag">{{ tag }}</span>
