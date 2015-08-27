@@ -8,6 +8,7 @@ url: "http://heuristics.eu" # the base hostname & protocol for your site
 twitter_username: jekyllrb
 github_username:  jekyll
 timezone: Europe/Bucharest
+permalink: /:year/:month/:day/:title.html
 
 # Build settings
 markdown: kramdown
