@@ -1,7 +1,4 @@
 /* http://www.stripegenerator.com */
-* {
-    font-size: 1.1em;
-}
 body, div {
     margin: 0;
     padding: 0;
@@ -18,8 +15,9 @@ body > div {
 p, h1, h2, h3, h4, h5, h6 {
     margin: 0;
     padding: 0;
-    font-family: "Times New Roman",Times,serif;
+    font-family: "Times New Roman", Times, serif;
 }
+
 h1 {
     font-size: 1.5em;
     line-height: 1.5em;
@@ -48,14 +46,15 @@ p {
     font-size: 1em;
     line-height: 1.3em;
     padding-bottom: 1.2em;
-    letter-spacing: 0.05em;
 }
+
 p.video {
     text-align: center;
 }
 p.video iframe {
     max-width: 100%;
 }
+
 em {
     font-size: 1em;
 }
