@@ -70,17 +70,7 @@ li {
     width: 95%;
     margin-bottom: .4em;
 }
-div.center {
-    width: 800px;
-    margin: 0 auto;
-}
-@media (max-width: 800px) {
 
-    div.center {
-        width: 90%;
-        padding: 0 5% 0 5%;
-    }
-}
 pre {
     padding-top: 1em;
     padding-bottom: 1em;
@@ -135,8 +125,6 @@ a.home, span.date, span.tag {
     color: white;
     margin-right: .5em;
     margin-bottom: .5em;
-    vertical-align: middle;
-    height: 1.8em;
 }
 a.home {
     background-color: white;
@@ -156,16 +144,10 @@ a.logo img {
     height: 40px;
 }
 p.tag {
-    margin-top: 4em;
     padding-bottom: 0;
     font-size: 1em;
     line-height: 1.5em;
     letter-spacing: 0;
-}
-@media (max-width: 800px) {
-    p.tag {
-        margin-top: 1em;
-    }
 }
 code.hljs {
     background: transparent;
