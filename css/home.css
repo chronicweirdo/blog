@@ -6,7 +6,7 @@ body, div {
 
 body > div.post {
     display: block;
-    width: 800px;
+    /*width: 800px;*/
     float: left;
     clear: both;
 }

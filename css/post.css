@@ -74,7 +74,7 @@ li {
 pre {
     padding-top: 1em;
     padding-bottom: 1em;
-    background: url("stripe_ecru.png") repeat fixed 0 0;
+    background: #FDD5B1;
     margin-bottom: 1.5em;
     font-size: .9em;
 }
@@ -95,7 +95,6 @@ div.image {
     margin-bottom: 1.5em;
 }
 p.image {
-    background: url("pattern3.png") repeat fixed 0 0;
     padding-top: 1.5em;
     text-align: center;
     margin-bottom: 1.5em;
@@ -121,7 +120,6 @@ a.home, span.date, span.tag {
     text-transform: lowercase;
     font-family: monospace;
     padding: .5em .8em;
-    background-color: #1a1a1a;
     color: white;
     margin-right: .5em;
     margin-bottom: .5em;
@@ -131,7 +129,6 @@ a.home {
     color: black;
 }
 span.tag {
-    background: url("stripe_ecru.png") repeat fixed 0 0;
     color: black;
 }
 a.logo {
@@ -154,4 +151,18 @@ code.hljs {
 }
 a {
     color: black;
+}
+/* highlights */
+span.date {
+    background-color: #1a1a1a;
+}
+pre, span.tag {
+    background: url("stripe_ecru.png") repeat fixed 0 0;
+    /*background: #FDD5B1;*/
+    /*background: #aaeeee;*/
+    /*background: #bbeeee;*/
+}
+p.image {
+    background: url("pattern3.png") repeat fixed 0 0;
+    /*background: #dddddd;*/
 }
