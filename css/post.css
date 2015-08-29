@@ -3,6 +3,8 @@ body, div {
     margin: 0;
     padding: 0;
     border: 0;
+    color: #222222;
+    background-color: #eeeeee;
 }
 
 body > div {
@@ -125,7 +127,6 @@ a.home, span.date, span.tag {
     margin-bottom: .5em;
 }
 a.home {
-    background-color: white;
     color: black;
 }
 span.tag {
