@@ -78,7 +78,7 @@ pre {
     padding-bottom: 1em;
     background: #FDD5B1;
     margin-bottom: 1.5em;
-    font-size: .9em;
+    font-size: 1em;
 }
 h1.title {
     background-color: #1a1a1a;
@@ -162,7 +162,8 @@ pre, span.tag {
     /*background: #Fee6a1;*/
     /*background: #aaeeee;*/
     /*background: #bbeeee;*/
-    background-color: #9FDECB;
+    /*background-color: #9FDECB;*/
+    background-color: #c9dbd6;
 }
 p.image {
     /*background: url("pattern3.png") repeat fixed 0 0;*/

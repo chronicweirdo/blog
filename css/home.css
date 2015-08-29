@@ -2,6 +2,8 @@ body, div {
     margin: 0;
     padding: 0;
     border: 0;
+    color: #222222;
+    background-color: #eeeeee;
 }
 
 body > div.post {
@@ -93,14 +95,16 @@ span.date, span.tag {
     margin-bottom: .5em;
 }
 div.even {
-    background: url("pattern3.png") repeat fixed 0 0;
+    /*background: url("pattern3.png") repeat fixed 0 0;*/
+    background-color: #e0e0e0;
 }
 div.even span.tag {
     background-color: #ffffff;
     color: black;
 }
 div.odd span.tag {
-    background: url("pattern3.png") repeat fixed 0 0;
+    /*background: url("pattern3.png") repeat fixed 0 0;*/
+    background-color: #e0e0e0;
     color: black;
 }
 a {
