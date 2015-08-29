@@ -157,10 +157,11 @@ span.date {
     background-color: #1a1a1a;
 }
 pre, span.tag {
-    background: url("stripe_ecru.png") repeat fixed 0 0;
-    /*background: #FDD5B1;*/
+    /*background: url("stripe_ecru.png") repeat fixed 0 0;*/
+    /*background: #Fee6a1;*/
     /*background: #aaeeee;*/
     /*background: #bbeeee;*/
+    background: #9FDECB;
 }
 p.image {
     background: url("pattern3.png") repeat fixed 0 0;
