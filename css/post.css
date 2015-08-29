@@ -162,9 +162,10 @@ pre, span.tag {
     /*background: #Fee6a1;*/
     /*background: #aaeeee;*/
     /*background: #bbeeee;*/
-    background: #9FDECB;
+    background-color: #9FDECB;
 }
 p.image {
-    background: url("pattern3.png") repeat fixed 0 0;
+    /*background: url("pattern3.png") repeat fixed 0 0;*/
     /*background: #dddddd;*/
+    background-color: #cccccc;
 }
