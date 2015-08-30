@@ -66,8 +66,21 @@ function scrollFunction() {
     setWelcomePadding();
 }
 
+function getWindowHeight() {
+    /*var result = 0;
+    console.log("$(window).height():" + $(window).height());
+    console.log("document.documentElement.clientHeight:" + document.documentElement.clientHeight);
+    console.log("window.screen.height: " + window.screen.height);
+    console.log("window.outerHeight: " + window.outerHeight);
+    result = (typeof window.outerHeight != 'undefined')?Math.max(window.outerHeight, $(window).height()):$(window).height();
+    console.log("typeof window.outerHeight != 'undefined')?Math.max(window.outerHeight, $(window).height()):$(window).height(): " + result);*/
+
+    var h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+    //console.log("h: " + h);
+    return h;
+}
 function getMaxWelcomePadding() {
-    var wh = document.documentElement.clientHeight;//$(window).height();
+    var wh = getWindowHeight();
     var dh = $(".welcome").height();
 
     var pad = (wh - dh) / 2;
