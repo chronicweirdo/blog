@@ -19,23 +19,13 @@ $(window).load(function() {
     setWelcomePadding();
     var isMobile = mobilecheck();
     if (! isMobile) {
-        //console.log("setting scroll functions on desktop");
         $(window).scroll(scrollFunction);
-        //jQuery(window).on("scrollstart", scrollFunction);
-        //jQuery(window).on("scrollstop", scrollFunction);
     }
 
     $(window).resize(setWelcomePadding);
-
-    /*$("#searchField").on('change keyup paste', function() {
-        delay(function() {
-            filterPosts();
-        }, 1000);
-    });*/
 });
 
 function filterPosts() {
-  //var searchTokens = $("#searchField").val().split(" ");
   var token = $("#searchField").val();
 
   $('.post').each(function(index, post){
@@ -67,16 +57,7 @@ function scrollFunction() {
 }
 
 function getWindowHeight() {
-    /*var result = 0;
-    console.log("$(window).height():" + $(window).height());
-    console.log("document.documentElement.clientHeight:" + document.documentElement.clientHeight);
-    console.log("window.screen.height: " + window.screen.height);
-    console.log("window.outerHeight: " + window.outerHeight);
-    result = (typeof window.outerHeight != 'undefined')?Math.max(window.outerHeight, $(window).height()):$(window).height();
-    console.log("typeof window.outerHeight != 'undefined')?Math.max(window.outerHeight, $(window).height()):$(window).height(): " + result);*/
-
     var h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
-    //console.log("h: " + h);
     return h;
 }
 function getMaxWelcomePadding() {
