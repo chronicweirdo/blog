@@ -16,13 +16,12 @@ window.mobilecheck = function() {
 }
 
 $(window).load(function() {
-    setWelcomePadding();
     var isMobile = mobilecheck();
     if (! isMobile) {
+        setWelcomePadding();
         $(window).scroll(scrollFunction);
+        $(window).resize(setWelcomePadding);
     }
-
-    $(window).resize(setWelcomePadding);
 });
 
 function filterPosts() {

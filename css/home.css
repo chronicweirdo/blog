@@ -8,7 +8,6 @@ body, div {
 
 body > div.post {
     display: block;
-    /*width: 800px;*/
     float: left;
     clear: both;
 }
@@ -80,6 +79,23 @@ pre {
     font-size: 1.4em;
     text-align: right;
 }
+@media (max-width: 800px) {
+    .description {
+        font-size: 1.5em;
+    }
+    .signature {
+        font-size: 1.2em;
+    }
+}
+@media (max-width: 400px) {
+    .description {
+        font-size: 1em;
+    }
+    .signature {
+        font-size: 1em;
+    }
+}
+
 
 h1, h2 {
     font-family: sans-serif;
