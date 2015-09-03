@@ -57,8 +57,7 @@ function scrollFunction() {
 }
 
 function getWindowHeight() {
-    var h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
-    return h;
+    return window.innerHeight;
 }
 function getMaxWelcomePadding() {
     var wh = getWindowHeight();
@@ -75,6 +74,7 @@ function getMinWelcomePadding() {
 function setWelcomePadding() {
     var maxLogoPadding = getMaxWelcomePadding();
     var minLogoPadding = getMinWelcomePadding();
+    //$("#console").html("max: " + maxLogoPadding);
 
     $(".welcome").css("padding-top", maxLogoPadding + "px");
     var pad = maxLogoPadding - $(document).scrollTop();
