@@ -20,6 +20,7 @@ function filterPosts() {
 
       var token = window.parameters["search"][0];
 
+      var newIndex = 0;
       $('.post').each(function(index, post){
         var matches = false;
         if($('h1', post).text().contains(token)) {
@@ -32,8 +33,12 @@ function filterPosts() {
           });
         }
 
+        $(post).removeClass("odd");
+        $(post).removeClass("even");
         if (matches) {
           $(post).css('display', 'block');
+          $(post).addClass(newIndex % 2 == 0 ? 'even' : 'odd');
+          newIndex++;
         } else {
           $(post).css('display', 'none');
         }
