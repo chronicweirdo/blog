@@ -48,6 +48,5 @@ function filterPosts() {
 
 $(window).load(function() {
     window.parameters = parseParameters();
-    console.log(window.parameters);
     filterPosts();
 });
