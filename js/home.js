@@ -24,28 +24,7 @@ $(window).load(function() {
     }
 });
 
-function filterPosts() {
-  var token = $("#searchField").val();
 
-  $('.post').each(function(index, post){
-    var matches = false;
-    if($('h1', post).text().contains(token)) {
-      matches = true;
-    } else {
-      $('span.tag', post).each(function(index, tagEl) {
-        if($(tagEl).text().contains(token)) {
-          matches = true;
-        }
-      });
-    }
-
-    if (matches) {
-      $(post).css('display', 'block');
-    } else {
-      $(post).css('display', 'none');
-    }
-  });
-}
 
 function pageEndReached() {
     return ($(window).height() + $(document).scrollTop() >= $(document).height());
