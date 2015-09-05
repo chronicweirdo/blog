@@ -23,11 +23,15 @@ function filterPosts() {
       var newIndex = 0;
       $('.post').each(function(index, post){
         var matches = false;
-        if($('h1', post).text().contains(token)) {
+        var title = $('h1', post).text();
+        if(title.contains(' ' + token + ' ')
+            || title.startsWith(token + ' ')
+            || title.endsWith(' ' + token)
+            || title === token) {
           matches = true;
         } else {
           $('span.tag', post).each(function(index, tagEl) {
-            if($(tagEl).text().contains(token)) {
+            if($(tagEl).text() === token) {
               matches = true;
             }
           });
