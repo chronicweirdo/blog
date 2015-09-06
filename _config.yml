@@ -2,7 +2,7 @@
 title: heuristics
 email: silviu.cacoveanu@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
-  A blog about programming and the pleasure of figuring things out.
+  A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.
 baseurl: "" # the subpath of your site, e.g. /blog/
 url: "http://heuristics.eu" # the base hostname & protocol for your site
 twitter_username: jekyllrb
