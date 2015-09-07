@@ -9,6 +9,8 @@ twitter_username: jekyllrb
 github_username:  jekyll
 timezone: Europe/Bucharest
 permalink: /:year/:month/:day/:title.html
+gems:
+    - jekyll-sitemap
 
 # Build settings
 markdown: kramdown
