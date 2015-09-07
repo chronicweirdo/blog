@@ -1,0 +1,155 @@
+body, div {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: #cccccc;
+    background-color: #222222;
+}
+
+body > div {
+    display: block;
+    width: 100%;
+    float: left;
+    clear: both;
+}
+
+p, h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    padding: 0;
+    font-family: "Times New Roman", Times, serif;
+}
+
+h1 {
+    font-size: 1.5em;
+    line-height: 1.5em;
+    padding-bottom: 1em;
+    padding-top: 1em;
+    text-transform: uppercase;
+}
+h2 {
+    font-size: 1.2em;
+    line-height: 1.2em;
+    padding-bottom: 1em;
+}
+h3 {
+    font-size: 1.1em;
+}
+h4 {
+    font-size: 1em;
+}
+h5 {
+    font-size: 1em;
+}
+h6 {
+    font-size: 1em;
+}
+p {
+    font-size: 1em;
+    line-height: 1.3em;
+    padding-bottom: 1.4em;
+}
+
+p.video {
+    text-align: center;
+}
+p.video iframe {
+    max-width: 100%;
+}
+
+em {
+    font-size: 1em;
+}
+ul, ol {
+    font-size: 1em;
+    line-height: 1.3em;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-bottom: 1.4em;
+}
+li {
+    margin-left: 5%;
+    width: 95%;
+    font-size: 1em;
+    line-height: 1.3em;
+}
+
+pre {
+    padding-top: 1em;
+    padding-bottom: 1em;
+    background: #FDD5B1;
+    margin-bottom: 1.4em;
+    margin-top: 0;
+    font-size: 1em;
+}
+h1.title {
+    background-color: #1a1a1a;
+    color: white;
+    margin-bottom: 1.5em;
+}
+p.logo {
+    text-align: center;
+    padding-top: 1.5em;
+}
+p.logo img {
+    width: 100px;
+}
+p.image, p.video {
+    padding-top: 1.4em;
+    text-align: center;
+    margin-bottom: 1.4em;
+}
+img {
+    max-width: 100%;
+}
+p.image img {
+    max-width: 100%;
+}
+p.links {
+    text-align: center;
+}
+p.links a {
+    margin-left: 2em;
+    margin-right: 2em;
+}
+h1, h2 {
+    font-family: sans-serif;
+}
+a.home, span.date, span.tag {
+    display: inline-block;
+    text-transform: lowercase;
+    font-family: monospace;
+    padding: .5em .8em;
+    color: #eeeeee;
+    margin-right: .5em;
+    margin-bottom: .5em;
+}
+a.home, span.tag {
+    color: #cccccc;
+}
+a.logo {
+    display: inline-block;
+    width: 30px;
+    height: 40px;
+}
+p.tag {
+    padding-bottom: 0;
+    /*font-size: 1em;*/
+    line-height: 1.5em;
+    letter-spacing: 0;
+}
+code.hljs {
+    background: transparent;
+}
+a {
+    color: white;
+}
+/* highlights */
+span.date {
+    background-color: #1a1a1a;
+}
+span.tag {
+    background-color: #1a1a1a;
+}
+pre, p.image, p.video {
+    background-color: #1a1a1a;
+}
