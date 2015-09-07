@@ -3,7 +3,7 @@ body, div {
     padding: 0;
     border: 0;
     color: #222222;
-    background-color: #eeeeee;
+    background-color: #ffffff;
 }
 
 body > div {
@@ -148,8 +148,8 @@ span.date {
     background-color: #1a1a1a;
 }
 pre, span.tag {
-    background-color: #e0e0e0;
+    background-color: #eeeeee;
 }
 p.image, p.video {
-    background-color: #e0e0e0;
+    background-color: #eeeeee;
 }

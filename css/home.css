@@ -3,7 +3,7 @@ body, div {
     padding: 0;
     border: 0;
     color: #222222;
-    background-color: #eeeeee;
+    background-color: #ffffff;
 }
 
 body > div.post {
@@ -119,8 +119,7 @@ span.date, span.tag {
     margin-bottom: .5em;
 }
 div.even {
-    /*background: url("pattern3.png") repeat fixed 0 0;*/
-    background-color: #e0e0e0;
+    background-color: #eeeeee;
 }
 div.even span.tag {
     background-color: #ffffff;
@@ -128,7 +127,7 @@ div.even span.tag {
 }
 div.odd span.tag {
     /*background: url("pattern3.png") repeat fixed 0 0;*/
-    background-color: #e0e0e0;
+    background-color: #eeeeee;
     color: black;
 }
 a {
