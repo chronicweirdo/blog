@@ -36,7 +36,7 @@ We won't need a complex document structure, we just need a way to define the *pa
     <p>Lorem ipsum dolor sit...</p>
 ~~~
 
-This is an abreviated version of the document I used for testing, which can be downloaded [here](/assets/2015.08/javascript_scroll_effects.html). You'll see there that I have included a lot of paragraphs. I wanted to test that the effect is functioning properly even when pages are too long to fit on screen. We want each page to slide up as we scroll down, until we reach its end, while at the same time for all pages below to remain fixed in their original position.
+This is an abreviated version of the document I used for testing. [Download the full document here](/assets/2015.08/javascript_scroll_effects.html). You'll see there that I have included a lot of paragraphs. I wanted to test that the effect is functioning properly even when pages are too long to fit on screen. We want each page to slide up as we scroll down, until we reach its end, while at the same time for all pages below to remain fixed in their original position.
 
 Bird's-eye view of the script
 ---
@@ -138,4 +138,4 @@ Here's a short video of how the effect looks like in the end:
     <iframe width="560" height="315" src="https://www.youtube.com/embed/4_ZxThmpGnU" frameborder="0" allowfullscreen></iframe>
 </p>
 
-You can download the whole file [here](/assets/2015.08/javascript_scroll_effects.html). Use it wisely.
+[You can download the whole scroll effects file here](/assets/2015.08/javascript_scroll_effects.html). Use it wisely.

@@ -7,7 +7,7 @@ category: bits
 excerpt: Dynamic events with the jQuery delegate method. Saving jQuery selector results into variables as a best practice. Optimise DOM search using jQuery find function. Check if variable is a number with JavaScript isNaN function.
 ---
 
-It's an amusing occurrence when you scan some beginner material, dismissing chapter after chapter as something you already know until you're surprised to find out some very basic info you did not know. Exactly so I amused myself as I was skimming David Sawyer McFarland's book ["JavaScript & jQuery"](http://shop.oreilly.com/product/0636920015048.do). Here's to those small details that escape us as we learn a new subject and delight us when we discover them years later - the bits.
+It's an amusing occurrence when you scan some beginner material, dismissing chapter after chapter as something you already know until you're surprised to find out some very basic info you did not know. Exactly so I amused myself as I was skimming [David Sawyer McFarland's book "JavaScript & jQuery"](http://shop.oreilly.com/product/0636920015048.do). Here's to those small details that escape us as we learn a new subject and delight us when we discover them years later - the bits.
 
 jQuery delegate
 ---
@@ -33,7 +33,7 @@ function remove() {
 <div class="add"><input type="button" value="add"></input></div>
 ~~~
 
-We have a div with a button inside it. When the button is clicked, the original div is cloned and added to itself. The button of the original div is changed from an add button to a remove button. All events are binded dynamically, as new elements are added to the page but also as existing elements change their properties. Download it [here](/assets/2015.08/delegate.html).
+We have a div with a button inside it. When the button is clicked, the original div is cloned and added to itself. The button of the original div is changed from an add button to a remove button. All events are binded dynamically, as new elements are added to the page but also as existing elements change their properties. [Download the jQuery delegate test file here](/assets/2015.08/delegate.html).
 
 Saving selectors into variables
 ---

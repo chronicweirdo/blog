@@ -162,4 +162,4 @@ public class FilesScanner implements Runnable {
     public void init() {
 </code></pre>
 
-Download the [FilesDatabase](/assets/2015.06/FilesDatabase.java) interface and the [FilesScanner](/assets/2015.06/FilesScanner.java).
+Download the [FilesDatabase interface](/assets/2015.06/FilesDatabase.java) and the [FilesScanner class](/assets/2015.06/FilesScanner.java).

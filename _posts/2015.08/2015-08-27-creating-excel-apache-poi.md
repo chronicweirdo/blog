@@ -100,7 +100,7 @@ Next I had to create a chart based on the data I am writing to the excel file. I
 2. use some other library to create an image of a chart and insert it into the Excel file;
 3. create a template Excel file that contains a chart, then use Apache POI to fill the template with data.
 
-The first one sounded like the most elegant option. Apache POI supports chart creation, as long as it is a [line](https://svn.apache.org/repos/asf/poi/trunk/src/examples/src/org/apache/poi/xssf/usermodel/examples/LineChart.java) or a [scatter chart](https://svn.apache.org/repos/asf/poi/trunk/src/examples/src/org/apache/poi/xssf/usermodel/examples/ScatterChart.java). But I wanted to create a bar chart. Exactly...
+The first one sounded like the most elegant option. Apache POI supports chart creation, as long as it is a line ([see how to create a line chart with Apache POI](https://svn.apache.org/repos/asf/poi/trunk/src/examples/src/org/apache/poi/xssf/usermodel/examples/LineChart.java)) or a scatter chart ([see how to create a scatter chart with Apache POI](https://svn.apache.org/repos/asf/poi/trunk/src/examples/src/org/apache/poi/xssf/usermodel/examples/ScatterChart.java)). But I wanted to create a bar chart. Exactly...
 
 The second option I did not even explore. There are resources on how to do that, but if you're doing that there is no point of exporting an Excel file, you can just export the data and the chart in a PDF. The Excel file is dynamic, you send it to your users and they can modify the data and see how different values would affect the chart. I moved on to the third option.
 
@@ -112,9 +112,9 @@ To make the template approach work, we need to go through the following steps:
 - define your table, the headers followed by data;
 - define a chart that can dynamically use the data in the table.
 
-A very elegant way to do this would be to use the table feature in Excel ([first method](http://www.techrepublic.com/blog/microsoft-office/two-ways-to-build-dynamic-charts-in-excel/)). That doesn't work in Apache POI. Opening the template file with Apache POI will break the table feature and the chart based on the table. You can insert your data, but neither the table nor the chart will be updated.
+A very elegant way to do this would be to use the table feature in Excel ([create dynamic charts in Excel using the table feature](http://www.techrepublic.com/blog/microsoft-office/two-ways-to-build-dynamic-charts-in-excel/)). That doesn't work in Apache POI. Opening the template file with Apache POI will break the table feature and the chart based on the table. You can insert your data, but neither the table nor the chart will be updated.
 
-What is left is using dynamic series ([second method](http://www.techrepublic.com/blog/microsoft-office/two-ways-to-build-dynamic-charts-in-excel/)). I'll walk you through the steps of making this work in the tutorial section.
+What is left is using dynamic series ([create dynamic charts in Excel using dynamic series](http://www.techrepublic.com/blog/microsoft-office/two-ways-to-build-dynamic-charts-in-excel/)). I'll walk you through the steps of making this work in the tutorial section.
 
 Tutorial
 ---
