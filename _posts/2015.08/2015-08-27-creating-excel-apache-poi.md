@@ -121,18 +121,18 @@ Tutorial
 
 First, create your file and the structure of you data sheet. Enter the name of the sheet, then write a title and your table header.
 
-<p class="image"><img src="/assets/2015.08/apachepoi001.png" /></p>
+<p class="image"><img src="/assets/2015.08/apachepoi001.png" alt="Create Excel file and column headers"/></p>
 
 Enter some dummy data.
 
-<p class="image"><img src="/assets/2015.08/apachepoi002.png" /></p>
+<p class="image"><img src="/assets/2015.08/apachepoi002.png" alt="Enter dummy data in the Excel file"/></p>
 
 Define the dynamic series you are going to use in the chart (go to Formulas, Name Manager).
 
 <p class="image">
-    <img src="/assets/2015.08/apachepoi003.png" />
-    <img src="/assets/2015.08/apachepoi004.png" />
-    <img src="/assets/2015.08/apachepoi005.png" />
+    <img src="/assets/2015.08/apachepoi003.png" alt="Open name manager"/>
+    <img src="/assets/2015.08/apachepoi004.png" alt="Create new series"/>
+    <img src="/assets/2015.08/apachepoi005.png" alt="Fill out series name and formula"/>
 </p>
 
 The formulas are (the difference is because the title gets counted for column A):
@@ -144,41 +144,41 @@ valueRange=OFFSET(datasheet!$B$4,0,0,COUNTA(datasheet!$B:$B)-1)
 
 Verify the formulas are good.
 
-<p class="image"><img src="/assets/2015.08/apachepoi006.png" /></p>
+<p class="image"><img src="/assets/2015.08/apachepoi006.png" alt="Verify formulas refer to correct cells" /></p>
 
 Create a chart based on your data.
 
 <p class="image">
-    <img src="/assets/2015.08/apachepoi007.png" />
-    <img src="/assets/2015.08/apachepoi008.png" />
+    <img src="/assets/2015.08/apachepoi007.png" alt="Create a new chart"/>
+    <img src="/assets/2015.08/apachepoi008.png" alt="Verify labels and data are correctly displayed in chart"/>
 </p>
 
 Replace chart data with dynamic series names.
 
 <p class="image">
-    <img src="/assets/2015.08/apachepoi009.png" />
-    <img src="/assets/2015.08/apachepoi010.png" />
-    <img src="/assets/2015.08/apachepoi011.png" />
-    <img src="/assets/2015.08/apachepoi012.png" />
-    <img src="/assets/2015.08/apachepoi013.png" />
-    <img src="/assets/2015.08/apachepoi014.png" />
+    <img src="/assets/2015.08/apachepoi009.png" alt="Open chart definition window"/>
+    <img src="/assets/2015.08/apachepoi010.png" alt="Select values data range and click edit"/>
+    <img src="/assets/2015.08/apachepoi011.png" alt="Replace data range with name of values dynamic series"/>
+    <img src="/assets/2015.08/apachepoi012.png" alt="Replace data range with name of values dynamic series"/>
+    <img src="/assets/2015.08/apachepoi013.png" alt="Select labels data tange and click edit"/>
+    <img src="/assets/2015.08/apachepoi014.png" alt="Replace labels data range with name of labels dynamic series"/>
 </p>
 
 When you add new labels and values, they should show up in the chart.
 
-<p class="image"><img src="/assets/2015.08/apachepoi015.png" /></p>
+<p class="image"><img src="/assets/2015.08/apachepoi015.png" alt="Verify that chart is updated when adding new values to the table"/></p>
 
 Move the chart to a separate sheet.
 
 <p class="image">
-    <img src="/assets/2015.08/apachepoi016.png" />
-    <img src="/assets/2015.08/apachepoi017.png" />
-    <img src="/assets/2015.08/apachepoi018.png" />
+    <img src="/assets/2015.08/apachepoi016.png" alt="Right-click chart and select Move Chart"/>
+    <img src="/assets/2015.08/apachepoi017.png" alt="Select new sheet and fill out name"/>
+    <img src="/assets/2015.08/apachepoi018.png" alt="Verify chart was moved to new sheet"/>
 </p>
 
 Remove dummy data.
 
-<p class="image"><img src="/assets/2015.08/apachepoi019.png" /></p>
+<p class="image"><img src="/assets/2015.08/apachepoi019.png" alt="Remove dummy data"/></p>
 
 Save the template.
 
@@ -208,6 +208,6 @@ public void writeSimpleTemplate() throws Exception {
 The result.
 
 <p class="image">
-    <img src="/assets/2015.08/apachepoi020.png" />
-    <img src="/assets/2015.08/apachepoi021.png" />
+    <img src="/assets/2015.08/apachepoi020.png" alt="Verify data was written to the table"/>
+    <img src="/assets/2015.08/apachepoi021.png" alt="Verify chart was updated to reflect new data"/>
 </p>
