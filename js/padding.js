@@ -15,7 +15,7 @@ function computePaddingAndWidth() {
     var padding = "5%";
     var width = "90%";
     if (clientWidth > MIN_WIDTH) {
-      padding = ((clientWidth - 800) / 2) + "px";
+      padding = ((clientWidth - MIN_WIDTH) / 2) + "px";
       width = MIN_WIDTH + "px";
     }
 

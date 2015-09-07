@@ -15,3 +15,5 @@ gems:
 # Build settings
 markdown: kramdown
 highligter: null
+sass:
+  sass_dir: css

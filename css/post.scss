@@ -1,9 +1,14 @@
+---
+---
+
+@import "variables";
+
 body, div {
     margin: 0;
     padding: 0;
     border: 0;
-    color: #222222;
-    background-color: #ffffff;
+    color: $text-color;
+    background-color: $background-color;
 }
 
 body > div {
@@ -124,7 +129,7 @@ a.home, span.date, span.tag {
     margin-bottom: .5em;
 }
 a.home, span.tag {
-    color: #222222;
+    color: $text-color;
 }
 a.logo {
     display: inline-block;
