@@ -1,9 +1,14 @@
+---
+---
+
+@import "variables";
+
 body, div {
     margin: 0;
     padding: 0;
     border: 0;
-    color: #222222;
-    background-color: #ffffff;
+    color: $text-color;
+    background-color: $background-color;
 }
 
 body > div.post {
@@ -17,30 +22,11 @@ p, h1, h2, h3, h4, h5, h6 {
     padding: 0;
 }
 h1 {
-    margin-top: 1.5em;
-    font-size: 1.5em;
-    line-height: 1.5em;
-}
-h2 {
-    font-size: 1.5em;
-    line-height: 1.5em;
-    padding-bottom: 1em;
-}
-h3 {
-    font-size: 1.17em;
-}
-h4 {
-    font-size: 1.12em;
-}
-h5 {
-    font-size: .83em;
-}
-h6 {
-    font-size: .75em;
+    margin-top: $large-space;
+    font-size: $humongous-font-size;
 }
 p {
-    font-size: 1em;
-    line-height: 1.5em;
+    font-size: $font-size;
     margin-bottom: 2.25em;
 }
 ul, ol {
@@ -50,7 +36,6 @@ ul, ol {
     padding-bottom: 1.5em;
 }
 @media (max-width: 800px) {
-
     div.post {
         width: 90%;
         padding: 0 5% 0 5%;
@@ -58,10 +43,6 @@ ul, ol {
 }
 a:hover {
     text-decoration: underline;
-}
-pre {
-    padding-top: 1em;
-    padding-bottom: 1em;
 }
 .welcome {
     padding-top: 1.5em;
@@ -106,24 +87,24 @@ pre {
 
 
 h1, h2 {
-    font-family: sans-serif;
+    font-family: $title-font-family;
 }
 span.date, span.tag {
     display: inline-block;
-    background-color: #1a1a1a;
+    background-color: $title-background-color;
     text-transform: lowercase;
-    font-family: monospace;
-    color: white;
-    padding: .5em .8em;
-    margin-right: .5em;
-    margin-bottom: .5em;
+    font-family: $technic-font-family;
+    color: $title-color;
+    padding: $cell-space-vertical $cell-space-horizontal;
+    margin-right: $cell-space-vertical;
+    margin-bottom: $cell-space-vertical;
 }
 div.even {
-    background-color: #eeeeee;
+    background-color: $highlight-background-color;
 }
 div.even span.tag {
-    background-color: #ffffff;
-    color: black;
+    background-color: $background-color;
+    color: $text-color;
 }
 div.odd span.tag {
     /*background: url("pattern3.png") repeat fixed 0 0;*/

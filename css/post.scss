@@ -14,7 +14,7 @@ body, div {
 p, h1, h2, h3, h4, h5, h6 {
     margin: 0;
     padding: 0;
-    font-family: "Times New Roman", Times, serif;
+    font-family: $reading-font-family;
 }
 
 h1 {
@@ -91,12 +91,12 @@ p.image img {
     max-width: 100%;
 }
 h1, h2 {
-    font-family: sans-serif;
+    font-family: $title-font-family;
 }
 a.home, span.date, span.tag {
     display: inline-block;
     text-transform: lowercase;
-    font-family: monospace;
+    font-family: $technic-font-family;
     padding: $cell-space-vertical $cell-space-horizontal;
     margin-right: $cell-space-vertical;
     margin-bottom: $cell-space-vertical;
