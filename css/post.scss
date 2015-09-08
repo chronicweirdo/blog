@@ -11,13 +11,6 @@ body, div {
     background-color: $background-color;
 }
 
-body > div {
-    display: block;
-    width: 100%;
-    float: left;
-    clear: both;
-}
-
 p, h1, h2, h3, h4, h5, h6 {
     margin: 0;
     padding: 0;
@@ -25,33 +18,23 @@ p, h1, h2, h3, h4, h5, h6 {
 }
 
 h1 {
-    font-size: 1.5em;
-    line-height: 1.5em;
-    padding-bottom: 1em;
-    padding-top: 1em;
+    font-size: $humongous-font-size;
+    padding-bottom: $space;
+    padding-top: $space;
     text-transform: uppercase;
 }
 h2 {
-    font-size: 1.2em;
-    line-height: 1.2em;
-    padding-bottom: 1em;
+    font-size: $large-font-size;
+    padding-top: $large-space;
+    padding-bottom: $space;
 }
-h3 {
-    font-size: 1.1em;
-}
-h4 {
-    font-size: 1em;
-}
-h5 {
-    font-size: 1em;
-}
-h6 {
-    font-size: 1em;
+h3, h4, h5, h6 {
+    font-size: $font-size;
 }
 p {
-    font-size: 1em;
-    line-height: 1.3em;
-    padding-bottom: 1.4em;
+    font-size: $font-size;
+    line-height: $line-height;
+    padding-bottom: $space;
 }
 
 p.video {
@@ -62,59 +45,50 @@ p.video iframe {
 }
 
 em {
-    font-size: 1em;
+    font-size: $font-size;
 }
 ul, ol {
-    font-size: 1em;
-    line-height: 1.3em;
+    font-size: $font-size;
+    line-height: $line-height;
     margin-top: 0;
     margin-bottom: 0;
-    padding-bottom: 1.4em;
+    padding-bottom: $space;
 }
 li {
     margin-left: 5%;
     width: 95%;
-    font-size: 1em;
-    line-height: 1.3em;
+    font-size: $font-size;
+    line-height: $line-height;
 }
-
 pre {
-    padding-top: 1em;
-    padding-bottom: 1em;
-    background: #FDD5B1;
-    margin-bottom: 1.4em;
+    padding-top: $space;
+    padding-bottom: $space;
+    margin-bottom: $space;
     margin-top: 0;
-    font-size: 1em;
+    font-size: $font-size;
 }
 h1.title {
-    background-color: #1a1a1a;
-    color: white;
-    margin-bottom: 1.5em;
+    background-color: $title-background-color;
+    color: $title-color;
+    margin-bottom: $large-space;
 }
 p.logo {
     text-align: center;
-    padding-top: 1.5em;
+    padding-top: $large-space;
 }
 p.logo img {
     width: 100px;
 }
 p.image, p.video {
-    padding-top: 1.4em;
+    padding-top: $space;
     text-align: center;
-    margin-bottom: 1.4em;
+    margin-bottom: $space;
 }
 img {
     max-width: 100%;
 }
 p.image img {
     max-width: 100%;
-}
-p.links {
-    text-align: center;
-}
-p.links a {
-    margin-left: 2em;
-    margin-right: 2em;
 }
 h1, h2 {
     font-family: sans-serif;
@@ -123,38 +97,33 @@ a.home, span.date, span.tag {
     display: inline-block;
     text-transform: lowercase;
     font-family: monospace;
-    padding: .5em .8em;
-    color: #eeeeee;
-    margin-right: .5em;
-    margin-bottom: .5em;
+    padding: $cell-space-vertical $cell-space-horizontal;
+    margin-right: $cell-space-vertical;
+    margin-bottom: $cell-space-vertical;
 }
-a.home, span.tag {
+a.home, span.date {
+    color: $title-color;
+}
+span.tag {
     color: $text-color;
-}
-a.logo {
-    display: inline-block;
-    width: 30px;
-    height: 40px;
 }
 p.tag {
     padding-bottom: 0;
-    /*font-size: 1em;*/
-    line-height: 1.5em;
     letter-spacing: 0;
 }
 code.hljs {
     background: transparent;
 }
 a {
-    color: black;
+    color: $link-color;
 }
 /* highlights */
 span.date {
-    background-color: #1a1a1a;
+    background-color: $title-background-color;
 }
 pre, span.tag {
-    background-color: #eeeeee;
+    background-color: $highlight-background-color;
 }
 p.image, p.video {
-    background-color: #eeeeee;
+    background-color: $highlight-background-color;
 }
