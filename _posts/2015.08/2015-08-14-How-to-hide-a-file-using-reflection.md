@@ -2,7 +2,7 @@
 layout: post
 title:  'How to hide a file using reflection'
 date:   2015-08-17 15:15:00
-tags: ['java', 'nio']
+tags: ['java nio', 'java reflection']
 excerpt: Hide a file in Windows using Java reflection.
 ---
 

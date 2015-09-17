@@ -2,7 +2,7 @@
 layout: post
 title:  'Interrupt server operations through Spring Remoting'
 date:   2015-09-19 12:30:00
-tags: ['java', 'spring remoting', 'concurrency', 'jetty']
+tags: ['java', 'spring remoting', 'java concurrency', 'jetty']
 excerpt: Presents a mechanism for interrupting time-consuming server tasks that were started through Spring Remoting.
 ---
 
