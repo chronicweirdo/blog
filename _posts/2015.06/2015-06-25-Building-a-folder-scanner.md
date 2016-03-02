@@ -6,6 +6,8 @@ tags: ['java', 'nio']
 ---
 I'll build a simple folder scanner using the Java 7 watch service. I want this service to constantly watch a folder for changes (in a separate thread) and, as soon as some change is detected to identify the type of change and notify a database about that change. The types of changes I'll be watching for are file and folder creation, modification and deletion.
 
+<!--more-->
+
 Starting with the definition of the database interface. An implementation of this interface will handle the actions detected on the file system. For my particular implementation I am only interested in **addFile** and **removeFile** changes. Implementing this interface lets you decide what to do with this service.
 
 <pre><code class="java">

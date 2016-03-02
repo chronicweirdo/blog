@@ -11,6 +11,7 @@ timezone: Europe/Bucharest
 permalink: /:year/:month/:day/:title.html
 gems:
     - jekyll-sitemap
+excerpt_separator: <!--more-->
 
 # Build settings
 markdown: kramdown

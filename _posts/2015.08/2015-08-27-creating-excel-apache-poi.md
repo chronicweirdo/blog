@@ -8,6 +8,8 @@ category: detail
 
 I just had to do something at work that I already knew I was going to hate: export some data to an Excel file and the file should also contain a chart based on that data. I knew I was going to hate this because I've worked on manipulating Excel files from Java before and it's not easy. The good news is I figured it out and managed to keep my sanity.
 
+<!--more-->
+
 The first test
 ---
 

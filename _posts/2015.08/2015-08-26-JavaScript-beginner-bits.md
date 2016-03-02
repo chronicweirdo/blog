@@ -8,6 +8,8 @@ category: bits
 
 It's an amusing occurrence when you scan some beginner material, dismissing chapter after chapter as something you already know until you're surprised to find out some very basic info you did not know. Exactly so I amused myself as I was skimming [David Sawyer McFarland's book "JavaScript & jQuery"](http://shop.oreilly.com/product/0636920015048.do). Here's to those small details that escape us as we learn a new subject and delight us when we discover them years later - the bits.
 
+<!--more-->
+
 jQuery delegate
 ---
 With jQuery it's very easy to add event handling to elements in the page using the _bind_ function or shorthand functions for specific events, like _click_. These functions will only work for elements that are currently on the page. If you create elements dynamically, you'll have to remember to bind the desired events to new elements as you add them to the page. The good bit is that jQuery provides a different method for binding events to present and future events. The _delegate_ method receives a selector, an event and the function that will run when that event is triggered. The function is bound to the specified event for all existing and future elements that match the selector. Here's a short piece of code exemplifying this:

@@ -10,6 +10,8 @@ The idea
 
 The only thing to understand when implementing scroll effects is to realize that you just need to make an element size and position a function of the document scroll value. If you really stop and consider it, all html elements positions are already functions of document scroll value. As the scroll increases, each element top position decreases proportionally. Of course, you don't have to do anything for your web page to behave this way, browsers are implementing this behavior by default. But when you want to implement your own scroll effect, know that you are just changing this positioning function a little. This is what we'll do now.
 
+<!--more-->
+
 The effect I'll try to implement is to split the html document into *pages*. When the document is scrolled, each page in turn will slide up. Imagine you are reading a bunch of physical pages with a fixed gaze. As you read each page, you are moving it up until you reach its end and discard it. This reveals the next page which was lying under the first one. This is how your site will look once this effect is implemented.
 
 Document structure

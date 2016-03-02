@@ -6,6 +6,8 @@ tags: ['java', 'csv', 'apache derby']
 ---
 This is for all those times when you need to run some quick tests on a data file in CSV format. You could open it in excel, apply some filters on those columns, but I'm talking about those times when you need to bring the data into a programming language and be able to quickly run some queries on it or convert it into objects. With the new IO from Java 7 it's already really easy to read a file, parse the lines and convert them into objects. You could also just parse the lines and write a short program that searches for the exact lines you are looking for, but now it's starting to get verbose.
 
+<!--more-->
+
 So how about this: read the lines and load them to an in-memory database. You can then run SQL queries on this database or convert the data to object through some ORM framework. The CSV becomes a database and you can take advantage of all the database processing tools we have in Java.
 
 Quick test on in-memory database

@@ -9,6 +9,8 @@ A very short piece of code today, as I get ready for some vacation time. How do 
 
 Starting with Java 7 we have the NIO (New IO) library which brings some new capabilities when accessing files, one of them being marking a file as hidden. On Linux and Unix-based systems linke OS X, hiding files is simple. Just prepend a "." to the file name. On, Windows, on the other hand, you have to access file attributes and mark files as hidden. This is an OS-specific operation and older Java versions did not provide any way of manipulating file attributes other than running native code. But now, with the NIO library, we can. We can, as long as the code runs on a Java 7 JVM.
 
+<!--more-->
+
 The following code will verify if we are on a Windows machine and then check what Java version is currently running. If all is well, we use reflection to load the NIO classes and manipulate the file attributes. We use reflection because we want our code to run on older versions of Java as well as new ones. If the code runs on a Java 6 or lower version, the file will not be hidden.
 
 ~~~ java
