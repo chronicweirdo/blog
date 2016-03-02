@@ -7,6 +7,8 @@ tags: ['java', 'exceptions']
 
 This post is a comment on the Java checked exceptions debate. While the usefulness of checked exceptions has already been discussed in other places, I wanted to bring to attention an argument that may be made in favor of checked exceptions and a compromise that lets one avoids checked exceptions but still communicate to other developers that exceptions may occur.
 
+<!--more-->
+
 One of the main reasons checked exceptions are valued in Java development is the fact that they are advertised. If you are writing an API, it's better to let the people using your API know that it could throw some exception. A checked exception will force them to think about how they want to deal with it when using your API, but will also force them to handle the exception immediately, making your API cumbersome to use, as in the example below.
 
 ~~~ java

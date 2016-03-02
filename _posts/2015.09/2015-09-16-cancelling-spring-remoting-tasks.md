@@ -7,6 +7,8 @@ tags: ['java', 'spring remoting', 'java concurrency', 'jetty']
 
 Spring Remoting is a wonderful tool for seamlessly connecting Java services. However, ocasionally I have run into some inelegant practices when managing expensive tasks run through remoting. The premise is you have a service that runs a complex, expensive operation. The user starts an operation on the client but after waiting for the result, they decide to cancel that operation. If starting an operation blocks the UI with a modal loading screen, it's a good idea to allow users to cancel the operation and continue using your application. Blocking the UI is not a very user-friendly practice, but if it must be done, a cancel option is necessary. This practice becomes a problem when the cancel action only affects the UI. Clicking cancel, the call to the server is abandoned and the UI is unblocked. But if we just cancel the operation on the UI, the server will continue to execute the complex operation and eventually send some answer back. Unfortunately this strategy will waste server resources. Once a task is canceled on the UI, the work a server does for that task is wasted time, memory, processing power. As a compromise solution I have seen client code designed so as to limit how many calls a user can make to the server at a time, or how many calls they are allowed to cancel. Both approaches will eventually break if stressed by a user, and fall back to blocking the UI, and this time without a cancel option. The healthy solution is obvious: cancel the task on the server, not on the UI. But for this we need a mechanism to cancel an operation, made available through Spring Remoting.
 
+<!--more-->
+
 A basic spring remoting setup
 ---
 
