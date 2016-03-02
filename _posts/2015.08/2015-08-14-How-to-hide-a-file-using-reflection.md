@@ -3,7 +3,6 @@ layout: post
 title:  'How to hide a file using reflection'
 date:   2015-08-17 15:15:00
 tags: ['java nio', 'java reflection']
-excerpt: Hide a file in Windows using Java reflection.
 ---
 
 A very short piece of code today, as I get ready for some vacation time. How do you hide a file from Java? Is it even possible? Sometimes it is.

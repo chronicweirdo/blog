@@ -3,7 +3,6 @@ layout: post
 title:  'Building a folder scanner'
 date:   2015-06-25 14:00:00
 tags: ['java', 'nio']
-excerpt: Continuous scan of a folder on disk using the Java 7 watch service.
 ---
 I'll build a simple folder scanner using the Java 7 watch service. I want this service to constantly watch a folder for changes (in a separate thread) and, as soon as some change is detected to identify the type of change and notify a database about that change. The types of changes I'll be watching for are file and folder creation, modification and deletion.
 

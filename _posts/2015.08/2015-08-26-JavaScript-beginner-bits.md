@@ -4,7 +4,6 @@ title:  'JavaScript beginner bits'
 date:   2015-08-26 14:15:00
 tags: ['javascript', 'jquery', 'bits']
 category: bits
-excerpt: Dynamic events with the jQuery delegate method. Saving jQuery selector results into variables as a best practice. Optimise DOM search using jQuery find function. Check if variable is a number with JavaScript isNaN function.
 ---
 
 It's an amusing occurrence when you scan some beginner material, dismissing chapter after chapter as something you already know until you're surprised to find out some very basic info you did not know. Exactly so I amused myself as I was skimming [David Sawyer McFarland's book "JavaScript & jQuery"](http://shop.oreilly.com/product/0636920015048.do). Here's to those small details that escape us as we learn a new subject and delight us when we discover them years later - the bits.

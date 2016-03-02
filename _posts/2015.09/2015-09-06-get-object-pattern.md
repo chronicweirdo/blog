@@ -3,7 +3,6 @@ layout: post
 title:  'Get-object pattern'
 date:   2015-09-06 16:00:00
 tags: ['java', 'design pattern']
-excerpt: Presenting a design pattern that can be used in Java when we want a function to return multiple results.
 ---
 
 I'll be exploring an approach, I'll call it a design pattern, for returning multiple values from a function. Some programming languages support this with tuples, but Java does not have support for such a data structure. The Java approach is implementing a new class that contains the values you want to return, then creating a function that returns the new object. What I'm advancing in this post is a way of defining your tuple and the function in the same place in such a way as to make using it as intuitive as possible. I'll start with the classic Java approach and then show you an implementation using what I call the "get-object" pattern. The example I'll be using is finding the minimum and maximum values inside a collection of numbers.

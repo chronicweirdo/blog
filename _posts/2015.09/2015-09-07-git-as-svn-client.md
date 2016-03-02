@@ -3,7 +3,6 @@ layout: post
 title:  'Using Git as SVN client'
 date:   2015-09-07 09:35:00
 tags: ['git', 'svn']
-excerpt: A tutorial on how to set up your local Git to work as an SVN client, and how you can use local branches when your versioning control system is SVN.
 ---
 
 When I switched over to Git, the feature I loved most was the possibility of creating local branches. With SVN I used to create and apply patches on my project if I needed to switch from implementing a complex feature to quickly fixing a bug. Of course, a patch does not have any progress history and merging it back into the main project can become difficult as the code base progresses. Merging Git local branches can also be difficult if the feature branch diverges for too long from the main branch, but you have a local development history and most of the time you will be able to painlessly rebase the feature branch on the main branch.

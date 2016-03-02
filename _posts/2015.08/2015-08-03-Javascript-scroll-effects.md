@@ -3,7 +3,6 @@ layout: post
 title:  'JavaScript scroll effects'
 date:   2015-08-03 09:00:00
 tags: ['javascript', 'ui', 'design']
-excerpt: Creating HTML page scroll effects using JavaScript.
 ---
 
 The idea

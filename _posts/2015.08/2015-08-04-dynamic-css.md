@@ -3,7 +3,6 @@ layout: post
 title:  'Dynamic CSS'
 date:   2015-08-04 09:30:00
 tags: ['css', 'ui', 'javascript']
-excerpt: Creating and injecting dynamic style sheets (CSS) in a HTML page.
 ---
 
 Usually when I want to dynamically manipulate the CSS of some elements on a page, I wait for the document to load and then use JavaScript to apply the new CSS to all elements that match some rule. At least, I used to do that, but it's not the best approach. If the document takes longer to load, let's say you have a video embedded on the page, you'll be looking at an incorrectly-formatted page for a while before everything falls into place. Surely, an undesirable situation.

@@ -3,7 +3,6 @@ layout: post
 title:  'Unchecked exceptions in Java API'
 date:   2015-09-14 11:00:00
 tags: ['java', 'exceptions']
-excerpt: Remove the clutter of checked exceptions but still advertise what exceptions your API may throw.
 ---
 
 This post is a comment on the Java checked exceptions debate. While the usefulness of checked exceptions has already been discussed in other places, I wanted to bring to attention an argument that may be made in favor of checked exceptions and a compromise that lets one avoids checked exceptions but still communicate to other developers that exceptions may occur.
