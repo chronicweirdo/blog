@@ -68,9 +68,11 @@ pre {
     font-size: $font-size;
 }
 h1.title {
-    background-color: $title-background-color;
+
     color: $title-color;
     margin-bottom: $large-space;
+    padding: .5em;
+    background-image: url('back_black.png');
 }
 p.logo {
     text-align: center;

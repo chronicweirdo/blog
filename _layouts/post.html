@@ -19,6 +19,7 @@
     </script>
 </head>
 <body>
+    <div style="background-image: url({{ "/assets/bg.jpg" | prepend: site.baseurl }}); background-size: cover;">
     <p class="logo">
         <a class="home" href="/">
             <img src="{{ "/css/csd.png" | prepend: site.baseurl }}" alt="home page"/>
@@ -31,6 +32,7 @@
         {% endfor %}
     </p>
     <h1 class="title">{{ page.title }}</h1>
+  </div>
 
     {{ content }}
 
