@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 'The pleasure of figuring things out'
-date: 2015-06-25 07:30:00
+date: 2015-06-25 07:30:00 EET
 tags: ['introduction']
 ---
 There was a moment when I decided to finally take the step of creating a blog, some time in the recent half a year; more likely the idea was there for a long time but I never considered it seriously. Sometimes the only step required to start something is to take seriously the possibility that something good might come out of it.

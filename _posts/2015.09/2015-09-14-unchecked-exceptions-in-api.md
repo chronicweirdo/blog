@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  'Unchecked exceptions in Java API'
-date:   2015-09-14 11:00:00
+date:   2015-09-14 11:00:00 EET
 tags: ['java', 'exceptions']
 ---
 

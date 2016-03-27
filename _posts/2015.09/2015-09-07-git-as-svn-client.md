@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  'Using Git as SVN client'
-date:   2015-09-07 09:35:00
+date:   2015-09-07 09:35:00 EET
 tags: ['git', 'svn']
 ---
 

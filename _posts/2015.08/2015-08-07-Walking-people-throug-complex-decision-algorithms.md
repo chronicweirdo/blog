@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  'Walking through complex decision algorithms'
-date:   2015-08-07 19:40:00
+date:   2015-08-07 19:40:00 EET
 tags: ['information management', 'presentation', 'javascript']
 ---
 There are times when you have to implement complex, many step decision based algorithms. These are not usually part of the most elegant code you'll write and you'll have to be careful and keep you code as clean and as simple as possible. Don't nest if clauses on multiple levels, split your code in multiple methods, keep your methods short, give them clear, suggestive names. These are some guidelines on how to keep your code manageable, but I'm not going to talk about implementation guidelines here. Instead, I want to discuss another problem I have run into when writing these kinds of algorithms. How do I explain what the algorithm is doing to other people in today's short-attention-spanned world? How do I make this explanation simple and easy to follow? Also, how do I write a document that is easy to update as the algorithm changes?

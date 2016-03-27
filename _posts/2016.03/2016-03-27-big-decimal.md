@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  'Big Dec'
-date:   2016-03-27 20:45:00
+date:   2016-03-27 20:45:00 EWT
 tags: ['java', 'fixed precision', 'data types']
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  'JavaScript scroll effects'
-date:   2015-08-03 09:00:00
+date:   2015-08-03 09:00:00 EET
 tags: ['javascript', 'ui', 'design']
 excerpt: "The only thing to understand when implementing scroll effects is to realize that you just need to make an element size and position a function of the document scroll value. If you really stop and consider it, all html elements positions are already functions of document scroll value. As the scroll increases, each element top position decreases proportionally. Of course, you don't have to do anything for your web page to behave this way, browsers are implementing this behavior by default. But when you want to implement your own scroll effect, know that you are just changing this positioning function a little. This is what we'll do now."
 ---
