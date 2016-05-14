@@ -21,10 +21,10 @@
 <body>
     <p class="header">
         <a class="home" href="/">
-            <img src="{{ "/css/csd.png" | prepend: site.baseurl }}" alt="home page"/>
+            home
         </a>
+        <span>/</span>
         <span class="date">{{ page.date | date: "%Y.%m.%d %H:%M" }}</span>
-
         {% for tag in page.tags %}
             <span>/</span><span class="tag">{{ tag }}</span>
         {% endfor %}

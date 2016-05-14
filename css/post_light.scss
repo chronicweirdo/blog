@@ -11,6 +11,9 @@ body {
     background-color: $background-color;
     font-family: $reading-font-family;
 }
+body * {
+  line-height: $line-height;
+}
 
 pre {
   background-color: $highlight-background-color;
@@ -33,11 +36,18 @@ p.header {
   font-family: $technic-font-family;
 }
 p.header span,
-p.header a {
-  display: inline-block;
+p.header a,
+p.home span,
+p.home a {
+  display: inline;
   text-transform: lowercase;
   padding: $cell-space-vertical $cell-space-horizontal;
 }
+p.home {
+  border-top: 1px dotted black;
+  padding-top: .5em;
+}
+
 p.header img {
   height: 1em;
 }
