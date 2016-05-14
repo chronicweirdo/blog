@@ -12,22 +12,12 @@
     <title>{{ site.title }}</title>
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?">
 
-    <!--link rel="stylesheet" type="text/css" href="{{ "/css/home.css" | prepend: site.baseurl }}"/-->
-    <link rel="stylesheet" type="text/css" href="{{ "/css/post_light.css" | prepend: site.baseurl }}"/>
-
-    <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
-    <!--script src="{{ "/js/jquery.mobile.touch.min.js" | prepend: site.baseurl }}"></script-->
-    <!--script src="{{ "/js/padding.js" | prepend: site.baseurl }}"></script-->
-    <!--script src="{{ "/js/home.js" | prepend: site.baseurl }}"></script-->
-    <script src="{{ "/js/filter.js" | prepend: site.baseurl }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ "/css/light.css" | prepend: site.baseurl }}"/>
 </head>
 <body>
   <p><a href="/"><img src="{{ "/css/csd.png" | prepend: site.baseurl }}" alt="heuristics" width="50px"/></a></p>
-
-<p class="description"><em>A blog about programming and the pleasure of figuring things out.</em></p>
+  <p class="description"><em>A blog about programming and the pleasure of figuring things out.</em></p>
   <p class="header">
-      <!-- <a href="/"><img src="{{ "/css/csd.png" | prepend: site.baseurl }}" alt="heuristics"/></a> -->
-      <!-- <span>/</span> -->
       <a href="http://cacoveanu.com" target="_blank">by C.S.D.</a>
       <span>/</span>
       <a href="/2015/06/25/The-pleasure-of-figuring-things-out.html">About</a>
@@ -35,22 +25,8 @@
       <a href="/feed.xml" target="_blank">Subscribe</a>
   </p>
 
-
   {% for post in site.posts %}
-      <p class="home">
-        <span class="date">{{ post.date | date: "%Y.%m.%d %H:%M" }}</span>
-        <!-- <span>/</span> -->
-        <a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a>
-        <span>[
-        {% for tag in post.tags %}
-          {% if forloop.first %}
-          {% else %}
-          /
-          {% endif %}
-          {{ tag }}
-        {% endfor %}
-        ]
-      </p>
+    <p class="home"><span class="date">{{ post.date | date: "%Y.%m.%d %H:%M" }}</span><a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a><span>[ {% for tag in post.tags %}{% if forloop.first %}{% else %} / {% endif %}{{ tag }}{% endfor %} ]</p>
   {% endfor %}
 </div>
 </body>

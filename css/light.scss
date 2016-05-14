@@ -16,7 +16,7 @@ body * {
 }
 
 pre {
-  background-color: $highlight-background-color;
+  background-color: darken($background-color, 10%);
 }
 
 code.hljs {
@@ -39,12 +39,12 @@ p.header span,
 p.header a,
 p.home span,
 p.home a {
-  display: inline;
+  display: inline-block;
   text-transform: lowercase;
   padding: $cell-space-vertical $cell-space-horizontal;
 }
 p.home {
-  border-top: 1px dotted black;
+  border-top: 1px dotted $link-color;
   padding-top: .5em;
 }
 
@@ -53,6 +53,6 @@ p.header img {
 }
 
 span.date {
-  background-color: $highlight-background-color;
-  color: $highligh-color;
+  background-color: $link-color;
+  color: $background-color;
 }
