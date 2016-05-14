@@ -10,7 +10,7 @@
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?">
 
     <link rel="stylesheet" type="text/css" href="{{ "/css/googlecode.css" | prepend: site.baseurl }}">
-    <link rel="stylesheet" type="text/css" href="{{ "/css/post.css" | prepend: site.baseurl }}"/>
+    <link rel="stylesheet" type="text/css" href="{{ "/css/post_light.css" | prepend: site.baseurl }}"/>
     <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
     <!--script src="{{ "/js/padding.js" | prepend: site.baseurl }}"></script-->
     <script src="{{ "/js/highlight.pack.js" | prepend: site.baseurl }}"></script>
@@ -19,15 +19,14 @@
     </script>
 </head>
 <body>
-    <p class="logo">
+    <p class="header">
         <a class="home" href="/">
             <img src="{{ "/css/csd.png" | prepend: site.baseurl }}" alt="home page"/>
         </a>
-    </p>
-    <p class="tag">
         <span class="date">{{ page.date | date: "%Y.%m.%d %H:%M" }}</span>
+
         {% for tag in page.tags %}
-            <span class="tag">{{ tag }}</span>
+            <span>/</span><span class="tag">{{ tag }}</span>
         {% endfor %}
     </p>
     <h1 class="title">{{ page.title }}</h1>
