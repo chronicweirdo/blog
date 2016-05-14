@@ -1,5 +1,5 @@
 # Site settings
-title: heuristics
+title: silviu's blog
 email: silviu.cacoveanu@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
   A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.
@@ -14,6 +14,6 @@ excerpt_separator: <!--more-->
 
 # Build settings
 markdown: kramdown
-highligter: null
+highligter: rouge
 sass:
   sass_dir: css
