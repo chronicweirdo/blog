@@ -1,0 +1,58 @@
+---
+---
+
+@import "variables-dark";
+
+body {
+    margin: 1em;
+    padding: 0;
+    border: 0;
+    color: $text-color;
+    background-color: $background-color;
+    font-family: $reading-font-family;
+}
+body * {
+  line-height: $line-height;
+}
+
+pre {
+  background-color: lighten($background-color, 5%);
+}
+
+code.hljs {
+  background: transparent;
+}
+
+img {
+  max-width: 100%;
+}
+
+a {
+  color: $link-color;
+  text-decoration: none;
+}
+
+p.header {
+  font-family: $technic-font-family;
+}
+p.header span,
+p.header a,
+p.home span,
+p.home a {
+  display: inline-block;
+  text-transform: lowercase;
+  padding: $cell-space-vertical $cell-space-horizontal;
+}
+p.home {
+  border-top: 1px dotted $link-color;
+  padding-top: .5em;
+}
+
+p.header img {
+  height: 1em;
+}
+
+span.date {
+  background-color: $link-color;
+  color: $background-color;
+}
