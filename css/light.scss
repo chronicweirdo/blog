@@ -5,6 +5,7 @@
 
 body {
     margin: 1em;
+    margin-top: 10em;
     padding: 0;
     border: 0;
     color: $text-color;
@@ -35,11 +36,13 @@ a {
 
 p.header {
   font-family: $technic-font-family;
+  position: fixed;
+  background-color: $background-color;
+  top: 0;
+  margin-top: 0;
 }
 p.header span,
-p.header a,
-p.home span,
-p.home a {
+p.header a {
   display: inline-block;
   text-transform: lowercase;
   padding: $cell-space-vertical $cell-space-horizontal;
