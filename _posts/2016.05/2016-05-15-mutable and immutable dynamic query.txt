@@ -1,15 +1,13 @@
 ---
 layout: post
 title:  'Mutable to immutable, with JPA'
-date:   2016-04-15 17:10:00 BST
-tags: ['java', 'jpa', 'immutable objects']
+date:   2016-05-15 20:22:00 BST
+tags: ['java', 'jpa', 'criteria query', 2016-'immutable objects']
 ---
 
-An example of building a dynamic query object using a mutable implementation at first, then converting it to an immutable implementation. Highlighting clarity of code when object functions don't produce side-effects.
+Following is an example of building a dynamic query object using a mutable implementation at first, then converting it to an immutable implementation. Immutability introduces clarity of code since object functions don't produce side-effects.
 
-http://docs.oracle.com/javaee/6/tutorial/doc/gjivm.html
-
-The Query interface
+## The Query interface
 
 ~~~ java
 public interface Query<T> {
@@ -30,7 +28,7 @@ public interface Query<T> {
 }
 ~~~
 
-The Query manager
+## The Query manager
 
 ~~~ java
 @Component
@@ -45,7 +43,7 @@ public class QueryManager {
 }
 ~~~
 
-The mutable class, in all its ugliness
+## The mutable class, in all its ugliness
 
 ~~~ java
 public class MutableQuery<T> implements Query {
@@ -194,7 +192,7 @@ public class MutableQuery<T> implements Query {
 }
 ~~~
 
-The immutable class, in all its beauty.
+## The immutable class, in all its beauty.
 
 ~~~ java
 public class ImmutableQuery<T> implements Query {
@@ -509,3 +507,7 @@ public class ImmutableQuery<T> implements Query {
     }
 }
 ~~~
+
+# Resources
+
+- [Using criteria queries](http://docs.oracle.com/javaee/6/tutorial/doc/gjivm.html)
