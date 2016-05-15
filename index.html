@@ -22,8 +22,6 @@
   <p class="header">
     <a onclick="flipTheme()">flip theme</a>
     <span>/</span>
-    <span><em>A blog about programming and the pleasure of figuring things out.</em></span>
-    <span>/</span>
     <a href="http://cacoveanu.com" target="_blank">by C.S.D.</a>
     <span>/</span>
     <a href="/2015/06/25/The-pleasure-of-figuring-things-out.html">About</a>
@@ -31,6 +29,7 @@
     <a href="/feed.xml" target="_blank">Subscribe</a>
   </p>
 
+  <h1>A blog about programming and the pleasure of figuring things out.</h1>
   {% for post in site.posts %}
     <p class="home2">
       <a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a>
