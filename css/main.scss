@@ -9,6 +9,10 @@ body {
 body * {
   line-height: $line-height;
 }
+pre {
+  padding: 1em;
+  white-space: pre-wrap;
+}
 
 img {
   max-width: 100%;
