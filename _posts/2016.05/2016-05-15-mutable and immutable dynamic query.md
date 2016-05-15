@@ -2,7 +2,7 @@
 layout: post
 title:  'Mutable to immutable, with JPA'
 date:   2016-05-15 20:22:00 BST
-tags: ['java', 'jpa', 'criteria query', 2016-'immutable objects']
+tags: ['java', 'jpa', 'criteria query', 'immutable objects']
 ---
 
 Following is an example of building a dynamic query object using a mutable implementation at first, then converting it to an immutable implementation. Immutability introduces clarity of code since object functions don't produce side-effects.
