@@ -30,6 +30,7 @@ img {
 a {
   color: $link-color;
   text-decoration: none;
+  cursor: pointer;
 }
 
 p.header {
@@ -56,3 +57,5 @@ span.date {
   background-color: $link-color;
   color: $background-color;
 }
+
+@import url("manni.css");
