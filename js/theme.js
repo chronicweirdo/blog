@@ -30,6 +30,6 @@ function flipTheme() {
   loadTheme();
 }
 
-$(window).load(function() {
+$(document).ready(function() {
   loadTheme();
 });
