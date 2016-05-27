@@ -34,7 +34,7 @@
     <p class="home2">
       <a href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a>
       <span>
-          ({{ post.date | date: "%Y.%m.%d %H:%M" }})
+          {{ post.date | date: "%Y.%m.%d %H:%M" }}
           {% for tag in post.tags %} / {{ tag }}{% endfor %}
       </span>
     </p>
