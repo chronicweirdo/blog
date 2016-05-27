@@ -6,10 +6,12 @@ $syntax-color-label: darken(#9999FF, 10%);
 $syntax-color-comment: #0099FF;
 $syntax-color-error: #AA0000;
 $syntax-background-error: #FFAAAA;
-$syntax-color-operator: #555555;
+$syntax-color-operator: lighten(#555555, 10%);
 $syntax-color-variable: #003333;
 $syntax-color-number: #FF6600;
 $syntax-color-constant: #336600;
+$syntax-color-attribute: lighten(#330099, 25%);
+$syntax-color-type: adjust-hue(lighten(#007788, 10%), -80);
 .highlighter-rouge .c { color: $syntax-color-comment; font-style: italic } /* Comment */
 .highlighter-rouge .err { color: $syntax-color-error; background-color: $syntax-background-error } /* Error */
 .highlighter-rouge .k { color: $syntax-color-keyword; font-weight: bold } /* Keyword */
@@ -33,10 +35,10 @@ $syntax-color-constant: #336600;
 .highlighter-rouge .kn { color: $syntax-color-keyword; font-weight: bold } /* Keyword.Namespace */
 .highlighter-rouge .kp { color: $syntax-color-keyword } /* Keyword.Pseudo */
 .highlighter-rouge .kr { color: $syntax-color-keyword; font-weight: bold } /* Keyword.Reserved */
-.highlighter-rouge .kt { color: #007788; font-weight: bold } /* Keyword.Type */
+.highlighter-rouge .kt { color: $syntax-color-type; font-weight: bold } /* Keyword.Type */
 .highlighter-rouge .m { color: $syntax-color-number } /* Literal.Number */
 .highlighter-rouge .s { color: $syntax-color-literal-string } /* Literal.String */
-.highlighter-rouge .na { color: #330099 } /* Name.Attribute */
+.highlighter-rouge .na { color: $syntax-color-attribute } /* Name.Attribute */
 .highlighter-rouge .nb { color: #336666 } /* Name.Builtin */
 .highlighter-rouge .nc { color: $syntax-color-class-name; font-weight: bold } /* Name.Class */
 .highlighter-rouge .no { color: $syntax-color-constant } /* Name.Constant */
