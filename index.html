@@ -16,12 +16,9 @@
 
     <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
     <script src="{{ "/js/js.cookie.js" | prepend: site.baseurl }}"></script>
-    <script src="{{ "/js/theme.js" | prepend: site.baseurl }}"></script>
 </head>
 <body>
   <p class="header">
-    <a onclick="flipTheme()">flip theme</a>
-    <span>/</span>
     <a href="http://cacoveanu.com" target="_blank">by C.S.D.</a>
     <span>/</span>
     <a href="/2015/06/25/The-pleasure-of-figuring-things-out.html">About</a>
@@ -36,6 +33,5 @@
       <span>{% for tag in post.tags %} / {{ tag }}{% endfor %}</span>
     </p>
   {% endfor %}
-</div>
 </body>
 </html>
