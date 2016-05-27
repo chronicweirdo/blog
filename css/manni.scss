@@ -1,7 +1,7 @@
 /*.highlighter-rouge .hll { background-color: #ffffcc }*/
 $syntax-color-keyword: lighten(#006699, 15%);
 $syntax-color-literal-string: lighten(#CC3300, 15%);
-$syntax-color-class-name: lighten(#00AA88, 5%);
+$syntax-color-class-name: adjust-hue(lighten(#00AA88, 5%), -200);
 $syntax-color-label: darken(#9999FF, 10%);
 $syntax-color-comment: #0099FF;
 $syntax-color-error: #AA0000;
