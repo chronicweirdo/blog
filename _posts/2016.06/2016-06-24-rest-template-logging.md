@@ -229,16 +229,12 @@ public class FullLoggingInterceptor implements ClientHttpRequestInterceptor {
 
     public boolean isValidJSON(final String json) {
         boolean valid = false;
+
         try {
-            final JsonParser parser = new ObjectMapper().getJsonFactory()
-                    .createJsonParser(json);
-            while (parser.nextToken() != null) {
-            }
-            valid = true;
-        } catch (JsonParseException jpe) {
-            // not valid json
-        } catch (IOException ioe) {
-            // not valid json
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.readTree(json);
+        } catch(IOException e) {
+            valid = false;
         }
 
         return valid;
