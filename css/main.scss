@@ -1,7 +1,6 @@
 body {
-    margin: 0 auto;
-    max-width: 800px;
-    padding: 1em;
+    margin: 1em;
+    padding: 0;
     border: 0;
     color: $text-color;
     background-color: $background-color;
@@ -31,7 +30,6 @@ a {
 
 p.header {
   font-family: $technic-font-family;
-  margin-top: 0;
 }
 p.header span,
 p.header a {
