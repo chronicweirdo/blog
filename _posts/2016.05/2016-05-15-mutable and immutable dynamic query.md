@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'Mutable to immutable, with JPA'
-date:   2016-05-15 20:22:00 BST
+title: 'Mutable to immutable, with JPA'
+date: 2016-05-15 20:22:00 BST
 tags: ['java', 'jpa', 'criteria query', 'immutable objects']
 ---
 

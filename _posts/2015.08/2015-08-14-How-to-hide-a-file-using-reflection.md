@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'How to hide a file using reflection'
-date:   2015-08-17 15:15:00 EET
+title: 'How to hide a file using reflection'
+date: 2015-08-17 15:15:00 EET
 tags: ['java nio', 'java reflection']
 ---
 

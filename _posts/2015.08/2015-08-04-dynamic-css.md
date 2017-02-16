@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'Dynamic CSS'
-date:   2015-08-04 09:30:00 EET
+title: 'Dynamic CSS'
+date: 2015-08-04 09:30:00 EET
 tags: ['css', 'ui', 'javascript']
 ---
 

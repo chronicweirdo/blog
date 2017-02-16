@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'Full logging with RestTemplate'
-date:   2016-06-24 14:00:00 BST
+title: 'Full logging with RestTemplate'
+date: 2016-06-24 14:00:00 BST
 tags: ['java', 'rest', 'logging']
 ---
 

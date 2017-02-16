@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'Scanning multiline logs with Logstash'
-date:   2016-07-06 17:00:00 BST
+title: 'Scanning multiline logs with Logstash'
+date: 2016-07-06 17:00:00 BST
 tags: ['elasticsearch', 'logging', 'logstash', 'multiline']
 ---
 

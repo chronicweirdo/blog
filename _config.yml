@@ -17,3 +17,10 @@ markdown: kramdown
 highligter: rouge
 sass:
   sass_dir: css
+
+defaults:
+  -
+    scope:
+      path: "" # empty string for all files
+    values:
+      layout: "default"

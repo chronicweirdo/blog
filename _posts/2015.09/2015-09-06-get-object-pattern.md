@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'Get-object pattern'
-date:   2015-09-06 16:00:00 EET
+title: 'Get-object pattern'
+date: 2015-09-06 16:00:00 EET
 tags: ['java', 'design pattern']
 ---
 

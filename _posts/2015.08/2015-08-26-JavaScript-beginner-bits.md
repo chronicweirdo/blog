@@ -1,7 +1,6 @@
 ---
-layout: post
-title:  'JavaScript beginner bits'
-date:   2015-08-26 14:15:00 EET
+title: 'JavaScript beginner bits'
+date: 2015-08-26 14:15:00 EET
 tags: ['javascript', 'jquery', 'bits']
 category: bits
 ---

@@ -1,5 +1,4 @@
 ---
-layout: post
 title: 'The pleasure of figuring things out'
 date: 2015-06-25 07:30:00 EET
 tags: ['introduction']
