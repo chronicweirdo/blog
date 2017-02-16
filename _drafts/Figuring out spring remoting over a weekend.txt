@@ -1,9 +1,0 @@
-Phase zero, why?
----
-What is Spring Remoting? Is it any good? What's the point and why do I want to figure it out?
-But the real crazy part starts just now: what if I want to be able to make remote calls, but cancel them, interrupt them? Is this even possible? Can this be done transparently, by extentind spring remoting. I would thing that Spring Remoting saves some ID for each call. Then, we could make a separate call from a second thread to cancel the original call if we decide no more data is required. For this, the method called through remoting should be able to handle interrupts, but if it does not we should still have the option of canceling the call and not sending back the response. On the UI side, the spring remoting call should also be canceled.
-
-
-Phase one, Friday, building some testing infrastructure
----
-I need an embedded server publishing an API through Spring Remoting and an embedded client working with that API, and both should be started from the same test method.
