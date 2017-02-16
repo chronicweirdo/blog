@@ -1,25 +1,7 @@
 ---
-layout:
+layout: default
 ---
 <!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="{{ site.description }}">
-    <meta name="google-site-verification" content="hKQ5m0AAIZO60stvHPsK4kSLi9FO7RGWtZdIgGAwzDo" />
-
-    <title>{{ site.title }}</title>
-    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?">
-
-    <link id="theme" rel="stylesheet" type="text/css" href="{{ "/css/light.css" | prepend: site.baseurl }}"/>
-
-    <script src="{{ "/js/jquery.min.js" | prepend: site.baseurl }}"></script>
-    <script src="{{ "/js/js.cookie.js" | prepend: site.baseurl }}"></script>
-</head>
-<body>
-
   <p class="header">
     <a href="http://cacoveanu.com" target="_blank">by C.S.D.</a>
     <span>/</span>
@@ -37,6 +19,3 @@ layout:
       <span>{% for tag in post.tags %} / {{ tag }}{% endfor %}</span>
     </p>
   {% endfor %}
-
-</body>
-</html>

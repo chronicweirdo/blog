@@ -23,4 +23,4 @@ defaults:
     scope:
       path: "" # empty string for all files
     values:
-      layout: "default"
+      layout: "post"
