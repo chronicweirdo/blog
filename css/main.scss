@@ -1,13 +1,19 @@
+@charset "UTF-8"; 
+
 body {
-    margin: 1em;
+    margin-top: $space;
+    margin-bottom: 0;
+    margin-left: $space;
+    margin-right: $space;
     padding: 0;
     border: 0;
     color: $text-color;
     background-color: $background-color;
     font-family: $reading-font-family;
 }
-body * {
+body > * {
   line-height: $line-height;
+  margin: 0 0 $space 0;
 }
 pre {
   padding: 1em;
@@ -37,6 +43,9 @@ p.header a {
   text-transform: lowercase;
   padding: $cell-space-vertical $cell-space-horizontal;
 }
+p.header > a:first-child {
+   padding-left: 0;
+}
 p.home {
   border-top: 1px dotted $link-color;
   padding-top: .5em;
@@ -49,4 +58,36 @@ p.header img {
 span.date {
   background-color: $link-color;
   color: $background-color;
+}
+
+//h1, h2, h3, h4, h5, h6 {
+//  font-family: $technic-font-family;
+//  font-weight: bold;
+//}
+h1 {
+  font-size: 2em;
+}
+h2 {
+  font-size: 1.5em;
+}
+h3, h4, h5, h6 {
+  font-size: 1.2em;
+}
+//h1::before {
+//  content:"/ ";
+//}
+//h2::before {
+//  content:"/ ";
+//}
+//h3::before {
+//  content:"/ / ";
+//}
+h4::before {
+  content:"• ";
+}
+h5::before {
+  content:"• • ";
+}
+h6::before {
+  content:"• • • ";
 }
