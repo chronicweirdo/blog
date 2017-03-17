@@ -43,9 +43,6 @@ p.header a {
   text-transform: lowercase;
   padding: $cell-space-vertical $cell-space-horizontal;
 }
-p.header > a:first-child {
-   padding-left: 0;
-}
 p.home {
   border-top: 1px dotted $link-color;
   padding-top: .5em;
@@ -60,10 +57,6 @@ span.date {
   color: $background-color;
 }
 
-//h1, h2, h3, h4, h5, h6 {
-//  font-family: $technic-font-family;
-//  font-weight: bold;
-//}
 h1 {
   font-size: 2em;
 }
@@ -73,15 +66,6 @@ h2 {
 h3, h4, h5, h6 {
   font-size: 1.2em;
 }
-//h1::before {
-//  content:"/ ";
-//}
-//h2::before {
-//  content:"/ ";
-//}
-//h3::before {
-//  content:"/ / ";
-//}
 h4::before {
   content:"• ";
 }
