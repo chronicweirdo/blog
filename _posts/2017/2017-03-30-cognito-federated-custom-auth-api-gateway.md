@@ -4,8 +4,6 @@ date: 2017-03-30 16:25:00 BST
 tags: ['aws', 'api gateway', 'cognito', 'sts', 'federated identities']
 ---
 
-# Integrating Cognito federated identities and a custom authentication service with secured services exposed through the API Gateway
-
 This document explores how we can use federated Cognito identities authenticated through our own custom service to access secured APIs exposed through API Gateway. The scenario we are considering is creating temporary users that we can identify through Cognito, then obtain some credentials for those temporary users to access the a secure service we have exposed through API Gateway. Going through our custom authorization service means we can use fields like family name and date of birth to identify users, and relying on Cognito and API Gateway to handle the authentication flow will make the whole solution more secure that if we were to roll out our custom implementation.
 
 We need to go thorough the following steps to implement this:
