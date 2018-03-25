@@ -1,6 +1,6 @@
 ---
 title: 'Partitioning SQL databases with MariaDB Spider'
-date: 2018-03-24 15:00:00
+date: 2018-03-24 15:00:00 +0200
 tags: ['sql', 'mariadb', 'sharding']
 ---
 
