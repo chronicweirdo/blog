@@ -1,6 +1,6 @@
 ---
 title: 'Java Cloud Apps Workshop - Starting up with Spring Boot'
-date: 2018-03-25 11:00:00 +0200
+date: 2018-03-25 13:00:00 +0200
 tags: ['java', 'cloud', 'microservices', 'spring boot']
 ---
 
