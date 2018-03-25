@@ -13,6 +13,7 @@ gems:
 excerpt_separator: <!--more-->
 
 # Build settings
+future: false
 markdown: kramdown
 highligter: rouge
 sass:
