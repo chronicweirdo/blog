@@ -1,6 +1,6 @@
 ---
 title: 'Java Cloud Apps Workshop - Connecting them all'
-date: 2018-03-27 11:00:00 EET
+date: 2018-03-27 11:00:00 +0200
 tags: ['java', 'cloud', 'microservices', 'spring boot', 'spring cloud netflix']
 ---
 
