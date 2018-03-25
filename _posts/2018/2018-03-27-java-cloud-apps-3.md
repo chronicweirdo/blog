@@ -1,4 +1,8 @@
-# Connecting them all
+---
+title: 'Java Cloud Apps Workshop - Connecting them all'
+date: 2018-03-27 11:00:00 EET
+tags: ['java', 'cloud', 'microservices', 'spring boot', 'spring cloud netflix']
+---
 
 Now that we have some microservices, we need to look at a simple way to make them interact with each other and give rise to the functionality we expect from our system. We want our system to have a few features to make our work easier:
 
@@ -9,9 +13,7 @@ Now that we have some microservices, we need to look at a simple way to make the
 
 ## The supervisor - Eureka
 
-https://spring.io/guides/gs/service-registration-and-discovery/
-
-// intro
+To bring all the above mentioned functionality into our project we'll rely on the [Spring Cloud Netflix](https://cloud.spring.io/spring-cloud-netflix/) project. The first part of this project we'll use is the service registration and discovery tool [Eureka](https://spring.io/guides/gs/service-registration-and-discovery/). Once we have an Eureka server set up, our services will be able to communicate with it it, to register themselves with it and to obtain URLs for services they need to work with from Eureka.
 
 First, run over to the [Spring Initializr](https://start.spring.io/) and generate a project named `com.msdm.eureka` with  `Eureka Server` dependency. Download it and copy it into your workspace. Then, open the project and add the `@EnableEurekaServer` annotation to the main application class `EurekaApplication`. Also, add the following to your `application.properties` file:
 

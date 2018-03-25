@@ -1,6 +1,10 @@
-# File server, work server
+---
+title: 'Java Cloud Apps Workshop - File server, work server'
+date: 2018-03-26 11:00:00 EET
+tags: ['java', 'cloud', 'microservices', 'spring boot']
+---
 
-## Second part objectives
+Our objectives for this second part of the workshop will be:
 
 - create a service that allows us to upload files
 - uploaded files are saved at a configurable location on the server, with a unique ID

@@ -1,12 +1,14 @@
-# Java Cloud Apps Workshop
+---
+title: 'Java Cloud Apps Workshop - Starting up with Spring Boot'
+date: 2018-03-25 11:00:00 EET
+tags: ['java', 'cloud', 'microservices', 'spring boot']
+---
 
-## The Mission
-
-What I will be looking at in the next few days is building a multi-service cloud app  using Java.
+What I will be looking at in the next few days is building a multi-service cloud app using Java.
 
 For this, we need an example application for which it would make sense to have a complex cloud architecture. We want an app that can be organized into separate services, where it makes sense for some services at least to provide some value by themselves, even if other parts of the infrastructure are down. We also want some of the services to be more strained, so that after analyzing our system we will conclude we need to deploy more instances of those services.
 
-As you can see, we are already looking at the problem in reverse, we need a problem for the cloud microservices architecture we want to implement. This should not happen in real life. I wonder how often is does happen. But nevermind that, let's pick up our "hammer" and look for an appropriately challenging "nail".
+As you can see, we are already looking at the problem in reverse, we need a problem for the cloud microservices architecture we want to implement. This should not happen in real life. I wonder how often it does happen. But nevermind that, let's pick up our "hammer" and look for an appropriately challenging "nail".
 
 We'll try to build a system tasked with running a large number of learning algorithms on many different data sets and evaluate the resulting models. We need a project that has to run time and CPU consuming computations. If we had a service in our app responsible for those computations, if implemented correctly, it would make sense that adding more instances of that service would improve the computation capabilities of the system. In addition, complex computations would need to run on large data, so we could use a separate service to load, store, make that data available. Our system would also accommodate multiple users, each user uploading their own data, asking the processing service to handle it, analyzing the results. Users could also share data and results, and organize into groups, maybe communicate with each other or just by annotating data with tags and observations. We could also create separate services to serve as the UI of the system, as a simple web app, or by providing an API for retrieving results and information.
 
