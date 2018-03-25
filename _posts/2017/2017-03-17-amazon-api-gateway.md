@@ -6,6 +6,8 @@ tags: ['aws', 'api gateway', 'cognito', 'node']
 
 This document will detail the process of exposing a service through Amazon API Gateway, securing access to that service using a Cognito user pool and customizing the authorization process to expose identity information to be used in the service.
 
+<!--more-->
+
 ## Creating a mock microservice
 
 The first step is simple. We need a microservice we can expose through API Gateway. The easiest way to put up a mock microservice is by creating a new Node.js Lambda in the Amazon Lambda web UI and writing a very simple function:

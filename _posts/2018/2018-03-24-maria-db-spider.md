@@ -4,7 +4,9 @@ date: 2018-03-24 15:00:00 +0200
 tags: ['sql', 'mariadb', 'sharding']
 ---
 
-This quick post will walk you through the steps of setting up multiple MariaDB servers on your local machine and enabling data sharding with Spider.
+This short post will walk you through the steps of setting up multiple MariaDB servers on your local machine and enabling data sharding with Spider.
+
+<!--more-->
 
 ## Running mulitple instances of MariaDB
 

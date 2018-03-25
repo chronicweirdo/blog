@@ -6,6 +6,8 @@ tags: ['java mail', 'aws', 'cognito', 'ses', 'lambda']
 
 Amazon Cognito is a user identity service in the AWS suite. It helps you create users and user pools and delegate the authentication process to AWS. Cognito will also send emails to new users as they are added to the system, and those emails can be customized to some extent. This post investigates what customizations Cognito will let us do, how far we can push those customizations. I expect to be able to set up an email with two bodies, one HTML (to allow us to style the email) and the other text-only (to maximize accessibility). I'm setting myself up for (spoiler alert) disappointment.
 
+<!--more-->
+
 ## Send multipart emails from Java
 
 First we'll try to check that we can deliver emails with multiple content bodies. We want to have a HTML body email but also provide a text-only body for users that don't have mail clients that support HTML (accessibility reasons). In the following example, I am doing this using the Java mail client and my gmail account. First, the dependencies:

@@ -6,6 +6,8 @@ tags: ['elasticsearch', 'logging', 'logstash', 'multiline']
 
 Having good quality logs for your app will help you diagnose problems and understand what is going on a lot faster than trying to reproduce rare bugs or analyzing any possible path the program might take by reading the code. With good logs, you have the right path spelled out. Going one step further you can send those logs into a system that gives you numerous tools to investigate and aggregate log data, like using Logstash to pull data into Elasticsearch and then use Kibana to visualize it.
 
+<!--more-->
+
 While doing this, I ran into the problem of parsing multiline logs with Logstash, and one solution is below.
 
 ## Log sample

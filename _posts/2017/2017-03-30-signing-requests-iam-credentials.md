@@ -6,6 +6,8 @@ tags: ['aws', 'api gateway', 'iam', 'sigv4']
 
 This document explores the process of accessing services exposed through Amazon's API Gateway that are secured with IAM credentials instead of Cognito tokens. The mechanism for getting access to those services is based on signing the request using our secret key instead of actually sending the key over. When accessing Amazon services through the SDK, the SDK takes care of this signing process for you, but if you want to access your own custom services exposed through API Gateway you will have to write your own code to sign that request, and this is quite an involved process.
 
+<!--more-->
+
 ## Creating a mock service and exposing it throguh the API Gateway
 
 First we need a service we want to access. I've created a simple javascript Lambda that returns some JSON data (I named it _getUserForms_):

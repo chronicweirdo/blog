@@ -6,6 +6,8 @@ tags: ['aws', 'cognito', 'node', 'react']
 
 This document describes how to write a simple React UI for logging in to Amazon Cognito using the AWS SDK for JavaScript. We are designing the login form to allow user login, as well as handle user password change scenario when the user is logging in for the first time.
 
+<!--more-->
+
 I am approaching this from a node and react beginner point of view, so there will be sections of this document I won't explain or explain correctly, but I am logging here my best understanding.
 
 ## Setting up the project

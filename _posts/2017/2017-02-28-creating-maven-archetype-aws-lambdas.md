@@ -6,6 +6,8 @@ tags: ['maven', 'archetype', 'aws', 'lambda']
 
 Following is a description on how to create a maven archetype for creating projects that can be packaged and deployed as Lambdas in Amazon Web Services.
 
+<!--more-->
+
 ## Create an archetype archetype
 
 ```

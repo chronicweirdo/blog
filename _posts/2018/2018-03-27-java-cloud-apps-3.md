@@ -11,6 +11,8 @@ Now that we have some microservices, we need to look at a simple way to make the
 - system should load-balance communication between services automatically
 - system should have tools that allow us to inspect the running services, their state and communication between them
 
+<!--more-->
+
 ## The supervisor - Eureka
 
 To bring all the above mentioned functionality into our project we'll rely on the [Spring Cloud Netflix](https://cloud.spring.io/spring-cloud-netflix/) project. The first part of this project we'll use is the service registration and discovery tool [Eureka](https://spring.io/guides/gs/service-registration-and-discovery/). Once we have an Eureka server set up, our services will be able to communicate with it it, to register themselves with it and to obtain URLs for services they need to work with from Eureka.

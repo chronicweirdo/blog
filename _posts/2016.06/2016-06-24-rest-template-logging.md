@@ -6,6 +6,8 @@ tags: ['java', 'rest', 'logging']
 
 Being able to fully log all interactions between your code and a REST API can be vital for quickly diagnosing problems in your interaction with the API. The difficulty arises when you realize that most frameworks avoid logging the response body. The response body can only be read once since it is received in stream format. The solution for this is to buffer the stream, that way you can read it for logging and when mapping to Java objects.
 
+<!--more-->
+
 The first step, when implementing this, is to correctly instantiate the RestTemplate object:
 
 ``` java

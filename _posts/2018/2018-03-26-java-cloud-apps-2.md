@@ -19,6 +19,8 @@ Our objectives for this second part of the workshop will be:
 - the work service can accept work requests and add them to a queue
 - the API of the work service lets us add work requests, interrogate the current queue, see current execution information, interrogate results? or should results be sent to a different service?
 
+<!--more-->
+
 ## The file service
 
 Get a new Spring Boot app started with Spring Initializr, with `Web` and `MongoDB` dependencies. I called mine `com.msdm.files`. Add it to your project, and let's start by configuring some defaults, like database name and the port we start this service on. We'll want a different port that our users service for now so we can run both services on the same machine. Add the following in the `application.properties` file:
