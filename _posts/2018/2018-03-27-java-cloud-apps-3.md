@@ -56,7 +56,7 @@ Next, we need to make a few changes to the `pom.xml` file in one of your other m
 
 We need to ensure that the Eureka client dependency is downloaded for a specific spring cloud version for the required `@EnableDiscoveryClient` annotation to be available in your project. You need to add that annotation to you microservice application class. You also need to add a line with the name of the microservice in your `application.properties` file. For the users service, this line would be: `spring.application.name=users-service`. Now you should start your users service, then navigate to `localhost:8761`. Give it a minute and your new service should now show up as running. You will need to make these changes for all the microservices we have created in the previous sections of this workshop and start them up to see them connect to the Eureka server:
 
-![](eureka all services.png)
+![All services in Eureka](/assets/2018/eureka all services.png)
 
 ## Injecting services
 
