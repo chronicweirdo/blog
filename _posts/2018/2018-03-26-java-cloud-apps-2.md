@@ -1,6 +1,6 @@
 ---
 title: 'Java Cloud Apps Workshop - File server, work server'
-date: 2018-03-26 19:22:00 +0300
+date: 2018-03-26 19:00:00 +0300
 tags: ['java', 'cloud', 'microservices', 'spring boot']
 ---
 

@@ -11,8 +11,6 @@ gems:
 excerpt_separator: <!--more-->
 
 # Build settings
-timezone: Europe/Bucharest
-future: false
 markdown: kramdown
 highligter: rouge
 sass:
