@@ -175,4 +175,4 @@ With injection, your actor code should become cleaner and a lot more manageable.
 
 ## Sources
 
-- http://kimrudolph.de/blog/spring-boot-meets-akka
+- [Spring Boot meets Akka](http://kimrudolph.de/blog/spring-boot-meets-akka)
