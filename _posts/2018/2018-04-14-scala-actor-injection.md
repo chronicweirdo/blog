@@ -1,5 +1,5 @@
 ---
-title: 'Spring injection with Akka actors, the scala version'
+title: 'Spring injection with Akka actors, the Scala version'
 date: 2018-04-14 10:00:00
 tags: ['scala', 'spring boot', 'akka', 'dependency injection']
 ---
