@@ -637,3 +637,22 @@ __The thing to note about all these orchestration strategies__ is that they are 
 - [GC overhead limit exceeded](https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/memleaks002.html)
 - [Akka blocking operations](https://doc.akka.io/docs/akka/current/dispatchers.html)
 
+## Bonus round
+
+The previous post describes how you can use Spring injection with your actors. The _producer_ object in that example is using a Spring component name to find the actor prototype to instantiate in the actor system. For this project I used a new producer that finds actors by their class:
+
+``` scala
+class SpringActorClassProducer(private val applicationContext: ApplicationContext,
+                               private val cls: Class[_ <: Actor]) extends IndirectActorProducer {
+
+  override def produce(): Actor = applicationContext.getBean(cls)
+
+  override def actorClass: Class[_ <: Actor] = classOf[Actor]
+}
+```
+
+This lets me use the actor class when creating an actor, and the advantage of that is I can rely on the IDE autocomplete feature to find the class for me. No more at risk of typos causing runtime errors.
+
+``` scala
+def getWorker = context.actorOf(springExtension.props(classOf[WorkerActor]))
+```
