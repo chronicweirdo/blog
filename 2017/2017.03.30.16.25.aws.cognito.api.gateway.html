@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This document explores how we can use federated Cognito identities authenticated through our own custom service to access secured APIs exposed through API Gateway. The scenario we are considering is creating temporary users that we can identify through Cognito, then obtain some credentials for those temporary users to access the a secure service we have exposed through API Gateway. Going through our custom authorization service means we can use fields like family name and date of birth to ide...">
+
+    <title>Integrating Cognito federated identities and a custom 
+authentication service with secured services exposed through the API 
+Gateway</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2017.03.30 16:25</span>
+    
+        <span>/</span><span class="tag">aws</span>
+    
+        <span>/</span><span class="tag">api gateway</span>
+    
+        <span>/</span><span class="tag">cognito</span>
+    
+        <span>/</span><span class="tag">sts</span>
+    
+        <span>/</span><span class="tag">federated identities</span>
+    
+</p>
+<h1 class="title">Integrating Cognito federated identities and a custom 
+authentication service with secured services exposed through the API 
+Gateway</h1>
+
+<p>This document explores how we can use federated Cognito identities 
+authenticated through our own custom service to access secured APIs 
+exposed through API Gateway. The scenario we are considering is creating
+ temporary users that we can identify through Cognito, then obtain some 
+credentials for those temporary users to access the a secure service we 
+have exposed through API Gateway. Going through our custom authorization
+ service means we can use fields like family name and date of birth to 
+identify users, and relying on Cognito and API Gateway to handle the 
+authentication flow will make the whole solution more secure that if we 
+were to roll out our custom implementation.</p>
+
+<p>We need to go thorough the following steps to implement this:</p>
+
+<ul>
+  <li>implement an authentication service that works with Cognito federated identities</li>
+  <li>log in with the authentication service to obtain a token for the new/existing identity</li>
+  <li>use the token to get credentials from Amazon’s Secure Token Service</li>
+  <li>use the credentials to access a secure service exposed throug API gateway (will imply signing the request with the credentials)</li>
+</ul>
+
+<h2 id="setting-up-federated-identities-in-amazon-cognito">Setting up federated identities in Amazon Cognito</h2>
+
+<p>Go to the Amazon Cognito console and select <em>manage federated identities</em>. You will need to create a new user pool for this (I named it <code class="highlighter-rouge">tempusers</code>). Give a name to your new pool and don’t check the <em>enable access to unauthenticated identities</em>. Under <em>authentication providers</em> click on the <em>custom</em> tab and set a name for your developer provider. Save your changes, create the pool and Cognito is ready for business.</p>
+
+<p>The federated pool will also create two roles, one for authenticated 
+and another for nonauthenticated users. You will need to go to the IAM 
+console and give the authenticated user role permissions to run API 
+Gateway if we are to use credentials for this role to access secured 
+services exposed through API Gateway.</p>
+
+<h2 id="creating-a-custom-web-authentication-service">Creating a custom web authentication service</h2>
+
+<p>I created a very simple Java Lambda to work as an authentication service:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AuthenticationLambda</span> <span class="kd">implements</span> <span class="n">RequestHandler</span><span class="o">&lt;</span><span class="n">Request</span><span class="o">,</span> <span class="n">Response</span><span class="o">&gt;</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">String</span> <span class="n">POOL_ID</span> <span class="o">=</span> <span class="s">"federated pool id"</span><span class="o">;</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="kt">long</span> <span class="n">TOKEN_DURATION</span> <span class="o">=</span> <span class="mi">60</span> <span class="o">*</span> <span class="mi">15</span><span class="n">l</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">AmazonCognitoIdentity</span> <span class="n">identityClient</span><span class="o">;</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">String</span> <span class="n">DEVELOPER_PROVIDER</span> <span class="o">=</span> <span class="s">"provider name used when creating the federated pool"</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="nf">AuthenticationLambda</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">identityClient</span> <span class="o">=</span> <span class="n">AmazonCognitoIdentityAsyncClientBuilder</span><span class="o">.</span><span class="na">defaultClient</span><span class="o">();</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>when we instantiate the <code class="highlighter-rouge">AuthenticationLambda</code> we also instantiate a <code class="highlighter-rouge">AmazonCognitoIdentity</code> object</li>
+  <li>the role used to run the Lambda, once uploaded, needs to have permissions to access Cognito</li>
+</ul>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AuthenticationLambda</span> <span class="kd">implements</span> <span class="n">RequestHandler</span><span class="o">&lt;</span><span class="n">Request</span><span class="o">,</span> <span class="n">Response</span><span class="o">&gt;</span> <span class="o">{</span>
+
+    <span class="c1">// constants and constructor</span>
+
+    <span class="kd">public</span> <span class="n">Response</span> <span class="nf">handleRequest</span><span class="o">(</span><span class="n">Request</span> <span class="n">request</span><span class="o">,</span> <span class="n">Context</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">username</span> <span class="o">=</span> <span class="n">authenticateUser</span><span class="o">(</span><span class="n">request</span><span class="o">.</span><span class="na">getFamilyName</span><span class="o">(),</span> <span class="n">request</span><span class="o">.</span><span class="na">getDateOfBirth</span><span class="o">());</span>
+        <span class="k">return</span> <span class="nf">getToken</span><span class="o">(</span><span class="n">username</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>our service will use <em>family name</em> and <em>date of birth</em> information to authenticate a user</li>
+  <li>we first try to authenticate the user based on the information in 
+the request; this step would look in some database to see if the 
+information provided is correct, and obtain a unique identifier for the 
+user, like a username</li>
+  <li>we then get a token using the unique identifier</li>
+</ul>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AuthenticationLambda</span> <span class="kd">implements</span> <span class="n">RequestHandler</span><span class="o">&lt;</span><span class="n">Request</span><span class="o">,</span> <span class="n">Response</span><span class="o">&gt;</span> <span class="o">{</span>
+
+    <span class="c1">// constants and constructor</span>
+
+    <span class="c1">// handler</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">authenticateUser</span><span class="o">(</span><span class="n">String</span> <span class="n">familyName</span><span class="o">,</span> <span class="n">String</span> <span class="n">dateOfBirth</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// this method will look in some database and check if the values correspond to a user,</span>
+        <span class="c1">// the return that user's id/username</span>
+        <span class="k">if</span> <span class="o">(</span><span class="s">"Popescu"</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">familyName</span><span class="o">)</span> <span class="o">&amp;&amp;</span> <span class="s">"19800101"</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">dateOfBirth</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="s">"PopescuD"</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>for now we are just implementing a mock service that will accept hardcoded <em>family name</em> and <em>date of birth</em> values</li>
+  <li>if no match is found, the user does not exist or they have the wrong information, so we return <em>null</em></li>
+</ul>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AuthenticationLambda</span> <span class="kd">implements</span> <span class="n">RequestHandler</span><span class="o">&lt;</span><span class="n">Request</span><span class="o">,</span> <span class="n">Response</span><span class="o">&gt;</span> <span class="o">{</span>
+
+    <span class="c1">// constants and constructor</span>
+
+    <span class="c1">// handler</span>
+
+    <span class="c1">// authenticate user</span>
+
+    <span class="kd">private</span> <span class="n">Response</span> <span class="nf">getToken</span><span class="o">(</span><span class="n">String</span> <span class="n">username</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">username</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">GetOpenIdTokenForDeveloperIdentityRequest</span> <span class="n">request</span> <span class="o">=</span>
+                    <span class="k">new</span> <span class="nf">GetOpenIdTokenForDeveloperIdentityRequest</span><span class="o">();</span>
+            <span class="n">request</span><span class="o">.</span><span class="na">setIdentityPoolId</span><span class="o">(</span><span class="n">POOL_ID</span><span class="o">);</span>
+
+            <span class="n">HashMap</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">logins</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashMap</span><span class="o">&lt;&gt;();</span>
+            <span class="n">logins</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">DEVELOPER_PROVIDER</span><span class="o">,</span> <span class="n">username</span><span class="o">);</span>
+            <span class="n">request</span><span class="o">.</span><span class="na">setLogins</span><span class="o">(</span><span class="n">logins</span><span class="o">);</span>
+            <span class="n">request</span><span class="o">.</span><span class="na">setTokenDuration</span><span class="o">(</span><span class="n">TOKEN_DURATION</span><span class="o">);</span>
+            <span class="n">GetOpenIdTokenForDeveloperIdentityResult</span> <span class="n">response</span> <span class="o">=</span> <span class="n">identityClient</span><span class="o">.</span><span class="na">getOpenIdTokenForDeveloperIdentity</span><span class="o">(</span><span class="n">request</span><span class="o">);</span>
+
+            <span class="n">Response</span> <span class="n">lambdaResponse</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Response</span><span class="o">();</span>
+            <span class="n">lambdaResponse</span><span class="o">.</span><span class="na">setIdentityId</span><span class="o">(</span><span class="n">response</span><span class="o">.</span><span class="na">getIdentityId</span><span class="o">());</span>
+            <span class="n">lambdaResponse</span><span class="o">.</span><span class="na">setToken</span><span class="o">(</span><span class="n">response</span><span class="o">.</span><span class="na">getToken</span><span class="o">());</span>
+            <span class="k">return</span> <span class="n">lambdaResponse</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">Response</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">getToken</code> method will obtain a token from Cognito for the unique <code class="highlighter-rouge">username</code> provided</li>
+  <li>we make a <code class="highlighter-rouge">GetOpenIdTokenForDeveloperIdentityRequest</code></li>
+  <li>we need to specify the <code class="highlighter-rouge">POOL_ID</code>, and a <code class="highlighter-rouge">username</code> for the <code class="highlighter-rouge">DEVELOPER_PROVIDER</code> we configured in our federated pool</li>
+  <li>we can also specify for how long this token should be valid</li>
+  <li>if we already have an identity for this <code class="highlighter-rouge">username</code>, a token for that identity will be returned</li>
+  <li>if we don’t have an identity, Cognito will create a new identity and provide a token</li>
+  <li>we also receive an <em>identity ID</em>, which we can include in the response</li>
+</ul>
+
+<p>This is our whole authorization service. The <em>Request</em> and <em>Response</em>
+ classes are simple Java beans. We still need to package the Lambda and 
+upload it to Amazon, and we also have to expose this service as an API 
+through Amazon API Gateway. This API does not require authentication.</p>
+
+<h2 id="create-an-api-secured-through-iam-credentials">Create an API secured through IAM credentials</h2>
+
+<p>We also need an API that is secured through <em>AWS_IAM</em>. We can 
+use another Lambda that returns some data (a JSON) and expose it through
+ Amazon API Gateway. Once that is done, we need to go to our method 
+configuration in API Gateway, click the <em>method request</em> section and under <em>authorization settings</em> select <em>AWS_IAM</em> for the <em>authorization</em> field. We can now deploy the API to staging (both the secured API and the authorization service need to be deployed).</p>
+
+<h2 id="logging-in-with-our-custom-authentication-service">Logging in with our custom authentication service</h2>
+
+<p>I created a JavaScript file to handle the whole authentication 
+service. This file can be easily adapted in a UI that takes user 
+credentials, then accesses the secured service for the required data to 
+build the application UI.</p>
+
+<p>We start out with the following required libraries and constants:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">https</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'https'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">collecter</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'./collecter.js'</span><span class="p">).</span><span class="nx">jsonCollecter</span><span class="p">;</span>
+
+<span class="kd">var</span> <span class="nx">ROLE_ARN</span> <span class="o">=</span> <span class="s2">"federated pool authenticated role"</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">REGION</span> <span class="o">=</span> <span class="s1">'region'</span>
+<span class="kd">var</span> <span class="nx">SERVICE</span> <span class="o">=</span> <span class="s1">'execute-api'</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we need to make HTTPS request to API Gateway</li>
+  <li>the <code class="highlighter-rouge">collecter</code> library will help us read the responses (included below)</li>
+  <li>include the <em>ARN</em> for your federated pool authenticated role; this is the role we will assume to access the secured API</li>
+  <li>we also need the Amazon region in which our services are deployed</li>
+  <li><code class="highlighter-rouge">execute-api</code> is the service name for the API Gateway</li>
+</ul>
+
+<p>Next step is to call our authentication API and obtain the token:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">loginToCustomAuthService</span><span class="p">(</span><span class="nx">familyName</span><span class="p">,</span> <span class="nx">dateOfBirth</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="na">method</span><span class="p">:</span> <span class="s1">'POST'</span><span class="p">,</span>
+        <span class="na">host</span><span class="p">:</span> <span class="s1">'api staging url'</span><span class="p">,</span>
+        <span class="na">path</span><span class="p">:</span> <span class="s1">'/cognitotest/auth'</span>
+    <span class="p">}</span>
+    <span class="kd">var</span> <span class="nx">body</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="na">familyName</span><span class="p">:</span> <span class="nx">familyName</span><span class="p">,</span>
+        <span class="na">dateOfBirth</span><span class="p">:</span> <span class="nx">dateOfBirth</span>
+    <span class="p">}</span>
+    <span class="kd">var</span> <span class="nx">request</span> <span class="o">=</span> <span class="nx">https</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">));</span>
+    <span class="nx">request</span><span class="p">.</span><span class="nx">write</span><span class="p">(</span><span class="nx">JSON</span><span class="p">.</span><span class="nx">stringify</span><span class="p">(</span><span class="nx">body</span><span class="p">));</span>
+    <span class="nx">request</span><span class="p">.</span><span class="nx">end</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kd">var</span> <span class="nx">familyName</span> <span class="o">=</span> <span class="s2">"Popescu"</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">dateOfBirth</span> <span class="o">=</span> <span class="s2">"19800101"</span><span class="p">;</span>
+<span class="nx">loginToCustomAuthService</span><span class="p">(</span><span class="nx">familyName</span><span class="p">,</span> <span class="nx">dateOfBirth</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">);</span>
+</code></pre></div></div>
+
+<ul>
+  <li>this is a simple POST request, sending the <em>family name</em> and <em>date of birth</em> as part of a JSON body</li>
+  <li>the response will contain an <em>identity ID</em> and a <em>token</em></li>
+</ul>
+
+<p>Running this program should print the token response to the console:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{ identityId: '****',
+  token: '****' }
+</code></pre></div></div>
+
+<h3 id="collecter-library">Collecter library</h3>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">bl</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'bl'</span><span class="p">);</span>
+
+<span class="nx">exports</span><span class="p">.</span><span class="nx">collecter</span> <span class="o">=</span> <span class="kd">function</span><span class="p">(</span><span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">function</span> <span class="nx">onceCollected</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">toString</span><span class="p">();</span>
+            <span class="nx">callback</span><span class="p">(</span><span class="nx">string</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">setEncoding</span><span class="p">(</span><span class="s1">'utf8'</span><span class="p">);</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">bl</span><span class="p">(</span><span class="nx">onceCollected</span><span class="p">));</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nx">exports</span><span class="p">.</span><span class="nx">jsonCollecter</span> <span class="o">=</span> <span class="kd">function</span><span class="p">(</span><span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">function</span> <span class="nx">onceCollected</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">toString</span><span class="p">();</span>
+            <span class="nx">callback</span><span class="p">(</span><span class="nx">JSON</span><span class="p">.</span><span class="nx">parse</span><span class="p">(</span><span class="nx">string</span><span class="p">));</span>
+        <span class="p">}</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">setEncoding</span><span class="p">(</span><span class="s1">'utf8'</span><span class="p">);</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">bl</span><span class="p">(</span><span class="nx">onceCollected</span><span class="p">));</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>uses the <code class="highlighter-rouge">bl</code> library</li>
+  <li>exposes two methods, one collecting the result to a string, a 
+second one also converting the string to JSON before sending it to the 
+callback method provided</li>
+</ul>
+
+<h2 id="obtaining-credentials-from-amazon-sts">Obtaining credentials from Amazon STS</h2>
+
+<p>Now that we have the token, we can use it to obtain credentials from 
+the Security Token Service. For this, we first need to add some new 
+dependencies, the AWS SDK for JavaScript from which we instantiate the 
+STS object:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">AwsSdk</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'aws-sdk'</span><span class="p">)</span>
+<span class="kd">var</span> <span class="nx">STS</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">AwsSdk</span><span class="p">.</span><span class="nx">STS</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>Then we can use the STS object to securely obtain credentials from Amazon:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">obtainCredentials</span><span class="p">(</span><span class="nx">roleArn</span><span class="p">,</span> <span class="nx">token</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">STS</span><span class="p">.</span><span class="nx">assumeRoleWithWebIdentity</span><span class="p">({</span>
+        <span class="na">RoleArn</span><span class="p">:</span> <span class="nx">roleArn</span><span class="p">,</span>
+        <span class="na">RoleSessionName</span><span class="p">:</span> <span class="s1">'someRoleSessionName'</span><span class="p">,</span>
+        <span class="na">WebIdentityToken</span><span class="p">:</span> <span class="nx">token</span>
+    <span class="p">},</span> <span class="kd">function</span><span class="p">(</span><span class="nx">error</span><span class="p">,</span> <span class="nx">response</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">callback</span><span class="p">(</span><span class="nx">response</span><span class="p">.</span><span class="nx">Credentials</span><span class="p">);</span>
+    <span class="p">})</span>
+<span class="p">}</span>
+
+<span class="kd">var</span> <span class="nx">familyName</span> <span class="o">=</span> <span class="s2">"Popescu"</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">dateOfBirth</span> <span class="o">=</span> <span class="s2">"19800101"</span><span class="p">;</span>
+
+<span class="nx">loginToCustomAuthService</span><span class="p">(</span><span class="nx">familyName</span><span class="p">,</span> <span class="nx">dateOfBirth</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">tokenResponse</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">obtainCredentials</span><span class="p">(</span><span class="nx">ROLE_ARN</span><span class="p">,</span> <span class="nx">tokenResponse</span><span class="p">.</span><span class="nx">token</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we use the <code class="highlighter-rouge">assumeRoleWithWebIdentity</code> method to which we provide the <em>role ARN</em>, a <em>role session name</em> (can be anything) and the <em>token</em></li>
+  <li>the response we obtain is a large object, but we only need <code class="highlighter-rouge">Credentials</code> from it</li>
+</ul>
+
+<p>Running the program now should print something like the following output on the console:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{ AccessKeyId: '****',
+  SecretAccessKey: '****',
+  SessionToken: '****',
+  Expiration: 2017-03-30T14:14:12.000Z }
+</code></pre></div></div>
+
+<h2 id="accessing-a-secured-api-with-a-signed-request">Accessing a secured API with a signed request</h2>
+
+<p>We now have the <em>access key id</em>, the <em>secret access key</em> and the <em>session token</em>,
+ all necessary to sign a request made to a secured API. We need to 
+include the library that will do the signing, the implementation of 
+which is described in a different document:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">signature</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'./signature.js'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>And the final implementation of our client is:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">loadDataFromSecuredService</span><span class="p">(</span><span class="nx">accessKeyId</span><span class="p">,</span> <span class="nx">secretKey</span><span class="p">,</span> <span class="nx">sessionToken</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">method</span><span class="p">:</span> <span class="s1">'GET'</span><span class="p">,</span>
+            <span class="na">host</span><span class="p">:</span> <span class="s1">'staging api url'</span><span class="p">,</span>
+            <span class="na">path</span><span class="p">:</span> <span class="s1">'/cognitotest/secured_api_path'</span>
+    <span class="p">};</span>
+    <span class="c1">// build the signature, body is empty</span>
+    <span class="nx">signature</span><span class="p">.</span><span class="nx">signRequest</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="s1">''</span><span class="p">,</span> <span class="nx">accessKeyId</span><span class="p">,</span> <span class="nx">secretKey</span><span class="p">,</span> <span class="nx">REGION</span><span class="p">,</span> <span class="nx">SERVICE</span><span class="p">,</span> <span class="nx">sessionToken</span><span class="p">);</span>
+    <span class="nx">https</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">)).</span><span class="nx">end</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kd">var</span> <span class="nx">familyName</span> <span class="o">=</span> <span class="s2">"Popescu"</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">dateOfBirth</span> <span class="o">=</span> <span class="s2">"19800101"</span><span class="p">;</span>
+
+<span class="nx">loginToCustomAuthService</span><span class="p">(</span><span class="nx">familyName</span><span class="p">,</span> <span class="nx">dateOfBirth</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">tokenResponse</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">obtainCredentials</span><span class="p">(</span><span class="nx">ROLE_ARN</span><span class="p">,</span> <span class="nx">tokenResponse</span><span class="p">.</span><span class="nx">token</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">credentials</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">loadDataFromSecuredService</span><span class="p">(</span><span class="nx">credentials</span><span class="p">.</span><span class="nx">AccessKeyId</span><span class="p">,</span> <span class="nx">credentials</span><span class="p">.</span><span class="nx">SecretAccessKey</span><span class="p">,</span> <span class="nx">credentials</span><span class="p">.</span><span class="nx">SessionToken</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">);</span>
+    <span class="p">});</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<ul>
+  <li><code class="highlighter-rouge">loadDataFromSecuredService</code> created the <em>GET</em> request</li>
+  <li>next, the requet is signed with the <code class="highlighter-rouge">signRequest</code> method from the <em>signature</em> library; this process will add some headers to the request</li>
+  <li>we execute the request and send the response to the callback function, which will print the request to console</li>
+</ul>
+
+<p>Executing the program now should print the data provided by your secure service, in my example this data is a JSON object:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{ fields:
+   [ { name: 'family name', value: '' },
+     { name: 'first name', value: '' },
+     { name: 'address', value: '' },
+     { name: 'postcode', value: '' } ] }
+</code></pre></div></div>
+
+<p>This is the while process of using a custom authorizer service that 
+creates identities in a federated Cognito pool, then using those 
+identities to obtain credentials from Amazon STS and finally using those
+ credentials to access secured APIs exposed through Amazon API Gateway.</p>
+
+<h2 id="references">References</h2>
+
+<ul>
+  <li><a href="https://docs.aws.amazon.com/cognito/latest/developerguide/authentication-flow.html">Amazon Cognito federated identities authentication flow</a></li>
+  <li><a href="https://docs.aws.amazon.com/cognito/latest/developerguide/developer-authenticated-identities.html">Amazon Cognito developer authenticated federated identities</a></li>
+  <li><a href="https://aws.amazon.com/blogs/mobile/understanding-amazon-cognito-authentication-part-2-developer-authenticated-identities/">Amazon blog post about Amazon Cognito developer authenticated identities</a></li>
+  <li><a href="https://jwt.io/">jwt.io, inspect your tokens</a></li>
+  <li><a href="https://stackoverflow.com/questions/39019244/api-gateway-authentication-with-cognito-federated-identities">stackoverflow discussion about how to use Cognito federated identities to secure APIs exposed through API Gateway</a></li>
+</ul>
+
+</body></html>

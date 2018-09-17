@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This short post will walk you through the steps of setting up multiple MariaDB servers on your local machine and enabling data sharding with Spider.">
+
+    <title>Partitioning SQL databases with MariaDB Spider</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2018.03.24 15:00</span>
+    
+        <span>/</span><span class="tag">sql</span>
+    
+        <span>/</span><span class="tag">mariadb</span>
+    
+        <span>/</span><span class="tag">sharding</span>
+    
+</p>
+<h1 class="title">Partitioning SQL databases with MariaDB Spider</h1>
+
+<p>This short post will walk you through the steps of setting up 
+multiple MariaDB servers on your local machine and enabling data 
+sharding with Spider.</p>
+
+<!--more-->
+
+<h2 id="running-mulitple-instances-of-mariadb">Running mulitple instances of MariaDB</h2>
+
+<p>Simple to do:</p>
+
+<ul>
+  <li>download and install the MariaDB server, but don’t install the service</li>
+  <li>inside the MariaDB folder you will have a <code class="highlighter-rouge">data</code> subfolder; copy this <code class="highlighter-rouge">data</code> subfolder somewhere on the machine (for windows, copy it directly on <code class="highlighter-rouge">c:</code>, not in <code class="highlighter-rouge">Program Files</code>, so you don’t have to worry about configuring permissions); do this twice, so you end up with <code class="highlighter-rouge">data2</code> and <code class="highlighter-rouge">data3</code></li>
+  <li>nex, run the following commands from separate command line / 
+terminal windows to get 3 instances running on different ports on 
+localhost:</li>
+</ul>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysqld --port=3306
+</code></pre></div></div>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysqld --port=3307 --datadir="C:\data2" --console
+</code></pre></div></div>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysqld --port=3308 --datadir="C:\data3" --console
+</code></pre></div></div>
+
+<h2 id="configure-spider">Configure Spider</h2>
+
+<p>We’ll consider the instance running on port <code class="highlighter-rouge">3306</code> <code class="highlighter-rouge">local1</code>, the one running on <code class="highlighter-rouge">3307</code> <code class="highlighter-rouge">local2</code>, and the one running on <code class="highlighter-rouge">3308</code> <code class="highlighter-rouge">local3</code>. For our exercise, <code class="highlighter-rouge">local1</code> will be the master server, the one our app will interact with. <code class="highlighter-rouge">local1</code> will use <code class="highlighter-rouge">local2</code> and <code class="highlighter-rouge">local3</code> to store its data. The sharding will be handled by the Spider engine, but queries executed on <code class="highlighter-rouge">local1</code> should work as if we are interacting with a simple SQL database server.</p>
+
+<p>First thing you need to do is to install Spider on the main server, <code class="highlighter-rouge">local1</code>. For this, you need to load up and run the <code class="highlighter-rouge">install_spider.sql</code> script from the MariaDB folder. You only need to run this script on the main server.</p>
+
+<p>Next, we need to create the datbase structure on our two secondary servers <code class="highlighter-rouge">local2</code> and <code class="highlighter-rouge">local3</code> (example database structure is taken from the Spider Storage Engine documentation listed under sources at the end of the post).</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">CREATE</span> <span class="k">DATABASE</span> <span class="n">backend</span><span class="p">;</span>
+<span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">backend</span><span class="p">.</span><span class="n">sbtest</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="n">int</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="n">unsigned</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="n">AUTO_INCREMENT</span><span class="p">,</span>
+  <span class="n">k</span> <span class="n">int</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="n">unsigned</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="s1">'0'</span><span class="p">,</span>
+  <span class="k">c</span> <span class="n">char</span><span class="p">(</span><span class="mi">120</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="s1">''</span><span class="p">,</span>
+  <span class="k">pad</span> <span class="n">char</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="s1">''</span><span class="p">,</span>
+  <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">),</span>
+  <span class="k">KEY</span> <span class="n">k</span> <span class="p">(</span><span class="n">k</span><span class="p">)</span>
+<span class="p">)</span> <span class="n">ENGINE</span><span class="o">=</span><span class="n">InnoDB</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>The next step is to create the same table structure in our main database server <code class="highlighter-rouge">local1</code>.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">CREATE</span> <span class="n">SERVER</span> <span class="n">backend1</span> 
+  <span class="k">FOREIGN</span> <span class="k">DATA</span> <span class="n">WRAPPER</span> <span class="n">mysql</span> 
+<span class="k">OPTIONS</span><span class="p">(</span> 
+  <span class="k">HOST</span> <span class="s1">'127.0.0.1'</span><span class="p">,</span> 
+  <span class="k">DATABASE</span> <span class="s1">'backend'</span><span class="p">,</span>
+  <span class="k">USER</span> <span class="s1">'root'</span><span class="p">,</span>
+  <span class="n">PASSWORD</span> <span class="s1">'admin'</span><span class="p">,</span>
+  <span class="n">PORT</span> <span class="mi">3307</span>
+<span class="p">);</span>
+<span class="k">CREATE</span> <span class="n">SERVER</span> <span class="n">backend2</span> 
+  <span class="k">FOREIGN</span> <span class="k">DATA</span> <span class="n">WRAPPER</span> <span class="n">mysql</span> 
+<span class="k">OPTIONS</span><span class="p">(</span> 
+  <span class="k">HOST</span> <span class="s1">'127.0.0.1'</span><span class="p">,</span> 
+  <span class="k">DATABASE</span> <span class="s1">'backend'</span><span class="p">,</span>
+  <span class="k">USER</span> <span class="s1">'root'</span><span class="p">,</span>
+  <span class="n">PASSWORD</span> <span class="s1">'admin'</span><span class="p">,</span>
+  <span class="n">PORT</span> <span class="mi">3308</span>
+<span class="p">);</span>
+<span class="k">CREATE</span> <span class="k">DATABASE</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">backend</span><span class="p">;</span>
+<span class="k">CREATE</span>  <span class="k">TABLE</span> <span class="n">backend</span><span class="p">.</span><span class="n">sbtest</span>
+<span class="p">(</span>
+  <span class="n">id</span> <span class="n">int</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="n">unsigned</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="n">AUTO_INCREMENT</span><span class="p">,</span>
+  <span class="n">k</span> <span class="n">int</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="n">unsigned</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="s1">'0'</span><span class="p">,</span>
+  <span class="k">c</span> <span class="n">char</span><span class="p">(</span><span class="mi">120</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="s1">''</span><span class="p">,</span>
+  <span class="k">pad</span> <span class="n">char</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="s1">''</span><span class="p">,</span>
+  <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">),</span>
+  <span class="k">KEY</span> <span class="n">k</span> <span class="p">(</span><span class="n">k</span><span class="p">)</span>
+<span class="p">)</span> <span class="n">ENGINE</span><span class="o">=</span><span class="n">spider</span> <span class="k">COMMENT</span><span class="o">=</span><span class="s1">'wrapper "mysql", table "sbtest"'</span>
+ <span class="n">PARTITION</span> <span class="k">BY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span> 
+<span class="p">(</span>
+ <span class="n">PARTITION</span> <span class="n">pt1</span> <span class="k">COMMENT</span> <span class="o">=</span> <span class="s1">'srv "backend1"'</span><span class="p">,</span>
+ <span class="n">PARTITION</span> <span class="n">pt2</span> <span class="k">COMMENT</span> <span class="o">=</span> <span class="s1">'srv "backend2"'</span> 
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>As you can see, the first thing we do is add information about how <code class="highlighter-rouge">local1</code> can reach the slave servers (<code class="highlighter-rouge">backend1</code> corresponds to <code class="highlighter-rouge">local2</code> and <code class="highlighter-rouge">backend2</code> corresponds to <code class="highlighter-rouge">local3</code>). Next, when defining our table on <code class="highlighter-rouge">local1</code> we use <code class="highlighter-rouge">spider</code>
+ as the engine and provide information on how the data should be 
+partitioned between the two backend servers. This should complete our 
+setup. Similar work will need to be done for every table in your 
+database that you want to use sharding for.</p>
+
+<h2 id="testing-the-setup">Testing the setup</h2>
+
+<p>Now insert some values in the table on your main server <code class="highlighter-rouge">local1</code>.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">backend</span><span class="p">.</span><span class="n">sbtest</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="k">c</span><span class="p">,</span> <span class="k">pad</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'first record'</span><span class="p">,</span> <span class="s1">'padding1'</span><span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">backend</span><span class="p">.</span><span class="n">sbtest</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="k">c</span><span class="p">,</span> <span class="k">pad</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'second record'</span><span class="p">,</span> <span class="s1">'padding2'</span><span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">backend</span><span class="p">.</span><span class="n">sbtest</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="k">c</span><span class="p">,</span> <span class="k">pad</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'third record'</span><span class="p">,</span> <span class="s1">'padding3'</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>When you query your main server table, all values should be returned.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">backend</span><span class="p">.</span><span class="n">sbtest</span>
+</code></pre></div></div>
+
+<p>However, this data does not reside on <code class="highlighter-rouge">local1</code> but is fetched from the backend servers. If you re-run the select query on your secondary servers, <code class="highlighter-rouge">local2</code> and <code class="highlighter-rouge">local3</code>, you should see that the inserted data has been split between the two instances.</p>
+
+<h2 id="sources">Sources</h2>
+
+<ul>
+  <li><a href="https://mariadb.com/kb/en/library/spider/">Spider Documentation</a></li>
+</ul>
+
+
+
+
+</body></html>

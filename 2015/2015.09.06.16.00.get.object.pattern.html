@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="I’ll be exploring an approach, I’ll call it a design pattern, for returning multiple values from a function. Some programming languages support this with tuples, but Java does not have support for such a data structure. The Java approach is implementing a new class that contains the values you want to return, then creating a function that returns the new object. What I’m advancing in this post is a way of defining your tuple and the function in the same place in such a way as to make using it...">
+
+    <title>Get-object pattern</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.09.06 16:00</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">design pattern</span>
+    
+</p>
+<h1 class="title">Get-object pattern</h1>
+
+<p>I’ll be exploring an approach, I’ll call it a design pattern, for 
+returning multiple values from a function. Some programming languages 
+support this with tuples, but Java does not have support for such a data
+ structure. The Java approach is implementing a new class that contains 
+the values you want to return, then creating a function that returns the
+ new object. What I’m advancing in this post is a way of defining your 
+tuple and the function in the same place in such a way as to make using 
+it as intuitive as possible. I’ll start with the classic Java approach 
+and then show you an implementation using what I call the “get-object” 
+pattern. The example I’ll be using is finding the minimum and maximum 
+values inside a collection of numbers.</p>
+
+<h2 id="the-classic-implementation">The classic implementation</h2>
+
+<p>We have a collection of numbers and we want to find out the minimum 
+and maximum values inside it. We may need these values to compute a 
+histogram or display them in a chart. One way would be to create two 
+functions, one that will find the minimum value and the other to find 
+the maximum value, but this would mean searching twice through the 
+collection. A better approach is to have one function that finds both 
+minimum and maximum values at the same, going through the collection 
+just once. This function will need to return both values, so we need a 
+new object to contain these values. Here’s the implementation.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">MinMaxTuple</span> <span class="o">{</span>
+        <span class="kd">private</span> <span class="n">Integer</span> <span class="n">min</span><span class="o">;</span>
+        <span class="kd">private</span> <span class="n">Integer</span> <span class="n">max</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="nf">MinMaxTuple</span><span class="o">(</span><span class="n">Integer</span> <span class="n">min</span><span class="o">,</span> <span class="n">Integer</span> <span class="n">max</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">min</span> <span class="o">=</span> <span class="n">min</span><span class="o">;</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">max</span> <span class="o">=</span> <span class="n">max</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kd">public</span> <span class="n">Integer</span> <span class="nf">getMin</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">min</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kd">public</span> <span class="n">Integer</span> <span class="nf">getMax</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">max</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MinMaxTuple</span> <span class="nf">findMinMax</span><span class="o">(</span><span class="n">Collection</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span> <span class="n">numbers</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">Iterator</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span> <span class="n">iterator</span> <span class="o">=</span> <span class="n">numbers</span><span class="o">.</span><span class="na">iterator</span><span class="o">();</span>
+        <span class="n">Integer</span> <span class="n">min</span><span class="o">,</span> <span class="n">max</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">iterator</span><span class="o">.</span><span class="na">hasNext</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">Integer</span> <span class="n">number</span> <span class="o">=</span> <span class="n">iterator</span><span class="o">.</span><span class="na">next</span><span class="o">();</span>
+            <span class="n">min</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+            <span class="n">max</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">min</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+            <span class="n">max</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">while</span> <span class="o">(</span><span class="n">iterator</span><span class="o">.</span><span class="na">hasNext</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">Integer</span> <span class="n">number</span> <span class="o">=</span> <span class="n">iterator</span><span class="o">.</span><span class="na">next</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">number</span> <span class="o">&lt;</span> <span class="n">min</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">min</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">number</span> <span class="o">&gt;</span> <span class="n">max</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">max</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nf">MinMaxTuple</span><span class="o">(</span><span class="n">min</span><span class="o">,</span> <span class="n">max</span><span class="o">);</span>
+    <span class="o">}</span>
+</code></pre></div></div>
+
+<p>And we use the function and the new class like this:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">findMinMaxTest</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="n">List</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span> <span class="n">numbers</span> <span class="o">=</span> <span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="k">new</span> <span class="n">Integer</span><span class="o">[]</span> <span class="o">{</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="mi">6</span><span class="o">,</span> <span class="mi">7</span><span class="o">,</span> <span class="mi">8</span><span class="o">,</span> <span class="mi">9</span><span class="o">});</span>
+    <span class="n">MinMaxTuple</span> <span class="n">result</span> <span class="o">=</span> <span class="n">findMinMax</span><span class="o">(</span><span class="n">numbers</span><span class="o">);</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">result</span><span class="o">.</span><span class="na">getMin</span><span class="o">(),</span> <span class="mi">1</span><span class="o">);</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">result</span><span class="o">.</span><span class="na">getMax</span><span class="o">(),</span> <span class="mi">9</span><span class="o">);</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>So what is the problem with this implementation? There is no real big
+ problem with it. It works, it’s simple enough. What I don’t like about 
+it is that the function and the tuple are separate. We could have the 
+findMinMax function defined as a static function inside the MinMaxTuple 
+class and the two pieces of code would be in the same place, but I still
+ don’t find that elegant enough. In other words, we could do better, 
+implement something that’s simpler, clearer.</p>
+
+<h2 id="the-get-object-pattern">The get-object pattern</h2>
+
+<p>The MinMaxTuple class should be used only when searching for the 
+minimum and maximum values, but the classic implementation does not make
+ this fact clear enough. Someone who needs a 2-tuple of integer values 
+can reuse this class, but this class was never intended to be used in a 
+different context. We want to drive that point home! And we can do that 
+with the get-object pattern idea. Here’s the implementation:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">GetMinMax</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">min</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">max</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="nf">GetMinMax</span><span class="o">(</span><span class="n">Collection</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span> <span class="n">numbers</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">Iterator</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span> <span class="n">iterator</span> <span class="o">=</span> <span class="n">numbers</span><span class="o">.</span><span class="na">iterator</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">iterator</span><span class="o">.</span><span class="na">hasNext</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">Integer</span> <span class="n">number</span> <span class="o">=</span> <span class="n">iterator</span><span class="o">.</span><span class="na">next</span><span class="o">();</span>
+            <span class="n">min</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+            <span class="n">max</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">min</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+            <span class="n">max</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">while</span> <span class="o">(</span><span class="n">iterator</span><span class="o">.</span><span class="na">hasNext</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">Integer</span> <span class="n">number</span> <span class="o">=</span> <span class="n">iterator</span><span class="o">.</span><span class="na">next</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">number</span> <span class="o">&lt;</span> <span class="n">min</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">min</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">number</span> <span class="o">&gt;</span> <span class="n">max</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">max</span> <span class="o">=</span> <span class="n">number</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Integer</span> <span class="nf">getMin</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">min</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Integer</span> <span class="nf">getMax</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">max</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>And here is how you use it:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">findMinMaxTest</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="n">List</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span> <span class="n">numbers</span> <span class="o">=</span> <span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="k">new</span> <span class="n">Integer</span><span class="o">[]</span> <span class="o">{</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="mi">6</span><span class="o">,</span> <span class="mi">7</span><span class="o">,</span> <span class="mi">8</span><span class="o">,</span> <span class="mi">9</span><span class="o">});</span>
+    <span class="n">GetMinMax</span> <span class="n">result</span> <span class="o">=</span> <span class="k">new</span> <span class="n">GetMinMax</span><span class="o">(</span><span class="n">numbers</span><span class="o">);</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">result</span><span class="o">.</span><span class="na">getMin</span><span class="o">(),</span> <span class="mi">1</span><span class="o">);</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">((</span><span class="kt">int</span><span class="o">)</span> <span class="n">result</span><span class="o">.</span><span class="na">getMax</span><span class="o">(),</span> <span class="mi">9</span><span class="o">);</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>So why is this approach better? Because the GetMinMax class will only
+ be used to get the minimum and maximum values in a collection of 
+numbers. There is no possibility of using this class out of context. 
+There is a single constructor that receives a collection of numbers. The
+ constructor finds the minimum and maximum values in that collection of 
+numbers and saves them into read-only internal variables.</p>
+
+<p>If you need to use tuples in you Java program often then it would be 
+justified to implement a tuple class. But if you just need a tuple for a
+ single specific operation there is no reason to implement a generic 
+tuple class. From a design point of view, your design is more robust 
+when it is clear what the purpose of each class is and when the 
+implementation will prevent others from using your classes in unexpected
+ ways. The get-object pattern respects these design guidelines.</p>
+
+</body></html>

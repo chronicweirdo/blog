@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This document will detail the process of exposing a service through Amazon API Gateway, securing access to that service using a Cognito user pool and customizing the authorization process to expose identity information to be used in the service.">
+
+    <title>Securing Amazon API Gateway exposed service using Amazon Cognito</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2017.03.17 13:40</span>
+    
+        <span>/</span><span class="tag">aws</span>
+    
+        <span>/</span><span class="tag">api gateway</span>
+    
+        <span>/</span><span class="tag">cognito</span>
+    
+        <span>/</span><span class="tag">node</span>
+    
+</p>
+<h1 class="title">Securing Amazon API Gateway exposed service using Amazon Cognito</h1>
+
+<p>This document will detail the process of exposing a service through 
+Amazon API Gateway, securing access to that service using a Cognito user
+ pool and customizing the authorization process to expose identity 
+information to be used in the service.</p>
+
+<!--more-->
+
+<h2 id="creating-a-mock-microservice">Creating a mock microservice</h2>
+
+<p>The first step is simple. We need a microservice we can expose 
+through API Gateway. The easiest way to put up a mock microservice is by
+ creating a new Node.js Lambda in the Amazon Lambda web UI and writing a
+ very simple function:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">exports</span><span class="p">.</span><span class="nx">handler</span> <span class="o">=</span> <span class="p">(</span><span class="nx">event</span><span class="p">,</span> <span class="nx">context</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">event</span><span class="p">);</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">context</span><span class="p">);</span>
+
+    <span class="kd">var</span> <span class="nx">response</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">'notes'</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s1">'title'</span><span class="p">:</span> <span class="s1">'note 1'</span><span class="p">,</span>
+                <span class="s1">'contents'</span><span class="p">:</span> <span class="s1">'this is just a test note'</span>
+            <span class="p">},</span>
+            <span class="p">{</span>
+                <span class="s1">'title'</span><span class="p">:</span> <span class="s1">'about the sunlight'</span><span class="p">,</span>
+                <span class="s1">'contents'</span><span class="p">:</span> <span class="s1">'sunlight is beautiful, but you need sunglasses sometimes'</span>
+            <span class="p">}</span>
+        <span class="p">]</span>
+    <span class="p">};</span>
+    <span class="nx">callback</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">response</span><span class="p">);</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>I have named this <em>listAccountNotes</em>, and all it does is 
+return a json response. Make sure the role used to execute this Lambda 
+function has permissions to execute Lambdas and write logs.</p>
+
+<h2 id="expose-microservice-through-api-gateway">Expose microservice through API Gateway</h2>
+
+<p>The next step is to expose this microservice through API Gateway. You will need to go in the API Gateway console. Click on <em>Create API</em> and choose a <em>new API</em>. I’ve named mine <em>notes</em>. Once the API is created you need to add some resources and methods for those resources. Click on the <em>actions</em> button, and on <em>create resource</em>. Name your resources something, I’ve used <em>notes</em> again. Next, select your new resource, click the <em>actions</em> button and <em>create method</em>. A simple <em>GET</em> method will do for now. Choose <em>lambda function</em> as the integration type, select your region and lambda and <em>save</em>.
+ Now you will see a screen that gives you even more configuration 
+options on your endpoint. We’ll get back to this screen, but first we 
+need to test this.</p>
+
+<h2 id="accessing-the-microservice">Accessing the microservice</h2>
+
+<p>To be able to actually invoke our microservice through the API, we’ll need to deploy the API first. Under <em>actions</em> select <em>deploy API</em> and create a new stage. Once you do this, you are taken to the <em>Stages</em>
+ tab, and here you can get the url of your staged API and test it. You 
+can use Postman to make a GET call to this URL and see your notes.</p>
+
+<h2 id="securing-the-microservice-using-a-cognito-user-pool">Securing the microservice using a Cognito User pool</h2>
+
+<p>But right now, your API is not secured. We need to configure API 
+Gateway to only allow users to login if they have a token obtained 
+through Cognito. Go back in the API Gateway console and select your API,
+ then under <em>authorizers</em>, <em>create</em> a <em>Cognito user pool authorizer</em>.
+ You have to pick the pool region, a pool, an authorizer name and you 
+can customize the section of the request where the identity token will 
+be, and this is <code class="highlighter-rouge">method.request.header.Authorization</code> by default. This means the request you send to the API will need to contain a header named <code class="highlighter-rouge">Authorization</code> that should contain a valid token.</p>
+
+<p>Once you created the authorizer, you need to enable it on your method by going back to <em>resources</em>, selecting the method and clicking <em>method request</em>. Here, under the <em>authorization</em>
+ field select your pool authorizer, and click the check mark to save the
+ change. Don’t forget to deploy the API before testing it. When you try 
+to make a get call to that API now, you will get a <em>401</em> response with the following body:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="s2">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Unauthorized"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="logging-in-and-accessing-the-microservice">Logging in and accessing the microservice</h2>
+
+<p>I have created a small javascript program that uses the Amazon SDK 
+for javascript to login the user, then makes a call to the mock service.
+ You can create a node project and use npm to handle dependencies. You 
+will need to create a new folder, then run <code class="highlighter-rouge">npm init</code> inside it, and this will create a <em>package.json</em> file. Next you need to add dependencies to your project by running the following commands:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>npm install <span class="nt">--save</span> aws-sdk
+npm install <span class="nt">--save</span> amazon-cognito-identity-js
+npm install <span class="nt">--save</span> bl
+</code></pre></div></div>
+
+<p>First two are the Amazon SDK files, the third is a library that will help us read the response body from the API.</p>
+
+<p>You can next create a <em>js</em> file, I have called mine <em>loginAndCall.js</em>, and start it by including the dependencies:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">AWS</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'aws-sdk'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">Config</span> <span class="o">=</span> <span class="nx">AWS</span><span class="p">.</span><span class="nx">Config</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">CognitoIdentityCredentials</span> <span class="o">=</span> <span class="nx">AWS</span><span class="p">.</span><span class="nx">CognitoIdentityCredentials</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">AWSCognito</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'amazon-cognito-identity-js'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">CognitoUser</span> <span class="o">=</span> <span class="nx">AWSCognito</span><span class="p">.</span><span class="nx">CognitoUser</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">CognitoUserPool</span> <span class="o">=</span> <span class="nx">AWSCognito</span><span class="p">.</span><span class="nx">CognitoUserPool</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">CognitoUserAttribute</span> <span class="o">=</span> <span class="nx">AWSCognito</span><span class="p">.</span><span class="nx">CognitoUserAttribute</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">AuthenticationDetails</span> <span class="o">=</span> <span class="nx">AWSCognito</span><span class="p">.</span><span class="nx">AuthenticationDetails</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">https</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'https'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">bl</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'bl'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Next we need to create a class that will handle the Cognito login call (stupidly named here <em>Loginer</em>):</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">Loginer</span> <span class="p">{</span>
+    <span class="kd">constructor</span><span class="p">(</span><span class="nx">poolId</span><span class="p">,</span> <span class="nx">clientId</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">poolId</span> <span class="o">=</span> <span class="nx">poolId</span><span class="p">;</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">clientId</span> <span class="o">=</span> <span class="nx">clientId</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="nx">getAuthenticationDetails</span><span class="p">(</span><span class="nx">username</span><span class="p">,</span> <span class="nx">password</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nx">AuthenticationDetails</span><span class="p">({</span>
+            <span class="na">Username</span> <span class="p">:</span> <span class="nx">username</span><span class="p">,</span>
+            <span class="na">Password</span><span class="p">:</span> <span class="nx">password</span>
+        <span class="p">});</span>
+    <span class="p">}</span>
+    <span class="nx">getUserPool</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nx">CognitoUserPool</span><span class="p">({</span>
+            <span class="na">UserPoolId</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">poolId</span><span class="p">,</span>
+            <span class="na">ClientId</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">clientId</span><span class="p">,</span>
+        <span class="p">});</span>
+    <span class="p">}</span>
+    <span class="nx">getCognitoUser</span><span class="p">(</span><span class="nx">username</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nx">CognitoUser</span><span class="p">({</span>
+            <span class="na">Username</span> <span class="p">:</span> <span class="nx">username</span><span class="p">,</span>
+            <span class="na">Pool</span> <span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">getUserPool</span><span class="p">()</span>
+        <span class="p">})</span>
+    <span class="p">}</span>
+    <span class="nx">login</span><span class="p">(</span><span class="nx">username</span><span class="p">,</span> <span class="nx">password</span><span class="p">,</span> <span class="nx">onLogin</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">cognitoUser</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">getCognitoUser</span><span class="p">(</span><span class="nx">username</span><span class="p">);</span>
+        <span class="kd">var</span> <span class="nx">callbacks</span> <span class="o">=</span>  <span class="p">{</span>
+            <span class="na">onSuccess</span><span class="p">:</span> <span class="nx">onLogin</span><span class="p">,</span>
+            <span class="na">onFailure</span><span class="p">:</span> <span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+                <span class="nx">cosole</span><span class="p">.</span><span class="nx">err</span><span class="p">(</span><span class="nx">err</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="nx">cognitoUser</span><span class="p">.</span><span class="nx">authenticateUser</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">getAuthenticationDetails</span><span class="p">(</span><span class="nx">username</span><span class="p">,</span> <span class="nx">password</span><span class="p">),</span> <span class="nx">callbacks</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The above class will:</p>
+
+<ul>
+  <li>need to be initialized with the pool id and the client id (you can
+ set client ids for clients that are allowed to use you Cognito pool in 
+the Cognito web console for that pool, undert the <em>Apps</em> section)</li>
+  <li>has some utility methods that are used to create required AWS objects, like <code class="highlighter-rouge">CognitoUser</code> and <code class="highlighter-rouge">CognitoUserPool</code></li>
+  <li>has a main <code class="highlighter-rouge">login</code> method that takes the username and password, logs in the user and, if successful, calls a callback function with the result</li>
+</ul>
+
+<p>Next, I implemented another class that will handle the call to the API:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">NotesCaller</span> <span class="p">{</span>
+    <span class="nx">call</span><span class="p">(</span><span class="nx">token</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">method</span><span class="p">:</span> <span class="s1">'GET'</span><span class="p">,</span>
+            <span class="na">host</span><span class="p">:</span> <span class="s1">'api_url'</span><span class="p">,</span>
+            <span class="na">path</span><span class="p">:</span> <span class="s1">'/staging_name/notes'</span><span class="p">,</span>
+            <span class="na">headers</span><span class="p">:</span> <span class="p">{</span><span class="s1">'Authorization'</span><span class="p">:</span> <span class="nx">token</span><span class="p">}</span>
+        <span class="p">};</span>
+        <span class="kd">var</span> <span class="nx">request</span> <span class="o">=</span> <span class="nx">https</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">));</span>
+        <span class="nx">request</span><span class="p">.</span><span class="nx">end</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>It has only one method, <code class="highlighter-rouge">call</code> that makes a <em>GET</em> call to our API and includes the token in the <em>authorization</em> header. The response is handled by a special <code class="highlighter-rouge">collecter</code> function that takes a callback function as an argument, defined below:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">function</span> <span class="nx">onceCollected</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">toString</span><span class="p">();</span>
+            <span class="nx">callback</span><span class="p">(</span><span class="nx">string</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">setEncoding</span><span class="p">(</span><span class="s1">'utf8'</span><span class="p">);</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">bl</span><span class="p">(</span><span class="nx">onceCollected</span><span class="p">));</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>As you can see, the <code class="highlighter-rouge">collecter</code> function will create a custom function to handle the response for a call. The response (<code class="highlighter-rouge">result</code> in our code) is piped throgh the <em>bl</em> library we imported. This library will collect all parts of the response in a <code class="highlighter-rouge">data</code> object, and once the full response is read, the <code class="highlighter-rouge">onceCollected</code> function will invoke the custom callback function we provided.</p>
+
+<p>Next, we put all these pieces togethers:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">userPoolId</span> <span class="o">=</span> <span class="s1">'user_pool_id'</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">clientId</span> <span class="o">=</span> <span class="s1">'client_id'</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">loginer</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">Loginer</span><span class="p">(</span><span class="nx">userPoolId</span><span class="p">,</span> <span class="nx">clientId</span><span class="p">);</span>
+<span class="nx">loginer</span><span class="p">.</span><span class="nx">login</span><span class="p">(</span><span class="s2">"username"</span><span class="p">,</span> <span class="s2">"password"</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">idToken</span> <span class="o">=</span> <span class="nx">result</span><span class="p">.</span><span class="nx">idToken</span><span class="p">.</span><span class="nx">jwtToken</span><span class="p">;</span>
+    <span class="k">new</span> <span class="nx">NotesCaller</span><span class="p">().</span><span class="nx">call</span><span class="p">(</span><span class="nx">idToken</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<p>The <code class="highlighter-rouge">Loginer</code> is initialized with the user pool id and client id. Then we call the <code class="highlighter-rouge">login</code>
+ method, with the username and password and a callback function. Once 
+we’ve had a successful login, we’ll see that we have three tokens in the
+ result. We’re interested in getting the id token from <code class="highlighter-rouge">result.idToken.jwtToken</code> and using it with the <code class="highlighter-rouge">NotesCaller</code> to call our API and print the result with the <code class="highlighter-rouge">console.log</code> function.</p>
+
+<h2 id="getting-more-details-about-the-identity-using-a-custom-authorizer">Getting more details about the identity using a custom authorizer</h2>
+
+<p>So we now have access to our API only when using a Cognito user pool 
+token, but the service we are calling doesn’t know anything about who is
+ calling it. A JSON Web Token has useful information encoded in it, 
+about the identity of the user who obtained that token, but none of that
+ information is getting to our service, and we’ll need to change that. 
+We’ll have to create a new Lambda which we will use as a custom API 
+Gateway authorizer. This Lambda will parse the token received by API 
+Gateway and extract the information we need, then add that information 
+to the context of the call made to our service.</p>
+
+<p>The custom authorizer describe here is based on the one in the <a href="https://aws.amazon.com/blogs/mobile/integrating-amazon-cognito-user-pools-with-api-gateway/">Integrating Amazon Cognito User Pools with API Gateway</a>
+ on the AWS Mobile Blog. I have removed some comments and modified the 
+code to add more token data to the context we return to API Gateway.</p>
+
+<p>First you need to download the <a href="https://s3.amazonaws.com/cup-resources/cup_custom_authorizer_lambda_function_blueprint.zip">blueprint for a custom authorizer</a>. Extract this to a new folder and open the <em>authorizer.js</em> file. First thing you will see is that this script has dependencies on <em>jsonwebtoken</em>, <em>request</em> and <em>jwk-to-pem</em> libraries. You will need to set the values of the <code class="highlighter-rouge">userPoolId</code> and <code class="highlighter-rouge">region</code> variables. Here is the start of the file:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">jwt</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'jsonwebtoken'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">request</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'request'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">jwkToPem</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'jwk-to-pem'</span><span class="p">);</span>
+
+<span class="kd">var</span> <span class="nx">userPoolId</span> <span class="o">=</span> <span class="s1">'your_user_pool_id'</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">region</span> <span class="o">=</span> <span class="s1">'your_region'</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">iss</span> <span class="o">=</span> <span class="s1">'https://cognito-idp.'</span> <span class="o">+</span> <span class="nx">region</span> <span class="o">+</span> <span class="s1">'.amazonaws.com/'</span> <span class="o">+</span> <span class="nx">userPoolId</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">pems</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>This file is a node module that exports a <code class="highlighter-rouge">handler</code> function that receives the <code class="highlighter-rouge">event</code> and <code class="highlighter-rouge">context</code>
+ variables. The first thing this function is doing is to download the 
+keys required to verify the web token received from Cognito. This step 
+can be removed, if you want to improve the efficiency of this function, 
+by downloading and including the keys in the Lambda archive. Once the 
+keys are available, the <code class="highlighter-rouge">ValidateToken</code> function is called:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">ValidateToken</span><span class="p">(</span><span class="nx">pems</span><span class="p">,</span> <span class="nx">event</span><span class="p">,</span> <span class="nx">context</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">token</span> <span class="o">=</span> <span class="nx">event</span><span class="p">.</span><span class="nx">authorizationToken</span><span class="p">;</span>
+    <span class="c1">//Fail if the token is not jwt</span>
+    <span class="kd">var</span> <span class="nx">decodedJwt</span> <span class="o">=</span> <span class="nx">jwt</span><span class="p">.</span><span class="nx">decode</span><span class="p">(</span><span class="nx">token</span><span class="p">,</span> <span class="p">{</span><span class="na">complete</span><span class="p">:</span> <span class="kc">true</span><span class="p">});</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nx">decodedJwt</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"Not a valid JWT token"</span><span class="p">);</span>
+        <span class="nx">context</span><span class="p">.</span><span class="nx">fail</span><span class="p">(</span><span class="s2">"Unauthorized"</span><span class="p">);</span>
+        <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">decodedJwt</span><span class="p">);</span>
+    <span class="c1">//Fail if token is not from your UserPool</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">decodedJwt</span><span class="p">.</span><span class="nx">payload</span><span class="p">.</span><span class="nx">iss</span> <span class="o">!=</span> <span class="nx">iss</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"invalid issuer"</span><span class="p">);</span>
+        <span class="nx">context</span><span class="p">.</span><span class="nx">fail</span><span class="p">(</span><span class="s2">"Unauthorized"</span><span class="p">);</span>
+        <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">//Reject the jwt if it's not an 'Access Token'</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">decodedJwt</span><span class="p">.</span><span class="nx">payload</span><span class="p">.</span><span class="nx">token_use</span> <span class="o">!=</span> <span class="s1">'id'</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"Not an access token"</span><span class="p">);</span>
+        <span class="nx">context</span><span class="p">.</span><span class="nx">fail</span><span class="p">(</span><span class="s2">"Unauthorized"</span><span class="p">);</span>
+        <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">//Get the kid from the token and retrieve corresponding PEM</span>
+    <span class="kd">var</span> <span class="nx">kid</span> <span class="o">=</span> <span class="nx">decodedJwt</span><span class="p">.</span><span class="nx">header</span><span class="p">.</span><span class="nx">kid</span><span class="p">;</span>
+    <span class="kd">var</span> <span class="nx">pem</span> <span class="o">=</span> <span class="nx">pems</span><span class="p">[</span><span class="nx">kid</span><span class="p">];</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nx">pem</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">'Invalid access token'</span><span class="p">);</span>
+        <span class="nx">context</span><span class="p">.</span><span class="nx">fail</span><span class="p">(</span><span class="s2">"Unauthorized"</span><span class="p">);</span>
+        <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">//Verify the signature of the JWT token to ensure it's really coming from your User Pool</span>
+
+    <span class="nx">jwt</span><span class="p">.</span><span class="nx">verify</span><span class="p">(</span><span class="nx">token</span><span class="p">,</span> <span class="nx">pem</span><span class="p">,</span> <span class="p">{</span> <span class="na">issuer</span><span class="p">:</span> <span class="nx">iss</span> <span class="p">},</span> <span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">payload</span><span class="p">)</span> <span class="p">{</span>
+      <span class="k">if</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">context</span><span class="p">.</span><span class="nx">fail</span><span class="p">(</span><span class="s2">"Unauthorized"</span><span class="p">);</span>
+      <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="c1">//Valid token. Generate the API Gateway policy for the user</span>
+        <span class="c1">//Always generate the policy on value of 'sub' claim and not for 'username' because username is reassignable</span>
+        <span class="c1">//sub is UUID for a user which is never reassigned to another user.</span>
+        <span class="kd">var</span> <span class="nx">principalId</span> <span class="o">=</span> <span class="nx">payload</span><span class="p">.</span><span class="nx">sub</span><span class="p">;</span>
+
+        <span class="c1">//Get AWS AccountId and API Options</span>
+        <span class="kd">var</span> <span class="nx">apiOptions</span> <span class="o">=</span> <span class="p">{};</span>
+        <span class="kd">var</span> <span class="nx">tmp</span> <span class="o">=</span> <span class="nx">event</span><span class="p">.</span><span class="nx">methodArn</span><span class="p">.</span><span class="nx">split</span><span class="p">(</span><span class="s1">':'</span><span class="p">);</span>
+        <span class="kd">var</span> <span class="nx">apiGatewayArnTmp</span> <span class="o">=</span> <span class="nx">tmp</span><span class="p">[</span><span class="mi">5</span><span class="p">].</span><span class="nx">split</span><span class="p">(</span><span class="s1">'/'</span><span class="p">);</span>
+        <span class="kd">var</span> <span class="nx">awsAccountId</span> <span class="o">=</span> <span class="nx">tmp</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span>
+        <span class="nx">apiOptions</span><span class="p">.</span><span class="nx">region</span> <span class="o">=</span> <span class="nx">tmp</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+        <span class="nx">apiOptions</span><span class="p">.</span><span class="nx">restApiId</span> <span class="o">=</span> <span class="nx">apiGatewayArnTmp</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+        <span class="nx">apiOptions</span><span class="p">.</span><span class="nx">stage</span> <span class="o">=</span> <span class="nx">apiGatewayArnTmp</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+        <span class="kd">var</span> <span class="nx">method</span> <span class="o">=</span> <span class="nx">apiGatewayArnTmp</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+        <span class="kd">var</span> <span class="nx">resource</span> <span class="o">=</span> <span class="s1">'/'</span><span class="p">;</span> <span class="c1">// root resource</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nx">apiGatewayArnTmp</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span> <span class="p">{</span>
+            <span class="nx">resource</span> <span class="o">+=</span> <span class="nx">apiGatewayArnTmp</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="c1">//For more information on specifics of generating policy, refer to blueprint for API Gateway's Custom authorizer in Lambda console</span>
+        <span class="kd">var</span> <span class="nx">policy</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">AuthPolicy</span><span class="p">(</span><span class="nx">principalId</span><span class="p">,</span> <span class="nx">awsAccountId</span><span class="p">,</span> <span class="nx">apiOptions</span><span class="p">);</span>
+        <span class="nx">policy</span><span class="p">.</span><span class="nx">allowAllMethods</span><span class="p">();</span>
+        <span class="kd">var</span> <span class="nx">policyData</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">'principalId'</span><span class="p">:</span> <span class="nx">principalId</span><span class="p">,</span>
+            <span class="s1">'username'</span><span class="p">:</span> <span class="nx">payload</span><span class="p">[</span><span class="s1">'cognito:username'</span><span class="p">],</span>
+            <span class="c1">//'groups': payload['cognito:groups'],</span>
+            <span class="s1">'email'</span><span class="p">:</span> <span class="nx">payload</span><span class="p">.</span><span class="nx">email</span>
+        <span class="p">};</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">context</span><span class="p">);</span>
+        <span class="kd">var</span> <span class="nx">finalPolicy</span> <span class="o">=</span> <span class="nx">policy</span><span class="p">.</span><span class="nx">build</span><span class="p">();</span>
+        <span class="nx">finalPolicy</span><span class="p">.</span><span class="nx">context</span> <span class="o">=</span> <span class="nx">policyData</span><span class="p">;</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">finalPolicy</span><span class="p">);</span>
+        <span class="nx">context</span><span class="p">.</span><span class="nx">succeed</span><span class="p">(</span><span class="nx">finalPolicy</span><span class="p">);</span>
+      <span class="p">}</span>
+    <span class="p">});</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">jwt</code> library is used to decode the token</li>
+  <li>the payload is checked to confirm that the correct pool, token type, called <code class="highlighter-rouge">token_use</code> (the example file expects an <code class="highlighter-rouge">access</code> token here, but I changed it to an <code class="highlighter-rouge">id</code> token) are used</li>
+  <li>then the keys downloaded from Cognito are used to verify the token</li>
+  <li>if verification passes, we can build the policy object that we return</li>
+  <li>there is a lot of code involved in building the policy object that I am not including here</li>
+  <li>we are also creating a <code class="highlighter-rouge">policyData</code> object that contains the fields we are interested in</li>
+  <li>we are adding everything in <code class="highlighter-rouge">policyData</code> to the policy object, under the <code class="highlighter-rouge">context</code> field; this field must be named <code class="highlighter-rouge">context</code>
+ and is only allowed to have sub-fields of string, integer and boolean 
+type (that is why the group list is currently commented out, if we will 
+want to add a group list, we’ll need to serialize that in a string)</li>
+</ul>
+
+<p>Once you’ve made the necessary modifications to the function, you need to package it. Create a <em>zip</em> with the <em>authorizer.js</em> file and <em>node_modules</em> folder and upload that as a new Node.js Lambda in the Lambda web console.</p>
+
+<p>Now go to the API Gateway console, select your API and the <em>authorizers</em> page and <em>create</em> then <em>custom authorizer</em>.
+ Fill in the Lambda region, authorizer name, use the role you use for 
+Lambdas to execute the authorizer. You will need to go in the IAM 
+console and edit the <em>trust relationships</em> tab for this role to allow the <code class="highlighter-rouge">apigateway.amazonaws.com</code> service to run it, as shown below:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="s2">"Version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2012-10-17"</span><span class="p">,</span><span class="w">
+  </span><span class="s2">"Statement"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="s2">"Effect"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Allow"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"Principal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="s2">"Service"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+          </span><span class="s2">"apigateway.amazonaws.com"</span><span class="p">,</span><span class="w">
+          </span><span class="s2">"lambda.amazonaws.com"</span><span class="w">
+        </span><span class="p">]</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+      </span><span class="s2">"Action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sts:AssumeRole"</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Once you have created your custom authorizer, all you still need to do is switch to the <em>resources</em> tab and have your method use that authorizer, which you set up by clicking the <em>method request</em>
+ box. You also need to set the integration up correctly to transfer the 
+values we want from the authorization context to the request API Gatewat
+ makes to our service. To do this, click on your method, then click on 
+the <em>integration request</em> box, then under <em>body mapping templates</em> add a new template for an <code class="highlighter-rouge">application/json</code> content-type (and you can secure the integration when that box appears). You can next work off of the <em>method request passthrough</em> template that Amazon can generate for you. I have just added the following to the root object:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="s2">"policyContext"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="s2">"principalId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"$context.authorizer.principalId"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"username"</span><span class="p">:</span><span class="w"> </span><span class="s2">"$context.authorizer.username"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"$context.authorizer.email"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now you can stage the API after applying the changes. Next, we need 
+to update the service Lambda to use the newly acquired information. The <code class="highlighter-rouge">policyContext</code> we added will actually be available on the <code class="highlighter-rouge">event</code> object. We’ll be adding a title to our collection of notes containing the name of the user accessing them, if it is available:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">exports</span><span class="p">.</span><span class="nx">handler</span> <span class="o">=</span> <span class="p">(</span><span class="nx">event</span><span class="p">,</span> <span class="nx">context</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">event</span><span class="p">);</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">context</span><span class="p">);</span>
+
+    <span class="kd">var</span> <span class="nx">notesTitle</span> <span class="o">=</span> <span class="s2">"Notes for "</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">policyContext</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">notesTitle</span> <span class="o">=</span> <span class="nx">notesTitle</span> <span class="o">+</span> <span class="nx">event</span><span class="p">.</span><span class="nx">policyContext</span><span class="p">.</span><span class="nx">username</span><span class="p">;</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="nx">notesTitle</span> <span class="o">=</span> <span class="nx">notesTitle</span> <span class="o">+</span> <span class="s2">"anonymous"</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="kd">var</span> <span class="nx">response</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">'title'</span><span class="p">:</span> <span class="nx">notesTitle</span><span class="p">,</span>
+        <span class="s1">'notes'</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s1">'title'</span><span class="p">:</span> <span class="s1">'note 1'</span><span class="p">,</span>
+                <span class="s1">'contents'</span><span class="p">:</span> <span class="s1">'this is just a test note'</span>
+            <span class="p">},</span>
+            <span class="p">{</span>
+                <span class="s1">'title'</span><span class="p">:</span> <span class="s1">'about the sunlight'</span><span class="p">,</span>
+                <span class="s1">'contents'</span><span class="p">:</span> <span class="s1">'sunlight is beautiful, but you need sunglasses sometimes'</span>
+            <span class="p">}</span>
+        <span class="p">]</span>
+    <span class="p">};</span>
+    <span class="nx">callback</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">response</span><span class="p">);</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>If you go back and execute your test login and call node project you 
+should get back a list of notes that has a title containing the username
+ you used to log in.</p>
+
+
+
+
+</body></html>

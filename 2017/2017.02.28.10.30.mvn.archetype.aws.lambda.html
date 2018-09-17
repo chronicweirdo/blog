@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Following is a description on how to create a maven archetype for creating projects that can be packaged and deployed as Lambdas in Amazon Web Services.">
+
+    <title>Creating a maven archetype for AWS Lambda</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2017.02.28 10:30</span>
+    
+        <span>/</span><span class="tag">maven</span>
+    
+        <span>/</span><span class="tag">archetype</span>
+    
+        <span>/</span><span class="tag">aws</span>
+    
+        <span>/</span><span class="tag">lambda</span>
+    
+</p>
+<h1 class="title">Creating a maven archetype for AWS Lambda</h1>
+
+<p>Following is a description on how to create a maven archetype for 
+creating projects that can be packaged and deployed as Lambdas in Amazon
+ Web Services.</p>
+
+<h2 id="create-an-archetype-archetype">Create an archetype archetype</h2>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mvn archetype:generate -DgroupId=com.cacoveanu.aws -DartifactId=aws-lambda-archetype -DarchetypeArtifactId=maven-archetype-archetype -DinteractiveMode=false
+</code></pre></div></div>
+
+<p>We will end up with a project with the following structure:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws-lambda-archetype
+- src
+  - main
+    - resources
+      - archetype-resources
+        - src
+          - main
+            - java
+              - App.java
+          - test
+            - java
+              - AppTest.java
+        - pom.xml
+      - META-INF
+        - maven
+          - archetype
+- pom.xml
+</code></pre></div></div>
+
+<p>We will want to change the <code class="highlighter-rouge">src/main/resources/archetype-resources/src/pom.xml</code> to add the dependencies we’ll need in our AWS project. We will also add new files in <code class="highlighter-rouge">src/main/resources/archetype-resources/src/main/java</code> and <code class="highlighter-rouge">src/main/resources/archetype-resources/src/test/java</code>.</p>
+
+<p>Add the following dependency in the <code class="highlighter-rouge">src/main/resources/archetype-resources/src/pom.xml</code> file:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>com.amazonaws<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>aws-lambda-java-core<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>1.1.0<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div></div>
+
+<p>Also to the pom file, add the build instructions for packaging the  code to upload lambda to AWS:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;build&gt;</span>
+    <span class="nt">&lt;plugins&gt;</span>
+        <span class="nt">&lt;plugin&gt;</span>
+            <span class="nt">&lt;groupId&gt;</span>org.apache.maven.plugins<span class="nt">&lt;/groupId&gt;</span>
+            <span class="nt">&lt;artifactId&gt;</span>maven-shade-plugin<span class="nt">&lt;/artifactId&gt;</span>
+            <span class="nt">&lt;version&gt;</span>2.3<span class="nt">&lt;/version&gt;</span>
+            <span class="nt">&lt;configuration&gt;</span>
+                <span class="nt">&lt;createDependencyReducedPom&gt;</span>false<span class="nt">&lt;/createDependencyReducedPom&gt;</span>
+            <span class="nt">&lt;/configuration&gt;</span>
+            <span class="nt">&lt;executions&gt;</span>
+                <span class="nt">&lt;execution&gt;</span>
+                    <span class="nt">&lt;phase&gt;</span>package<span class="nt">&lt;/phase&gt;</span>
+                    <span class="nt">&lt;goals&gt;</span>
+                        <span class="nt">&lt;goal&gt;</span>shade<span class="nt">&lt;/goal&gt;</span>
+                    <span class="nt">&lt;/goals&gt;</span>
+                <span class="nt">&lt;/execution&gt;</span>
+            <span class="nt">&lt;/executions&gt;</span>
+        <span class="nt">&lt;/plugin&gt;</span>
+    <span class="nt">&lt;/plugins&gt;</span>
+<span class="nt">&lt;/build&gt;</span>
+</code></pre></div></div>
+
+<p>In the <code class="highlighter-rouge">src/main/resources/archetype-resources/src/main/java</code> folder add the following Java file, named <code class="highlighter-rouge">MyLambda.java</code>:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="err">$</span><span class="o">{</span><span class="n">groupId</span><span class="o">};</span>
+
+<span class="kn">import</span> <span class="nn">com.amazonaws.services.lambda.runtime.Context</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.amazonaws.services.lambda.runtime.RequestHandler</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">MyLambda</span> <span class="kd">implements</span> <span class="n">RequestHandler</span><span class="o">&lt;</span><span class="n">Request</span><span class="o">,</span> <span class="n">Response</span><span class="o">&gt;</span> <span class="o">{</span>
+
+    <span class="kd">public</span> <span class="n">Response</span> <span class="nf">handleRequest</span><span class="o">(</span><span class="n">Request</span> <span class="n">request</span><span class="o">,</span> <span class="n">Context</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">Response</span> <span class="n">response</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Response</span><span class="o">();</span>
+        <span class="n">response</span><span class="o">.</span><span class="na">setOutput</span><span class="o">(</span><span class="n">request</span><span class="o">.</span><span class="na">getInput</span><span class="o">());</span>
+        <span class="k">return</span> <span class="n">response</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Notice that the package name is set to <code class="highlighter-rouge">${groupId}</code>. This will create the necessary folder structure and set the correct package name as defined in the <code class="highlighter-rouge">-DgroupId</code> variable when executing maven generate to create a new Lambda project.</p>
+
+<p>In a similar way, you will need to add the <code class="highlighter-rouge">Request.java</code> and <code class="highlighter-rouge">Response.java</code> files;</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="err">$</span><span class="o">{</span><span class="n">groupId</span><span class="o">};</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Request</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">input</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getInput</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">input</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setInput</span><span class="o">(</span><span class="n">String</span> <span class="n">input</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">input</span> <span class="o">=</span> <span class="n">input</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="err">$</span><span class="o">{</span><span class="n">groupId</span><span class="o">};</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Response</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">output</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getOutput</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">output</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setOutput</span><span class="o">(</span><span class="n">String</span> <span class="n">output</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">output</span> <span class="o">=</span> <span class="n">output</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>You can also add a simple test, if you want.</p>
+
+<h2 id="build-and-use-the-archetype">Build and use the archetype</h2>
+
+<p>Now it’s time to build the artifact and add it to our local maven 
+repository. Run the following command in the root folder of your 
+archetype project:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mvn install
+</code></pre></div></div>
+
+<p>You should get a build success message.</p>
+
+<p>Now you can generate a new project for creating Lambdas for AWS in a root workspace folder of your choosing:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mvn archetype:generate -DarchetypeGroupId=com.cacoveanu.aws -DarchetypeArtifactId=aws-lambda-archetype -DarchetypeVersion=1.0-SNAPSHOT -DgroupId=com.example.aws -DartifactId=custom-message -DinteractiveMode=false
+</code></pre></div></div>
+
+
+
+
+</body></html>

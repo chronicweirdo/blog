@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Our objectives for this second part of the workshop will be:  create a service that allows us to upload files  uploaded files are saved at a configurable location on the server, with a unique ID  each file belongs to a user (for now)  each file has an entry in a database that contains the original name and metadata  the REST API lets us upload a file, get list of files, see file metadata, update file metadata and download the file  we also want a service that does the “work”  this service wil...">
+
+    <title>Java Cloud Apps Workshop - File server, work server</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2018.03.26 19:00</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">cloud</span>
+    
+        <span>/</span><span class="tag">microservices</span>
+    
+        <span>/</span><span class="tag">spring boot</span>
+    
+</p>
+<h1 class="title">Java Cloud Apps Workshop - File server, work server</h1>
+
+<p>Our objectives for this second part of the workshop will be:</p>
+
+<ul>
+  <li>create a service that allows us to upload files</li>
+  <li>uploaded files are saved at a configurable location on the server, with a unique ID</li>
+  <li>each file belongs to a user (for now)</li>
+  <li>each file has an entry in a database that contains the original name and metadata</li>
+  <li>the REST API lets us upload a file, get list of files, see file metadata, update file metadata and download the file</li>
+  <li>we also want a service that does the “work”</li>
+  <li>this service will accept request to start file analysis, with a file ID and some other analysis parameters</li>
+  <li>the work service will communicate with the file service to obtain the file it is currently working on</li>
+  <li>the work service will perform the “work” - really just some random generated data with time delays inserted in it</li>
+  <li>if the work is successful, a report is saved</li>
+  <li>the work service can accept work requests and add them to a queue</li>
+  <li>the API of the work service lets us add work requests, interrogate
+ the current queue, see current execution information, interrogate 
+results? or should results be sent to a different service?</li>
+</ul>
+
+<h2 id="the-file-service">The file service</h2>
+
+<p>Get a new Spring Boot app started with Spring Initializr, with <code class="highlighter-rouge">Web</code> and <code class="highlighter-rouge">MongoDB</code> dependencies. I called mine <code class="highlighter-rouge">com.msdm.files</code>.
+ Add it to your project, and let’s start by configuring some defaults, 
+like database name and the port we start this service on. We’ll want a 
+different port that our users service for now so we can run both 
+services on the same machine. Add the following in the <code class="highlighter-rouge">application.properties</code> file:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spring.data.mongodb.database=filesdb
+server.port=8090
+</code></pre></div></div>
+
+<p>Next, we’ll create our entity:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">files</span><span class="o">.</span><span class="na">entities</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.data.annotation.Id</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.List</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Datafile</span> <span class="o">{</span>
+
+    <span class="nd">@Id</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">id</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">name</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">owner</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">note</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">tags</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getId</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">id</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setId</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">id</span> <span class="o">=</span> <span class="n">id</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getName</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">name</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setName</span><span class="o">(</span><span class="n">String</span> <span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getOwner</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">owner</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setOwner</span><span class="o">(</span><span class="n">String</span> <span class="n">owner</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">owner</span> <span class="o">=</span> <span class="n">owner</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getNote</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">note</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setNote</span><span class="o">(</span><span class="n">String</span> <span class="n">note</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">note</span> <span class="o">=</span> <span class="n">note</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="nf">getTags</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">tags</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setTags</span><span class="o">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">tags</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">tags</span> <span class="o">=</span> <span class="n">tags</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>And the associated repository:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">files</span><span class="o">.</span><span class="na">repositories</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.files.entities.Datafile</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.mongodb.repository.MongoRepository</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">interface</span> <span class="nc">DatafileRepository</span> <span class="kd">extends</span> <span class="n">MongoRepository</span><span class="o">&lt;</span><span class="n">Datafile</span><span class="o">,</span> <span class="n">String</span><span class="o">&gt;{</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Now, we need a service that can save a multipart file at a location on disk:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">files</span><span class="o">.</span><span class="na">services</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.slf4j.Logger</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.slf4j.LoggerFactory</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Value</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.stereotype.Component</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.multipart.MultipartFile</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.io.File</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.file.Path</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.file.Paths</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.Optional</span><span class="o">;</span>
+
+<span class="nd">@Component</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">FileStorageService</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="n">Logger</span> <span class="n">logger</span> <span class="o">=</span> <span class="n">LoggerFactory</span><span class="o">.</span><span class="na">getLogger</span><span class="o">(</span><span class="n">FileStorageService</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${storage.path}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">storagePath</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">File</span> <span class="nf">getNewFile</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">Path</span> <span class="n">path</span> <span class="o">=</span> <span class="n">Paths</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">storagePath</span><span class="o">,</span> <span class="n">id</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="na">toFile</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Optional</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span> <span class="nf">save</span><span class="o">(</span><span class="n">MultipartFile</span> <span class="n">receivedFile</span><span class="o">,</span> <span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="n">File</span> <span class="n">newFile</span> <span class="o">=</span> <span class="n">getNewFile</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+            <span class="n">receivedFile</span><span class="o">.</span><span class="na">transferTo</span><span class="o">(</span><span class="n">newFile</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">newFile</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">logger</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="n">e</span><span class="o">.</span><span class="na">getMessage</span><span class="o">(),</span> <span class="n">e</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">empty</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>First here we notice we have a <code class="highlighter-rouge">@Value</code> annotation. That is the way we insert properties from the <code class="highlighter-rouge">application.properties</code> file in our Java code. This means we will need to add a new line in the <code class="highlighter-rouge">application.properties</code> with the path to the location where we store files: <code class="highlighter-rouge">storage.path=C:\\datadir</code>. Make sure that folder exists on you machine. Next, we transfer the multipart data to a new file on disk. The <code class="highlighter-rouge">MultipartFile</code>
+ datatype gives us a handy method to do this, but we must have a way to 
+signal the calling code if the operation failed. We use an empty <code class="highlighter-rouge">Optional</code> to signal that file saving has failed.</p>
+
+<p>We can now put this all together ny adding a controller, the basic API to test all this out:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">files</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.files.entities.Datafile</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.files.repositories.DatafileRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.files.services.FileStorageService</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.HttpStatus</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.ResponseEntity</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMethod</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestParam</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.multipart.MultipartFile</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.io.File</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.Optional</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"datafile"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">DatafileController</span> <span class="o">{</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">DatafileRepository</span> <span class="n">datafileRepository</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">FileStorageService</span> <span class="n">fileStorageService</span><span class="o">;</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">POST</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="n">ResponseEntity</span><span class="o">&lt;?&gt;</span> <span class="n">upload</span><span class="o">(</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="s">"owner"</span><span class="o">)</span> <span class="n">String</span> <span class="n">owner</span><span class="o">,</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="s">"file"</span><span class="o">)</span> <span class="n">MultipartFile</span> <span class="n">multipartFile</span>
+    <span class="o">)</span> <span class="o">{</span>
+        <span class="n">Datafile</span> <span class="n">datafile</span> <span class="o">=</span> <span class="n">datafileRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">getDatafile</span><span class="o">(</span><span class="n">multipartFile</span><span class="o">,</span> <span class="n">owner</span><span class="o">));</span>
+        <span class="n">Optional</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span> <span class="n">savedFile</span> <span class="o">=</span> <span class="n">fileStorageService</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">multipartFile</span><span class="o">,</span> <span class="n">datafile</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">savedFile</span><span class="o">.</span><span class="na">isPresent</span><span class="o">())</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">ResponseEntity</span><span class="o">(</span><span class="n">HttpStatus</span><span class="o">.</span><span class="na">OK</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">datafileRepository</span><span class="o">.</span><span class="na">delete</span><span class="o">(</span><span class="n">datafile</span><span class="o">);</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ResponseEntity</span><span class="o">&lt;&gt;(</span><span class="n">HttpStatus</span><span class="o">.</span><span class="na">INTERNAL_SERVER_ERROR</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Datafile</span> <span class="nf">getDatafile</span><span class="o">(</span><span class="n">MultipartFile</span> <span class="n">multipartFile</span><span class="o">,</span> <span class="n">String</span> <span class="n">owner</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">Datafile</span> <span class="n">datafile</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Datafile</span><span class="o">();</span>
+        <span class="n">datafile</span><span class="o">.</span><span class="na">setOwner</span><span class="o">(</span><span class="n">owner</span><span class="o">);</span>
+        <span class="n">datafile</span><span class="o">.</span><span class="na">setName</span><span class="o">(</span><span class="n">multipartFile</span><span class="o">.</span><span class="na">getOriginalFilename</span><span class="o">());</span>
+        <span class="k">return</span> <span class="n">datafile</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We’ll keep the call basic for now. The controller accepts a POST call
+ with an owner name/id and a multipart file. First, we save the file 
+details to MongoDB. This operation will assign a unique ID to our <code class="highlighter-rouge">Datafile</code> entity. We then use that ID to call the <code class="highlighter-rouge">FileStorageService</code> and save the file to disk, if possible. If this operation was successful, we just return an empty <code class="highlighter-rouge">200</code> response. If saving the file to disk failed, we first make sure to delete the file from MongoDB and then we return an empty <code class="highlighter-rouge">500</code>
+ response. It’s a stripped down version of the final thing, but it will 
+let us quickly test if the service works as expected. You can start the 
+service and test it out, Postman will provide all the required 
+functionality to make a call to your new service. Upload a simple text 
+file and verify MongoDB and the local data folder to make sure it all 
+works.</p>
+
+<h2 id="post-or-put-a-file">POST or PUT a file</h2>
+
+<p>We could use either one, and since we program the backend of our API,
+ we could make a DELETE method create a new file, if we really wanted to
+ mess with the heads of the people using our API. But if we want to 
+implement a REST API that respects the definition of the REST methods, 
+our options for uploading a file are either POST or PUT, and which is 
+the right one to use depends on the way we implement its operation. The 
+difference between POST and PUT is based on the concept of <em>idempotence</em>.
+ An idempotent operation will bring the system to a clearly defined 
+state based on the parameters of that operation. The state of the system
+ will be the same even if we repeat the call, with the same parameters, 
+multiple times. Let’s say our operation is <em>create an entity with ID and DATA</em>, where <em>ID</em> and <em>DATA</em> are the parameters of the operation. When we make this call, if an entity with <em>ID</em> does not exist, it will be created with the <em>DATA</em> we provided, and if an entity with <em>ID</em> does exist, its data will be replaced with the <em>DATA</em>
+ we provided. So wether we make this call one time, or one hundred 
+times, the system will be in the exact same state at the end: we will 
+have one entity with <em>ID</em> and <em>DATA</em> in our system. 
+According to the definition of REST methods, PUT should be an idempotent
+ operation (as well as GET, DELETE, HEAD, TRACE, OPTIONS). POST, on the 
+other hand, is not required to be an idempotent operation. With POST, we
+ can just provide the <em>DATA</em> and let the system choose an <em>ID</em>. This also means that id we make a POST call with the same <em>DATA</em> multiple consecutive times, we will end up with multiple entities having the same <em>DATA</em> but different <em>IDs</em>.</p>
+
+<p>Now that we clarified this subtle difference we can see that the POST
+ method is the correct one based on the current implementation of the 
+Java function handling the call. If we look back at our user service, we
+ can see that the PUT method used there is not correctly implemented. If
+ the data given to the PUT method does not contain a user ID, a new user
+ will be created. If we make the same call multiple times without an ID,
+ we will end up with multiple users, so the system state changes with 
+each subsequent call. So our PUT implementation is not idempotent. We 
+would have to refuse to service calls to the PUT endpoint when no ID is 
+provided (for example return a BAD_REQUEST). We should also add a POST 
+endpoint for creating new users. We can quickly fix this in our user 
+service:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">POST</span><span class="o">,</span> <span class="n">consumes</span> <span class="o">=</span> <span class="s">"application/json"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="n">ResponseEntity</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span> <span class="nf">newUser</span><span class="o">(</span><span class="nd">@RequestParam</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"email"</span><span class="o">)</span> <span class="n">String</span> <span class="n">email</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">User</span> <span class="n">user</span> <span class="o">=</span> <span class="k">new</span> <span class="n">User</span><span class="o">(</span><span class="n">email</span><span class="o">);</span>
+    <span class="n">User</span> <span class="n">savedUser</span> <span class="o">=</span> <span class="n">userRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">user</span><span class="o">);</span>
+    <span class="k">return</span> <span class="k">new</span> <span class="n">ResponseEntity</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;(</span><span class="n">savedUser</span><span class="o">,</span> <span class="n">HttpStatus</span><span class="o">.</span><span class="na">OK</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">PUT</span><span class="o">,</span> <span class="n">consumes</span> <span class="o">=</span> <span class="s">"application/json"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="n">ResponseEntity</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span> <span class="nf">saveOrUpdateUser</span><span class="o">(</span><span class="nd">@RequestBody</span> <span class="n">User</span> <span class="n">user</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">user</span><span class="o">.</span><span class="na">getId</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">User</span> <span class="n">savedUser</span> <span class="o">=</span> <span class="n">userRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">user</span><span class="o">);</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="n">ResponseEntity</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;(</span><span class="n">savedUser</span><span class="o">,</span> <span class="n">HttpStatus</span><span class="o">.</span><span class="na">OK</span><span class="o">);</span>
+    <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="n">ResponseEntity</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;(</span><span class="n">HttpStatus</span><span class="o">.</span><span class="na">BAD_REQUEST</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="downloading-files">Downloading files</h2>
+
+<p>We next implement the file download controller:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">files</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.files.entities.Datafile</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.files.repositories.DatafileRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.files.services.FileStorageService</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.apache.tomcat.util.http.fileupload.IOUtils</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.slf4j.Logger</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.slf4j.LoggerFactory</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.HttpStatus</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.PathVariable</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMethod</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">javax.servlet.http.HttpServletResponse</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.FileInputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"download"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">DownloadController</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="n">Logger</span> <span class="n">logger</span> <span class="o">=</span> <span class="n">LoggerFactory</span><span class="o">.</span><span class="na">getLogger</span><span class="o">(</span><span class="n">DownloadController</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">DatafileRepository</span> <span class="n">datafileRepository</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">FileStorageService</span> <span class="n">fileStorageService</span><span class="o">;</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"{id}"</span><span class="o">,</span> <span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">GET</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">getFile</span><span class="o">(</span>
+            <span class="nd">@PathVariable</span><span class="o">(</span><span class="s">"id"</span><span class="o">)</span> <span class="n">String</span> <span class="n">id</span><span class="o">,</span>
+            <span class="n">HttpServletResponse</span> <span class="n">response</span>
+    <span class="o">)</span> <span class="o">{</span>
+        <span class="n">Datafile</span> <span class="n">datafile</span> <span class="o">=</span> <span class="n">datafileRepository</span><span class="o">.</span><span class="na">findOne</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">datafile</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">response</span><span class="o">.</span><span class="na">addHeader</span><span class="o">(</span><span class="s">"Content-Type"</span><span class="o">,</span> <span class="s">"application/octet-stream"</span><span class="o">);</span>
+            <span class="n">response</span><span class="o">.</span><span class="na">addHeader</span><span class="o">(</span><span class="s">"Content-Disposition"</span><span class="o">,</span> <span class="n">getFilenameHeader</span><span class="o">(</span><span class="n">datafile</span><span class="o">));</span>
+            <span class="n">FileInputStream</span> <span class="n">inputStream</span> <span class="o">=</span> <span class="n">fileStorageService</span><span class="o">.</span><span class="na">getInputStream</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">inputStream</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="k">try</span> <span class="o">{</span>
+                    <span class="n">IOUtils</span><span class="o">.</span><span class="na">copy</span><span class="o">(</span><span class="n">inputStream</span><span class="o">,</span> <span class="n">response</span><span class="o">.</span><span class="na">getOutputStream</span><span class="o">());</span>
+                    <span class="n">response</span><span class="o">.</span><span class="na">flushBuffer</span><span class="o">();</span>
+                <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="n">e</span><span class="o">.</span><span class="na">getMessage</span><span class="o">(),</span> <span class="n">e</span><span class="o">);</span>
+                    <span class="n">response</span><span class="o">.</span><span class="na">setStatus</span><span class="o">(</span><span class="n">HttpStatus</span><span class="o">.</span><span class="na">INTERNAL_SERVER_ERROR</span><span class="o">.</span><span class="na">value</span><span class="o">());</span>
+                <span class="o">}</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">response</span><span class="o">.</span><span class="na">setStatus</span><span class="o">(</span><span class="n">HttpStatus</span><span class="o">.</span><span class="na">NOT_FOUND</span><span class="o">.</span><span class="na">value</span><span class="o">());</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">response</span><span class="o">.</span><span class="na">setStatus</span><span class="o">(</span><span class="n">HttpStatus</span><span class="o">.</span><span class="na">NOT_FOUND</span><span class="o">.</span><span class="na">value</span><span class="o">());</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getFilenameHeader</span><span class="o">(</span><span class="n">Datafile</span> <span class="n">datafile</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="s">"attachment; filename=\""</span> <span class="o">+</span> <span class="n">datafile</span><span class="o">.</span><span class="na">getName</span><span class="o">()</span> <span class="o">+</span> <span class="s">"\""</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We have a few new elements in the implementation of this controller. 
+First, the id of the file we are downloading should be provide din the 
+URL, as part of the path. This is more in line with a REST approach 
+where entities in your system are viewed as resources, with their unique
+ URLs. As a future refactoring of the services, it would make sense to 
+move entity ids in URLs, so our system has a consistent way of 
+addressing data. We access the id in the path using the <code class="highlighter-rouge">@PathVariable</code>
+ annotation. We also inject the response in the Java method parameters 
+(Spring will automatically refer the right response object for us). We 
+first load our file metadata, making sure that the file exists, at leat 
+in the database, and obtaining the original file name in the process. 
+Next, we add some headers to the response. The <code class="highlighter-rouge">Content-Disposition</code>
+ header lets us instruct the browser or tool or service downloading the 
+file what the downloaded file name should be. Finally, we obtain an 
+input stream from the <code class="highlighter-rouge">FileStorageService</code> and write the contents of that input stream to the response output stream. The new method in <code class="highlighter-rouge">FileStorageService</code> is:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="n">FileInputStream</span> <span class="nf">getInputStream</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">File</span> <span class="n">file</span> <span class="o">=</span> <span class="n">getFile</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">FileInputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">FileNotFoundException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">logger</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="n">e</span><span class="o">.</span><span class="na">getMessage</span><span class="o">(),</span> <span class="n">e</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="a-controller-for-all-files">A controller for all files</h2>
+
+<p>I am just adding the code for the controller that gives us 
+information about all files in our database, just so the code is 
+complete up to this point. This controller is almost identical to the 
+collections controller in the users microservice:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">files</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.files.entities.Datafile</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.files.repositories.DatafileRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.Page</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.PageRequest</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.Pageable</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMethod</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestParam</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.List</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"datafiles"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">DatafileCollectionController</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kt">int</span> <span class="n">PAGE</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kt">int</span> <span class="n">SIZE</span> <span class="o">=</span> <span class="mi">10</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">DatafileRepository</span> <span class="n">datafileRepository</span><span class="o">;</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">GET</span><span class="o">,</span>
+            <span class="n">produces</span> <span class="o">=</span> <span class="s">"application/json"</span>
+    <span class="o">)</span>
+    <span class="kd">public</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">Datafile</span><span class="o">&gt;</span> <span class="nf">getAllDatafiles</span><span class="o">(</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"page"</span><span class="o">,</span> <span class="n">required</span> <span class="o">=</span> <span class="kc">false</span><span class="o">)</span> <span class="n">Integer</span> <span class="n">page</span><span class="o">,</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"size"</span><span class="o">,</span> <span class="n">required</span> <span class="o">=</span> <span class="kc">false</span><span class="o">)</span> <span class="n">Integer</span> <span class="n">size</span>
+    <span class="o">)</span> <span class="o">{</span>
+        <span class="n">Pageable</span> <span class="n">pageRequest</span> <span class="o">=</span> <span class="n">getPageRequest</span><span class="o">(</span><span class="n">page</span><span class="o">,</span> <span class="n">size</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">pageRequest</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">Page</span><span class="o">&lt;</span><span class="n">Datafile</span><span class="o">&gt;</span> <span class="n">resultPage</span> <span class="o">=</span> <span class="n">datafileRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">(</span><span class="n">pageRequest</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">resultPage</span><span class="o">.</span><span class="na">getContent</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">datafileRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Pageable</span> <span class="nf">getPageRequest</span><span class="o">(</span><span class="n">Integer</span> <span class="n">page</span><span class="o">,</span> <span class="n">Integer</span> <span class="n">size</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">page</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">size</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">size</span> <span class="o">=</span> <span class="n">SIZE</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">PageRequest</span><span class="o">(</span><span class="n">page</span><span class="o">,</span> <span class="n">size</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">size</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">PageRequest</span><span class="o">(</span><span class="n">PAGE</span><span class="o">,</span> <span class="n">size</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="analysis-services">Analysis services</h2>
+
+<p>What we need now is to add ability to analyze the datasets we have in
+ the system. This functionality will be split into two services, one to 
+submit analysis requests to a queue and the second service to run the 
+analysis. Since running an analysis is a resource consuming process, we 
+expect that down the line we will need to deploy several analysis 
+running services to ease the load on our system.</p>
+
+<p>The service itself will be very simple; named <code class="highlighter-rouge">com.msdm.analysis</code>, with <code class="highlighter-rouge">Web</code> and <code class="highlighter-rouge">MongoDB</code> dependencies and running on a different port and databse:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spring.data.mongodb.database=analysisdb
+server.port=8091
+</code></pre></div></div>
+
+<p>Our entity is the <code class="highlighter-rouge">Analysis</code>, and for now it only needs to store very little information:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">analysis</span><span class="o">.</span><span class="na">entities</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.data.annotation.Id</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.Date</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Analysis</span> <span class="o">{</span>
+
+    <span class="nd">@Id</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">id</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">owner</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">fileId</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">Date</span> <span class="n">created</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">Date</span> <span class="n">started</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">Date</span> <span class="n">completed</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">result</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getId</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">id</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setId</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">id</span> <span class="o">=</span> <span class="n">id</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getOwner</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">owner</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setOwner</span><span class="o">(</span><span class="n">String</span> <span class="n">owner</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">owner</span> <span class="o">=</span> <span class="n">owner</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getFileId</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">fileId</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setFileId</span><span class="o">(</span><span class="n">String</span> <span class="n">fileId</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">fileId</span> <span class="o">=</span> <span class="n">fileId</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Date</span> <span class="nf">getCreated</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">created</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setCreated</span><span class="o">(</span><span class="n">Date</span> <span class="n">created</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">created</span> <span class="o">=</span> <span class="n">created</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Date</span> <span class="nf">getStarted</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">started</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setStarted</span><span class="o">(</span><span class="n">Date</span> <span class="n">started</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">started</span> <span class="o">=</span> <span class="n">started</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Date</span> <span class="nf">getCompleted</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">completed</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setCompleted</span><span class="o">(</span><span class="n">Date</span> <span class="n">completed</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">completed</span> <span class="o">=</span> <span class="n">completed</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">String</span> <span class="nf">getResult</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">result</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setResult</span><span class="o">(</span><span class="n">String</span> <span class="n">result</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">result</span> <span class="o">=</span> <span class="n">result</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The <code class="highlighter-rouge">AnalysisRepository</code> is, again, the basic version of a Mongo repository:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">analysis</span><span class="o">.</span><span class="na">repositories</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.mongodb.repository.MongoRepository</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">interface</span> <span class="nc">AnalysisRepository</span> <span class="kd">extends</span> <span class="n">MongoRepository</span><span class="o">&lt;</span><span class="n">Analysis</span><span class="o">,</span> <span class="n">String</span><span class="o">&gt;</span> <span class="o">{</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We will also need the customary controllers, for working with a single analysis and a collection of analyses:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">analysis</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.repositories.AnalysisRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.*</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.Date</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="s">"analysis"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">AnalysisController</span> <span class="o">{</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">AnalysisRepository</span> <span class="n">analysisRepository</span><span class="o">;</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">POST</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="n">Analysis</span> <span class="nf">createAnalysis</span><span class="o">(</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="s">"owner"</span><span class="o">)</span> <span class="n">String</span> <span class="n">owner</span><span class="o">,</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="s">"fileId"</span><span class="o">)</span> <span class="n">String</span> <span class="n">fileId</span>
+    <span class="o">)</span> <span class="o">{</span>
+        <span class="n">Analysis</span> <span class="n">analysis</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Analysis</span><span class="o">();</span>
+        <span class="n">analysis</span><span class="o">.</span><span class="na">setOwner</span><span class="o">(</span><span class="n">owner</span><span class="o">);</span>
+        <span class="n">analysis</span><span class="o">.</span><span class="na">setFileId</span><span class="o">(</span><span class="n">fileId</span><span class="o">);</span>
+        <span class="n">analysis</span><span class="o">.</span><span class="na">setCreated</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">());</span>
+        <span class="n">Analysis</span> <span class="n">savedAnalysis</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">analysis</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">savedAnalysis</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"{id}"</span><span class="o">,</span> <span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">GET</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="n">Analysis</span> <span class="nf">getAnalysis</span><span class="o">(</span><span class="nd">@PathVariable</span><span class="o">(</span><span class="s">"id"</span><span class="o">)</span> <span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">findOne</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">analysis</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.repositories.AnalysisRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.Page</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.PageRequest</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.Pageable</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMethod</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestParam</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.List</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="s">"analyses"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">AnalysisCollectionController</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kt">int</span> <span class="n">PAGE</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kt">int</span> <span class="n">SIZE</span> <span class="o">=</span> <span class="mi">10</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">AnalysisRepository</span> <span class="n">analysisRepository</span><span class="o">;</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">GET</span><span class="o">,</span>
+            <span class="n">produces</span> <span class="o">=</span> <span class="s">"application/json"</span>
+    <span class="o">)</span>
+    <span class="kd">public</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">Analysis</span><span class="o">&gt;</span> <span class="nf">getAllAnalyses</span><span class="o">(</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"page"</span><span class="o">,</span> <span class="n">required</span> <span class="o">=</span> <span class="kc">false</span><span class="o">)</span> <span class="n">Integer</span> <span class="n">page</span><span class="o">,</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"size"</span><span class="o">,</span> <span class="n">required</span> <span class="o">=</span> <span class="kc">false</span><span class="o">)</span> <span class="n">Integer</span> <span class="n">size</span>
+    <span class="o">)</span> <span class="o">{</span>
+        <span class="n">Pageable</span> <span class="n">pageRequest</span> <span class="o">=</span> <span class="n">getPageRequest</span><span class="o">(</span><span class="n">page</span><span class="o">,</span> <span class="n">size</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">pageRequest</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">Page</span><span class="o">&lt;</span><span class="n">Analysis</span><span class="o">&gt;</span> <span class="n">resultPage</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">(</span><span class="n">pageRequest</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">resultPage</span><span class="o">.</span><span class="na">getContent</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Pageable</span> <span class="nf">getPageRequest</span><span class="o">(</span><span class="n">Integer</span> <span class="n">page</span><span class="o">,</span> <span class="n">Integer</span> <span class="n">size</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">page</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">size</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">size</span> <span class="o">=</span> <span class="n">SIZE</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">PageRequest</span><span class="o">(</span><span class="n">page</span><span class="o">,</span> <span class="n">size</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">size</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">PageRequest</span><span class="o">(</span><span class="n">PAGE</span><span class="o">,</span> <span class="n">size</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>What is more interesting about this service is that we will need to 
+provide an interface to communicate to the executer service which 
+analysis is next in line:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">analysis</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.repositories.AnalysisRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.PageRequest</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.Pageable</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.data.domain.Sort</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMethod</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.Date</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.Optional</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="s">"scheduler"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">SchedulingController</span> <span class="o">{</span>
+
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">AnalysisRepository</span> <span class="n">analysisRepository</span><span class="o">;</span>
+
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">POST</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="n">Analysis</span> <span class="nf">getNextAnalysis</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">Optional</span><span class="o">&lt;</span><span class="n">Analysis</span><span class="o">&gt;</span> <span class="n">first</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">().</span><span class="na">stream</span><span class="o">()</span>
+                <span class="o">.</span><span class="na">filter</span><span class="o">(</span><span class="n">a</span> <span class="o">-&gt;</span> <span class="n">a</span><span class="o">.</span><span class="na">getStarted</span><span class="o">()</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+                <span class="o">.</span><span class="na">filter</span><span class="o">(</span><span class="n">a</span> <span class="o">-&gt;</span> <span class="n">a</span><span class="o">.</span><span class="na">getCompleted</span><span class="o">()</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+                <span class="o">.</span><span class="na">findFirst</span><span class="o">();</span>
+
+        <span class="k">if</span> <span class="o">(</span><span class="n">first</span><span class="o">.</span><span class="na">isPresent</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">Analysis</span> <span class="n">analysis</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="na">get</span><span class="o">();</span>
+            <span class="n">analysis</span><span class="o">.</span><span class="na">setStarted</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">());</span>
+            <span class="n">Analysis</span> <span class="n">savedAnalysis</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">analysis</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">savedAnalysis</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>For right this moment we’ll implement a very basic scheduler. Using 
+Java 8 streams, we’ll load all analyses in our database, filter out the 
+ones that are already started or completed and just pick one that was 
+not started yet. This is a very inefficient and unfair implementation of
+ the scheduler. We can improve this by making Mongo filter out the 
+results we need, and even add some ordering to the next analysis, for 
+example execute analyses in the order in which they were added. These 
+are all changes we can consider doing once we start testing out our 
+whole system. One more thing to mention about this service is that we 
+are using the POST method to obtain the next analysis in line. We are 
+not submitting any data for this call, we are only receiving something, 
+so should this not be a GET call? Now if we want to respect the 
+idempotency of the HTTP methods as it is defined in the standards. 
+Multiple calls to this method will alter the system state by selecting 
+and marking an analysis as started in each call. We are choosing to use 
+POST as a way to make it evident that there are hidden operations being 
+performed.</p>
+
+<p>We need one more API to let the executer service communicate the result of the analysis to the analysis service:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">analysis</span><span class="o">.</span><span class="na">controllers</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.msdm.analysis.repositories.AnalysisRepository</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.*</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.Date</span><span class="o">;</span>
+
+<span class="nd">@RestController</span>
+<span class="nd">@RequestMapping</span><span class="o">(</span><span class="s">"result"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ResultController</span> <span class="o">{</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">AnalysisRepository</span> <span class="n">analysisRepository</span><span class="o">;</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"failed/{id}"</span><span class="o">,</span> <span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">POST</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="n">Analysis</span> <span class="nf">failedAnalysis</span><span class="o">(</span><span class="nd">@PathVariable</span><span class="o">(</span><span class="s">"id"</span><span class="o">)</span> <span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">Analysis</span> <span class="n">analysis</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">findOne</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">analysis</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">analysis</span><span class="o">.</span><span class="na">setStarted</span><span class="o">(</span><span class="kc">null</span><span class="o">);</span>
+            <span class="n">Analysis</span> <span class="n">savedAnalysis</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">analysis</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">savedAnalysis</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"success/{id}"</span><span class="o">,</span> <span class="n">method</span> <span class="o">=</span> <span class="n">RequestMethod</span><span class="o">.</span><span class="na">POST</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="n">Analysis</span> <span class="nf">successAnalysis</span><span class="o">(</span>
+            <span class="nd">@PathVariable</span><span class="o">(</span><span class="s">"id"</span><span class="o">)</span> <span class="n">String</span> <span class="n">id</span><span class="o">,</span>
+            <span class="nd">@RequestParam</span><span class="o">(</span><span class="s">"result"</span><span class="o">)</span> <span class="n">String</span> <span class="n">result</span>
+    <span class="o">)</span> <span class="o">{</span>
+        <span class="n">Analysis</span> <span class="n">analysis</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">findOne</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">analysis</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">analysis</span><span class="o">.</span><span class="na">setCompleted</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">());</span>
+            <span class="n">analysis</span><span class="o">.</span><span class="na">setResult</span><span class="o">(</span><span class="n">result</span><span class="o">);</span>
+            <span class="n">Analysis</span> <span class="n">savedAnalysis</span> <span class="o">=</span> <span class="n">analysisRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">analysis</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">savedAnalysis</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>This interface will have two POST endpoints, on that marks an 
+analysis as failed and adds it back to the pool of analyses that need to
+ run, and the second one that marks the analysis as successful and saves
+ the result of the analysis. There is much more we could add to improve 
+the functionality of this service: some error handling and signaling, 
+absolutely necessary to add some unit tests, and we’ll get to those 
+later. But right now we can run it and do a minor sanity check using 
+Postman.</p>
+
+<h2 id="the-executer">The executer</h2>
+
+<p>The executer service will do very little, but it will be the first 
+service in the system that can’t function without communicating with 
+another service. The executer service will need to call the analysis 
+service to get the next analysis that it must run. After running the 
+analysis, it must call the analysis service again to report the result. 
+In between, we would also need to make a call to the file service and 
+download the actual data to the executer service (in case of a real 
+implementation). We’ll need to generate a <code class="highlighter-rouge">com.msdm.executer</code> service with just <code class="highlighter-rouge">Web</code>
+ dependency, then copy this new project to our workspace. After opening 
+the project, we first need to make sure that the configuration is good. 
+We’ll need to run this service on a new port, and since this service 
+communicates with other services, we will need to provide a way for it 
+to find the other services. This will be done through properties, for 
+the time being:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>server.port=8092
+
+analysis.url=http://localhost:8091
+analysis.endpoint.scheduler=scheduler
+analysis.endpoint.failure=result/failed
+analysis.endpoint.success=result/success
+
+file.url=http://localhost:8090
+file.endpoint.download=download
+</code></pre></div></div>
+
+<p>Next, we will need to initialize the rest template, the object we 
+will use to make REST calls to other services. We do this by adding a 
+method annotated with @Bean in our application configuration class, 
+which in this case is also the starting point of the microservice:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">executer</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.context.annotation.Bean</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.converter.json.MappingJackson2HttpMessageConverter</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.stereotype.Component</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.client.RestTemplate</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="nd">@EnableScheduling</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ExecuterApplication</span> <span class="o">{</span>
+
+	<span class="nd">@Bean</span>
+	<span class="kd">public</span> <span class="n">RestTemplate</span> <span class="nf">initializeRestTemplate</span><span class="o">()</span> <span class="o">{</span>
+		<span class="n">RestTemplate</span> <span class="n">restTemplate</span> <span class="o">=</span> <span class="k">new</span> <span class="n">RestTemplate</span><span class="o">();</span>
+		<span class="c1">// restTemplate.getMessageConverters().add(new MappingJackson2HttpMessageConverter());</span>
+		<span class="k">return</span> <span class="n">restTemplate</span><span class="o">;</span>
+	<span class="o">}</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="n">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="n">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="n">ExecuterApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>By doing this, we can configure the REST template in a single place 
+and use is everywhere in the application (but the default REST template 
+will do for now). You may notice something else there as well, the <code class="highlighter-rouge">@EnableScheduling</code> annotation. We will come back to that later.</p>
+
+<p>The we will need to add two (internal) service classes, one to handle
+ communication with the analysis service and the other one to download 
+the files we need to run analyses on.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">executer</span><span class="o">.</span><span class="na">services</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.executer.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Value</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.core.ParameterizedTypeReference</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.HttpMethod</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.ResponseEntity</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.stereotype.Component</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.util.LinkedMultiValueMap</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.util.MultiValueMap</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.client.RestTemplate</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">javax.annotation.PostConstruct</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.net.URISyntaxException</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.List</span><span class="o">;</span>
+
+<span class="nd">@Component</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">AnalysisService</span> <span class="o">{</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${analysis.url}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">analysisServiceUrl</span><span class="o">;</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${analysis.endpoint.scheduler}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">schedulerEndpoint</span><span class="o">;</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${analysis.endpoint.failure}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">failureEndpoint</span><span class="o">;</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${analysis.endpoint.success}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">successEndpoint</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">RestTemplate</span> <span class="n">restTemplate</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getFullUrl</span><span class="o">(</span><span class="n">String</span> <span class="n">relativeURl</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">StringBuilder</span> <span class="n">builder</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">(</span><span class="n">analysisServiceUrl</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(!</span> <span class="n">analysisServiceUrl</span><span class="o">.</span><span class="na">endsWith</span><span class="o">(</span><span class="s">"/"</span><span class="o">))</span> <span class="n">builder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">"/"</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">relativeURl</span><span class="o">.</span><span class="na">startsWith</span><span class="o">(</span><span class="s">"/"</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">relativeURl</span><span class="o">.</span><span class="na">substring</span><span class="o">(</span><span class="mi">1</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">relativeURl</span><span class="o">);</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="n">builder</span><span class="o">.</span><span class="na">toString</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">Analysis</span> <span class="nf">loadNextAnalysis</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">Analysis</span> <span class="n">analysis</span> <span class="o">=</span> <span class="n">restTemplate</span><span class="o">.</span><span class="na">postForObject</span><span class="o">(</span><span class="n">getFullUrl</span><span class="o">(</span><span class="n">schedulerEndpoint</span><span class="o">),</span> <span class="kc">null</span><span class="o">,</span> <span class="n">Analysis</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">analysis</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">signalFailure</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">url</span> <span class="o">=</span> <span class="n">getFullUrl</span><span class="o">(</span><span class="n">failureEndpoint</span><span class="o">)</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">id</span><span class="o">;</span>
+        <span class="n">restTemplate</span><span class="o">.</span><span class="na">postForObject</span><span class="o">(</span><span class="n">url</span><span class="o">,</span> <span class="kc">null</span><span class="o">,</span> <span class="n">String</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">signalSuccess</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">,</span> <span class="n">String</span> <span class="n">result</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">URISyntaxException</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">url</span> <span class="o">=</span> <span class="n">getFullUrl</span><span class="o">(</span><span class="n">successEndpoint</span><span class="o">)</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">id</span><span class="o">;</span>
+
+        <span class="n">MultiValueMap</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">String</span><span class="o">&gt;</span> <span class="n">parametersMap</span> <span class="o">=</span> <span class="k">new</span> <span class="n">LinkedMultiValueMap</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">String</span><span class="o">&gt;();</span>
+        <span class="n">parametersMap</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="s">"result"</span><span class="o">,</span> <span class="n">result</span><span class="o">);</span>
+
+        <span class="n">restTemplate</span><span class="o">.</span><span class="na">postForObject</span><span class="o">(</span><span class="n">url</span><span class="o">,</span> <span class="n">parametersMap</span><span class="o">,</span> <span class="n">String</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We are loading field values with the relevant URLs to access the 
+analysis service from our properties file. We are also autowiring the 
+REST template. Our class will have three methods. The first one loads an
+ analysis. We need to define an entity object in our executer service so
+ we can save the JSON response we get from the analysis service to it. 
+An <code class="highlighter-rouge">Analysis</code> entity that is 
+identical to the one in the analysis service will do. With the second 
+method, we call the analysis service to signal that the analysis has 
+failed. The last method signals a success and also sends the result as a
+ string.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">executer</span><span class="o">.</span><span class="na">services</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Value</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.http.*</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.stereotype.Component</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.client.RestTemplate</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">javax.annotation.PostConstruct</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.net.URISyntaxException</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.Arrays</span><span class="o">;</span>
+
+<span class="nd">@Component</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">FileService</span> <span class="o">{</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${file.url}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">fileServiceUrl</span><span class="o">;</span>
+
+    <span class="nd">@Value</span><span class="o">(</span><span class="s">"${file.endpoint.download}"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">downloadEndpoint</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">RestTemplate</span> <span class="n">restTemplate</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">downloadFile</span><span class="o">(</span><span class="n">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">url</span> <span class="o">=</span> <span class="n">fileServiceUrl</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">downloadEndpoint</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">id</span><span class="o">;</span>
+
+        <span class="n">HttpHeaders</span> <span class="n">headers</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HttpHeaders</span><span class="o">();</span>
+        <span class="n">headers</span><span class="o">.</span><span class="na">setAccept</span><span class="o">(</span><span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="n">MediaType</span><span class="o">.</span><span class="na">APPLICATION_OCTET_STREAM</span><span class="o">));</span>
+
+        <span class="n">HttpEntity</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">entity</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HttpEntity</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;(</span><span class="n">headers</span><span class="o">);</span>
+
+        <span class="n">ResponseEntity</span><span class="o">&lt;</span><span class="kt">byte</span><span class="o">[]&gt;</span> <span class="n">response</span> <span class="o">=</span> <span class="n">restTemplate</span><span class="o">.</span><span class="na">exchange</span><span class="o">(</span>
+                <span class="n">url</span><span class="o">,</span>
+                <span class="n">HttpMethod</span><span class="o">.</span><span class="na">GET</span><span class="o">,</span> <span class="n">entity</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[].</span><span class="na">class</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="na">getBody</span><span class="o">();</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>File download is not much harder. The <code class="highlighter-rouge">FileService</code>
+ class has one method that downloads the file from the file service and 
+keeps it in memory, as a byte array. This may work for smaller files, 
+but if our system will need to handle large files we’ll need to find a 
+way to enable that. On the other hand, since files are now kept in 
+memory, the analysis should run very fast.</p>
+
+<p>But that will not be the case, because our playground implementation 
+needs to simulate a service that consumes a large amount of resources, 
+and we’ll focus on making time the most used resource:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="n">com</span><span class="o">.</span><span class="na">msdm</span><span class="o">.</span><span class="na">executer</span><span class="o">.</span><span class="na">services</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.msdm.executer.entities.Analysis</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.slf4j.Logger</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.slf4j.LoggerFactory</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.scheduling.annotation.Scheduled</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.stereotype.Component</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.util.Arrays</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.Random</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.concurrent.ExecutorService</span><span class="o">;</span>
+
+<span class="nd">@Component</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ExecuterService</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">Logger</span> <span class="n">logger</span> <span class="o">=</span> <span class="n">LoggerFactory</span><span class="o">.</span><span class="na">getLogger</span><span class="o">(</span><span class="n">ExecutorService</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">AnalysisService</span> <span class="n">analysisService</span><span class="o">;</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">FileService</span> <span class="n">fileService</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="kt">int</span> <span class="n">chance</span> <span class="o">=</span> <span class="mi">1000</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">Random</span> <span class="n">random</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Random</span><span class="o">(</span><span class="n">System</span><span class="o">.</span><span class="na">currentTimeMillis</span><span class="o">());</span>
+
+    <span class="nd">@Scheduled</span><span class="o">(</span><span class="n">fixedRate</span> <span class="o">=</span> <span class="mi">5000</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">execute</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"retrieving analysis"</span><span class="o">);</span>
+        <span class="n">Analysis</span> <span class="n">analysis</span> <span class="o">=</span> <span class="n">analysisService</span><span class="o">.</span><span class="na">loadNextAnalysis</span><span class="o">();</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">analysis</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"running analysis "</span> <span class="o">+</span> <span class="n">analysis</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+            <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"downloading file "</span> <span class="o">+</span> <span class="n">analysis</span><span class="o">.</span><span class="na">getFileId</span><span class="o">());</span>
+            <span class="kt">byte</span><span class="o">[]</span> <span class="n">bytes</span> <span class="o">=</span> <span class="n">fileService</span><span class="o">.</span><span class="na">downloadFile</span><span class="o">(</span><span class="n">analysis</span><span class="o">.</span><span class="na">getFileId</span><span class="o">());</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">bytes</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"file downloaded successfully"</span><span class="o">);</span>
+                <span class="n">chance</span> <span class="o">=</span> <span class="n">bytes</span><span class="o">.</span><span class="na">length</span><span class="o">;</span>
+                <span class="k">try</span> <span class="o">{</span>
+                    <span class="n">String</span> <span class="n">result</span> <span class="o">=</span> <span class="n">process</span><span class="o">(</span><span class="n">bytes</span><span class="o">);</span>
+                    <span class="n">analysisService</span><span class="o">.</span><span class="na">signalSuccess</span><span class="o">(</span><span class="n">analysis</span><span class="o">.</span><span class="na">getId</span><span class="o">(),</span> <span class="n">result</span><span class="o">);</span>
+                <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="n">e</span><span class="o">.</span><span class="na">getMessage</span><span class="o">(),</span> <span class="n">e</span><span class="o">);</span>
+                    <span class="n">analysisService</span><span class="o">.</span><span class="na">signalFailure</span><span class="o">(</span><span class="n">analysis</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+                <span class="o">}</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"file download failed"</span><span class="o">);</span>
+                <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"analysis failed"</span><span class="o">);</span>
+                <span class="n">analysisService</span><span class="o">.</span><span class="na">signalFailure</span><span class="o">(</span><span class="n">analysis</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">logger</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"no analysis to schedule, will try again later"</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">process</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">data</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+        <span class="n">StringBuilder</span> <span class="n">builder</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+        <span class="k">for</span> <span class="o">(</span><span class="kt">byte</span> <span class="nl">b:</span> <span class="n">data</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">Character</span> <span class="n">character</span> <span class="o">=</span> <span class="n">process</span><span class="o">(</span><span class="n">b</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">character</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">builder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">character</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="n">builder</span><span class="o">.</span><span class="na">toString</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Character</span> <span class="nf">process</span><span class="o">(</span><span class="kt">byte</span> <span class="n">b</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+        <span class="kt">int</span> <span class="n">r</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="na">nextInt</span><span class="o">(</span><span class="n">chance</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">r</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">Exception</span><span class="o">(</span><span class="s">"this analysis has failed because of "</span> <span class="o">+</span> <span class="n">r</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">r</span> <span class="o">&lt;</span> <span class="n">chance</span><span class="o">/</span><span class="mi">100</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="o">(</span><span class="kt">char</span><span class="o">)</span> <span class="n">b</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>This is a weird service. The service is tasked with periodically running analyses. The <code class="highlighter-rouge">execute()</code> method is annotated <code class="highlighter-rouge">@Scheduled</code> to let Spring know it should try to run that method every 5 seconds. When we use <code class="highlighter-rouge">@EnableScheduling</code> on the application entry class we let Spring know it should scan for <code class="highlighter-rouge">@Scheduled</code>
+ annotations. This all means our application will try to download and 
+run an analysis every five seconds. How the analysis is “run” is another
+ matter. All this code does is go over every byte in the dataset, 
+generate a random integer and do something with that byte based on the 
+integer. If the integer is zero, the whole analysis will fail. If the 
+random integer is less that 1% the size of the dataset, the byte will be
+ converted into a char and added to the result string. The byte is 
+selected from the interval 0 to size of the dataset, which means that in
+ a larger dataset, the chance for getting a random 0 and failing the 
+analysis is smaller at each step, but we have more steps than with a 
+small dataset. I don’t know how balanced the odds are, the main point is
+ the service is performing some random computation that has a chance of 
+failure. Later, when we test the whole system, we can add a sleep 
+operation in there, possibly with a random interval, that will slow this
+ microservice down and force use to experiment with creating multiple 
+instances of the service to handle a higher load to the system.</p>
+
+<p>That will be all for now. I believe that at this moment we have 
+enough code to start looking into connecting the whole system together, 
+in the next part of the workshop.</p>
+
+
+
+
+</body></html>

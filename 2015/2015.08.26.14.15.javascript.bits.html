@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="It’s an amusing occurrence when you scan some beginner material, dismissing chapter after chapter as something you already know until you’re surprised to find out some very basic info you did not know. Exactly so I amused myself as I was skimming David Sawyer McFarland’s book “JavaScript &amp; jQuery”. Here’s to those small details that escape us as we learn a new subject and delight us when we discover them years later - the bits.">
+
+    <title>JavaScript beginner bits</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.08.26 14:15</span>
+    
+        <span>/</span><span class="tag">javascript</span>
+    
+        <span>/</span><span class="tag">jquery</span>
+    
+        <span>/</span><span class="tag">bits</span>
+    
+</p>
+<h1 class="title">JavaScript beginner bits</h1>
+
+<p>It’s an amusing occurrence when you scan some beginner material, 
+dismissing chapter after chapter as something you already know until 
+you’re surprised to find out some very basic info you did not know. 
+Exactly so I amused myself as I was skimming <a href="http://shop.oreilly.com/product/0636920015048.do">David Sawyer McFarland’s book “JavaScript &amp; jQuery”</a>.
+ Here’s to those small details that escape us as we learn a new subject 
+and delight us when we discover them years later - the bits.</p>
+
+<h2 id="jquery-delegate">jQuery delegate</h2>
+<p>With jQuery it’s very easy to add event handling to elements in the page using the <em>bind</em> function or shorthand functions for specific events, like <em>click</em>.
+ These functions will only work for elements that are currently on the 
+page. If you create elements dynamically, you’ll have to remember to 
+bind the desired events to new elements as you add them to the page. The
+ good bit is that jQuery provides a different method for binding events 
+to present and future events. The <em>delegate</em> method receives a 
+selector, an event and the function that will run when that event is 
+triggered. The function is bound to the specified event for all existing
+ and future elements that match the selector. Here’s a short piece of 
+code exemplifying this:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">$</span><span class="p">(</span><span class="nb">document</span><span class="p">).</span><span class="nx">ready</span><span class="p">(</span><span class="kd">function</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nx">$</span><span class="p">(</span><span class="nb">document</span><span class="p">).</span><span class="nx">delegate</span><span class="p">(</span><span class="s2">".add &gt; input"</span><span class="p">,</span> <span class="s2">"click"</span><span class="p">,</span> <span class="nx">add</span><span class="p">);</span>
+    <span class="nx">$</span><span class="p">(</span><span class="nb">document</span><span class="p">).</span><span class="nx">delegate</span><span class="p">(</span><span class="s2">".remove &gt; input"</span><span class="p">,</span> <span class="s2">"click"</span><span class="p">,</span> <span class="nx">remove</span><span class="p">);</span>
+<span class="p">});</span>
+<span class="kd">function</span> <span class="nx">add</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">parent</span><span class="p">().</span><span class="nx">append</span><span class="p">(</span><span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">parent</span><span class="p">().</span><span class="nx">clone</span><span class="p">());</span>
+    <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">parent</span><span class="p">().</span><span class="nx">removeClass</span><span class="p">();</span>
+    <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">parent</span><span class="p">().</span><span class="nx">addClass</span><span class="p">(</span><span class="s2">"remove"</span><span class="p">);</span>
+    <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">val</span><span class="p">(</span><span class="s2">"remove"</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kd">function</span> <span class="nx">remove</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">parent</span><span class="p">().</span><span class="nx">remove</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;div</span> <span class="na">class=</span><span class="s">"add"</span><span class="nt">&gt;&lt;input</span> <span class="na">type=</span><span class="s">"button"</span> <span class="na">value=</span><span class="s">"add"</span><span class="nt">&gt;&lt;/input&gt;&lt;/div&gt;</span>
+</code></pre></div></div>
+
+<p>We have a div with a button inside it. When the button is clicked, 
+the original div is cloned and added to itself. The button of the 
+original div is changed from an add button to a remove button. All 
+events are binded dynamically, as new elements are added to the page but
+ also as existing elements change their properties. <a href="javascript_bits/delegate.html">Download the jQuery delegate test file here</a>.</p>
+
+<h2 id="saving-selectors-into-variables">Saving selectors into variables</h2>
+
+<p>This is a best practice I’m afraid I have ignored for far too long. 
+I’m mentioning it here in the hope that it will stick with me from now 
+on. The idea is that whenever you run a jQuery select, jQuery looks at 
+the whole DOM and finds the elements that fit you condition. There is no
+ caching, so every subsequent select, even if with the same condition, 
+will run the search all over again. It’s better to spare your users’ 
+computers, so just save that select result in a variable if you’re going
+ to use it multiple times. Here’s the <em>add</em> function from above refactored to respect this practice:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">add</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">parent</span> <span class="o">=</span> <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">parent</span><span class="p">();</span>
+    <span class="nx">parent</span><span class="p">.</span><span class="nx">append</span><span class="p">(</span><span class="nx">parent</span><span class="p">.</span><span class="nx">clone</span><span class="p">());</span>
+    <span class="nx">parent</span><span class="p">.</span><span class="nx">removeClass</span><span class="p">();</span>
+    <span class="nx">parent</span><span class="p">.</span><span class="nx">addClass</span><span class="p">(</span><span class="s2">"remove"</span><span class="p">);</span>
+    <span class="nx">$</span><span class="p">(</span><span class="k">this</span><span class="p">).</span><span class="nx">val</span><span class="p">(</span><span class="s2">"remove"</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="jquery-find-function">jQuery find function</h2>
+
+<p>In the same practice class as the previous point, this function can 
+be used to spare browser resources in certain scenarios. If you are 
+working inside an element and need to select child elements based on 
+some selector you could do:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">result</span> <span class="o">=</span> <span class="nx">$</span><span class="p">(</span><span class="s2">"#parent a"</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>But this has the disadvantage of running over the whole document. You can use the <em>find</em> function to run a search only inside the parent element:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">result</span> <span class="o">=</span> <span class="nx">$</span><span class="p">(</span><span class="s2">"#parent"</span><span class="p">).</span><span class="nx">find</span><span class="p">(</span><span class="s2">"a"</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h2 id="javascript-isnan-function">JavaScript isNaN function</h2>
+
+<p>One last bit that I thought is worth mentioning is the JavaScript <em>isNaN</em> function. This function can be used to test if a string can be parsed into a number.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nb">isNaN</span><span class="p">(</span><span class="s2">"test"</span><span class="p">));</span> <span class="c1">// true</span>
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nb">isNaN</span><span class="p">(</span><span class="s2">"-15.4"</span><span class="p">));</span> <span class="c1">// false</span>
+</code></pre></div></div>
+
+<p>If a number is not a Not a Number then it is a number. That is all.</p>
+
+
+
+
+</body></html>

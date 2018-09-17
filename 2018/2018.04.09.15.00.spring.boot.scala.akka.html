@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This post goes over the steps of setting up a Gradle project with Spring Boot written in Scala and using Akka actors.PrerequisitesSkip any that you have already installed on your system:  install Java 8  install Scala and sbt (Scala Build Tool)  install Gradle  install Intellij  install MariaDB and run the instanceCreate new spring boot gradle project with spring initializrUse Spring Initializr to create a new spring boot app with web dependency, using Gradle. Open your new project in Intelli...">
+
+    <title>Spring Boot Scala Akka project build</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2018.04.09 15:00</span>
+    
+        <span>/</span><span class="tag">scala</span>
+    
+        <span>/</span><span class="tag">spring boot</span>
+    
+        <span>/</span><span class="tag">akka</span>
+    
+        <span>/</span><span class="tag">gradle</span>
+    
+</p>
+<h1 class="title">Spring Boot Scala Akka project build</h1>
+
+<p>This post goes over the steps of setting up a Gradle project with Spring Boot written in Scala and using Akka actors.</p>
+
+<h2 id="prerequisites">Prerequisites</h2>
+
+<p>Skip any that you have already installed on your system:</p>
+
+<ul>
+  <li>install Java 8</li>
+  <li>install Scala and sbt (Scala Build Tool)</li>
+  <li>install Gradle</li>
+  <li>install Intellij</li>
+  <li>install MariaDB and run the instance</li>
+</ul>
+
+<h2 id="create-new-spring-boot-gradle-project-with-spring-initializr">Create new spring boot gradle project with spring initializr</h2>
+
+<p>Use <a href="https://start.spring.io/">Spring Initializr</a> to 
+create a new spring boot app with web dependency, using Gradle. Open 
+your new project in Intellij (you may need to configure some stuff, like
+ pointing it to your local Gradle location, and to the JDK).</p>
+
+<h2 id="implement-spring-boot-controller-in-scala">Implement Spring Boot controller in Scala</h2>
+
+<p>Once everything compiles ok, open <code class="highlighter-rouge">build.gradle</code> and add the Scala plugin to it.</p>
+
+<div class="language-groovy highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">apply</span> <span class="nl">plugin:</span> <span class="s1">'scala'</span>
+</code></pre></div></div>
+
+<p>Also add a dependency to Scala in <code class="highlighter-rouge">build.gradle</code> (use scala version installed on your system).</p>
+
+<div class="language-groovy highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">dependencies</span> <span class="o">{</span>
+	<span class="n">compile</span><span class="o">(</span><span class="s1">'org.scala-lang:scala-library:2.12.5'</span><span class="o">)</span>
+	<span class="n">compile</span><span class="o">(</span><span class="s1">'org.springframework.boot:spring-boot-starter-web'</span><span class="o">)</span>
+	<span class="n">testCompile</span><span class="o">(</span><span class="s1">'org.springframework.boot:spring-boot-starter-test'</span><span class="o">)</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Next, convert your main class to Scala.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">org.springframework.boot.SpringApplication</span>
+<span class="k">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="k">class</span> <span class="nc">Configuration</span>
+
+<span class="k">object</span> <span class="nc">StartApplication</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">main</span><span class="o">(</span><span class="n">args</span><span class="k">:</span> <span class="kt">Array</span><span class="o">[</span><span class="kt">String</span><span class="o">])</span><span class="k">:</span> <span class="kt">Unit</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="nc">SpringApplication</span><span class="o">.</span><span class="n">run</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">Configuration</span><span class="o">])</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Because in Scala only objects can contain static methods, we need an 
+object and a class. The object is responsible with providing the <code class="highlighter-rouge">main</code> method and starting up the Spring application to which we provide the configuration class. You can add <code class="highlighter-rouge">server.port = 8080</code> to your <code class="highlighter-rouge">application.properties</code> file and start the app, it should work although it does nothing becase there is no controller yet, so let’s create that.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Controller</span>
+<span class="k">import</span> <span class="nn">org.springframework.web.bind.annotation.</span><span class="o">{</span><span class="nc">RequestMapping</span><span class="o">,</span> <span class="nc">ResponseBody</span><span class="o">}</span>
+
+<span class="nd">@Controller</span>
+<span class="k">class</span> <span class="nc">TestController</span> <span class="o">{</span>
+
+  <span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/test"</span><span class="o">))</span>
+  <span class="nd">@ResponseBody</span>
+  <span class="k">def</span> <span class="n">test</span><span class="o">()</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="s">"This is a test, and it is working."</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>When you now start the app and go to <code class="highlighter-rouge">localhost:8080/test</code>, everything should work just swell.</p>
+
+<h2 id="add-database-access">Add database access</h2>
+
+<p>First, add required dependencies in <code class="highlighter-rouge">build.gradle</code>.</p>
+
+<div class="language-groovy highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">dependencies</span> <span class="o">{</span>
+	<span class="o">...</span>
+	<span class="n">compile</span><span class="o">(</span><span class="s1">'org.springframework.boot:spring-boot-starter-data-jpa'</span><span class="o">)</span>
+	<span class="n">compile</span><span class="o">(</span><span class="s1">'org.mariadb.jdbc:mariadb-java-client'</span><span class="o">)</span>
+	<span class="o">...</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We also need the database connection properties in <code class="highlighter-rouge">application.properties</code>.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spring.datasource.url=jdbc:mariadb://localhost:3306/testdb
+spring.datasource.username=root
+spring.datasource.password=admin
+spring.datasource.driver-class-name=org.mariadb.jdbc.Driver
+spring.jpa.hibernate.ddl-auto=update
+
+spring.jpa.hibernate.naming.implicit-strategy=org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+</code></pre></div></div>
+
+<p>First group or properties define the connection to a local MariaDB. 
+The secong group contains naming strategy properties. These naming 
+strategy properties let us define the table and column names through 
+annotations, instead of forcing us to use the class and field names of 
+an entity (which is now the default for spring JPA). Also, pay attention
+ if you are using <code class="highlighter-rouge">create-drop</code> for the <code class="highlighter-rouge">spring.jpa.hibernate.ddl-auto</code> property because that may empty your talbes when you start the application, best to use <code class="highlighter-rouge">update</code> if you are connecting to an existing database with strucutre and data.</p>
+
+<p>Add the entity, a Scala class.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">javax.persistence._</span>
+
+<span class="k">import</span> <span class="nn">scala.beans.BeanProperty</span>
+
+<span class="nd">@Entity</span>
+<span class="nd">@Table</span><span class="o">(</span><span class="n">name</span> <span class="k">=</span> <span class="s">"testtable"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">Info</span> <span class="o">{</span>
+
+  <span class="nd">@Id</span>
+  <span class="nd">@GeneratedValue</span>
+  <span class="c1">//@Column(name = "id")
+</span>  <span class="nd">@BeanProperty</span>
+  <span class="k">var</span> <span class="n">id</span><span class="k">:</span> <span class="kt">Long</span> <span class="o">=</span> <span class="k">_</span>
+
+  <span class="c1">//@Column(name = "info")
+</span>  <span class="nd">@BeanProperty</span>
+  <span class="k">var</span> <span class="n">info</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="k">_</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Column names are not necessary in this case because they are the same
+ as the field names, I am leaving them in so you know what you can use 
+if you need to change them.</p>
+
+<p>Add the repository, a Scala trait (kind of like an interface but not really).</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">org.springframework.data.repository.CrudRepository</span>
+
+<span class="k">trait</span> <span class="nc">InfoRepository</span> <span class="k">extends</span> <span class="nc">CrudRepository</span><span class="o">[</span><span class="kt">Info</span>, <span class="kt">Long</span><span class="o">]</span>
+</code></pre></div></div>
+
+<p>And a new method in the controller to load data from the database.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span>
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Controller</span>
+<span class="k">import</span> <span class="nn">org.springframework.web.bind.annotation.</span><span class="o">{</span><span class="nc">RequestMapping</span><span class="o">,</span> <span class="nc">ResponseBody</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">scala.collection.JavaConverters._</span>
+
+<span class="nd">@Controller</span>
+<span class="k">class</span> <span class="nc">TestController</span> <span class="nd">@Autowired</span><span class="o">()</span> <span class="o">(</span><span class="k">private</span> <span class="k">val</span> <span class="n">infoRepository</span><span class="k">:</span> <span class="kt">InfoRepository</span><span class="o">)</span> <span class="o">{</span>
+
+  <span class="o">...</span>
+
+  <span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/load"</span><span class="o">))</span>
+  <span class="nd">@ResponseBody</span>
+  <span class="k">def</span> <span class="n">load</span><span class="o">()</span><span class="k">:</span> <span class="kt">Array</span><span class="o">[</span><span class="kt">Info</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="k">val</span> <span class="n">data</span> <span class="k">=</span> <span class="n">infoRepository</span><span class="o">.</span><span class="n">findAll</span><span class="o">().</span><span class="n">asScala</span>
+    <span class="n">data</span><span class="o">.</span><span class="n">toArray</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Notice how we inject the repository dependency, the parantheses on <code class="highlighter-rouge">@Autowired()</code> annotation are necessary. Also notice the <code class="highlighter-rouge">JavaConverters</code> library import, used to change the <code class="highlighter-rouge">Iterable</code> returned by the repository into a Scala array. Start the project and go to <code class="highlighter-rouge">localhost:8080/load</code> to get all the entities you have in the DB as JSON objects.</p>
+
+<h2 id="integrate-akka">Integrate akka</h2>
+
+<p>Let’s add those dependencies in the <code class="highlighter-rouge">build.gradle</code> file.</p>
+
+<div class="language-groovy highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">compile</span><span class="o">(</span><span class="s1">'com.typesafe.akka:akka-actor_2.12:2.5.11'</span><span class="o">)</span>
+</code></pre></div></div>
+
+<p>Then we create some actors, with companion classes.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">akka.actor.</span><span class="o">{</span><span class="nc">Actor</span><span class="o">,</span> <span class="nc">ActorRef</span><span class="o">,</span> <span class="nc">Props</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">com.cacoveanu.scalademo.Greeter.</span><span class="o">{</span><span class="nc">Greet</span><span class="o">,</span> <span class="nc">WhoToGreet</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">com.cacoveanu.scalademo.Printer.Greeting</span>
+
+<span class="k">object</span> <span class="nc">Greeter</span> <span class="o">{</span>
+  <span class="k">final</span> <span class="k">case</span> <span class="k">class</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="n">who</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">object</span> <span class="nc">Greet</span>
+
+  <span class="k">def</span> <span class="n">props</span><span class="o">(</span><span class="n">message</span><span class="k">:</span> <span class="kt">String</span><span class="o">,</span> <span class="n">printerActor</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span><span class="k">:</span> <span class="kt">Props</span> <span class="o">=</span> <span class="nc">Props</span><span class="o">(</span><span class="k">new</span> <span class="nc">Greeter</span><span class="o">(</span><span class="n">message</span><span class="o">,</span> <span class="n">printerActor</span><span class="o">))</span>
+<span class="o">}</span>
+
+<span class="k">class</span> <span class="nc">Greeter</span><span class="o">(</span><span class="n">message</span><span class="k">:</span> <span class="kt">String</span><span class="o">,</span> <span class="n">printerActor</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="k">var</span> <span class="n">greeting</span> <span class="k">=</span> <span class="s">""</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="n">who</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">greeting</span> <span class="k">=</span> <span class="n">s</span><span class="s">"$message, $who"</span>
+    <span class="k">case</span> <span class="nc">Greet</span> <span class="k">=&gt;</span>
+      <span class="n">printerActor</span> <span class="o">!</span> <span class="nc">Greeting</span><span class="o">(</span><span class="n">greeting</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">akka.actor.</span><span class="o">{</span><span class="nc">Actor</span><span class="o">,</span> <span class="nc">ActorLogging</span><span class="o">,</span> <span class="nc">Props</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">com.cacoveanu.scalademo.Printer.Greeting</span>
+
+<span class="k">object</span> <span class="nc">Printer</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">props</span><span class="k">:</span> <span class="kt">Props</span> <span class="o">=</span> <span class="nc">Props</span><span class="o">[</span><span class="kt">Printer</span><span class="o">]</span>
+
+  <span class="k">final</span> <span class="k">case</span> <span class="k">class</span> <span class="nc">Greeting</span><span class="o">(</span><span class="n">greeting</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+<span class="o">}</span>
+
+<span class="k">class</span> <span class="nc">Printer</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="k">with</span> <span class="nc">ActorLogging</span> <span class="o">{</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Greeting</span><span class="o">(</span><span class="n">greeting</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"Greeting received (from ${sender()}): $greeting"</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We’ll want to use a configuration class to initialize our actor 
+system and the actors taking part in it, using Spring Boot autowiring.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">akka.actor.</span><span class="o">{</span><span class="nc">ActorRef</span><span class="o">,</span> <span class="nc">ActorSystem</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">com.cacoveanu.scalademo.Greeter.</span><span class="o">{</span><span class="nc">Greet</span><span class="o">,</span> <span class="nc">WhoToGreet</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.beans.factory.annotation.</span><span class="o">{</span><span class="nc">Autowired</span><span class="o">,</span> <span class="nc">Qualifier</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.boot.context.event.ApplicationStartedEvent</span>
+<span class="k">import</span> <span class="nn">org.springframework.context.ApplicationListener</span>
+<span class="k">import</span> <span class="nn">org.springframework.context.annotation.</span><span class="o">{</span><span class="nc">Bean</span><span class="o">,</span> <span class="nc">Configuration</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Component</span>
+
+<span class="nd">@Configuration</span>
+<span class="k">class</span> <span class="nc">AkkaSystem</span> <span class="o">{</span>
+  <span class="nd">@Bean</span>
+  <span class="k">def</span> <span class="n">createSystem</span><span class="o">()</span> <span class="k">:</span> <span class="kt">ActorSystem</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="nc">ActorSystem</span><span class="o">(</span><span class="s">"helloAkka"</span><span class="o">)</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Bean</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"printerActor"</span><span class="o">))</span>
+  <span class="k">def</span> <span class="n">createPrinter</span><span class="o">(</span><span class="n">system</span><span class="k">:</span> <span class="kt">ActorSystem</span><span class="o">)</span> <span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="nc">Printer</span><span class="o">.</span><span class="n">props</span><span class="o">,</span> <span class="s">"printerActor"</span><span class="o">)</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Bean</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"howdyActor"</span><span class="o">))</span>
+  <span class="k">def</span> <span class="n">createHowdyGreeter</span><span class="o">(</span><span class="n">system</span><span class="k">:</span> <span class="kt">ActorSystem</span><span class="o">,</span> <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"printerActor"</span><span class="o">)</span> <span class="n">printer</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="nc">Greeter</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="s">"Howdy"</span><span class="o">,</span> <span class="n">printer</span><span class="o">))</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Bean</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"helloActor"</span><span class="o">))</span>
+  <span class="k">def</span> <span class="n">createHelloGreeter</span><span class="o">(</span><span class="n">system</span><span class="k">:</span> <span class="kt">ActorSystem</span><span class="o">,</span> <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"printerActor"</span><span class="o">)</span> <span class="n">printer</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="nc">Greeter</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="s">"Hello"</span><span class="o">,</span> <span class="n">printer</span><span class="o">))</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Bean</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"goodDayActor"</span><span class="o">))</span>
+  <span class="k">def</span> <span class="n">createGoodDayGreeter</span><span class="o">(</span><span class="n">system</span><span class="k">:</span> <span class="kt">ActorSystem</span><span class="o">,</span> <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"printerActor"</span><span class="o">)</span> <span class="n">printer</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="nc">Greeter</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="s">"G'day"</span><span class="o">,</span> <span class="n">printer</span><span class="o">))</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We also want to get some chatter going when we start the application, to see things are working.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Component</span>
+<span class="k">class</span> <span class="nc">AkkaSystemStarter</span> <span class="nd">@Autowired</span><span class="o">()</span> <span class="o">(</span><span class="n">system</span><span class="k">:</span> <span class="kt">ActorSystem</span><span class="o">,</span>
+                                      <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"howdyActor"</span><span class="o">)</span> <span class="n">howdyGreeter</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">,</span>
+                                      <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"helloActor"</span><span class="o">)</span> <span class="n">helloGreeter</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">,</span>
+                                      <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"goodDayActor"</span><span class="o">)</span> <span class="n">goodDayGreeter</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span>
+  <span class="k">extends</span> <span class="nc">ApplicationListener</span><span class="o">[</span><span class="kt">ApplicationStartedEvent</span><span class="o">]</span> <span class="o">{</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">onApplicationEvent</span><span class="o">(</span><span class="n">event</span><span class="k">:</span> <span class="kt">ApplicationStartedEvent</span><span class="o">)</span><span class="k">:</span> <span class="kt">Unit</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">howdyGreeter</span> <span class="o">!</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="s">"you"</span><span class="o">)</span>
+    <span class="n">howdyGreeter</span> <span class="o">!</span> <span class="nc">Greet</span>
+
+    <span class="n">howdyGreeter</span> <span class="o">!</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="s">"the reader"</span><span class="o">)</span>
+    <span class="n">howdyGreeter</span> <span class="o">!</span> <span class="nc">Greet</span>
+
+    <span class="n">helloGreeter</span> <span class="o">!</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="s">"a developer"</span><span class="o">)</span>
+    <span class="n">helloGreeter</span> <span class="o">!</span> <span class="nc">Greet</span>
+
+    <span class="n">goodDayGreeter</span> <span class="o">!</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="s">"person intereseted in akka"</span><span class="o">)</span>
+    <span class="n">goodDayGreeter</span> <span class="o">!</span> <span class="nc">Greet</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>And we need to let Spring know about the new configuration class by updating the main configuration class.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@SpringBootApplication</span>
+<span class="nd">@Import</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">AkkaSystem</span><span class="o">]))</span>
+<span class="k">class</span> <span class="nc">Configuration</span>
+</code></pre></div></div>
+
+<p>If you run the application now, you’ll see some logs with the expected messages.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[INFO] [04/07/2018 16:42:26.787] [helloAkka-akka.actor.default-dispatcher-6] [akka://helloAkka/user/printerActor] Greeting received (from Actor[akka://helloAkka/user/$a#451209049]): Howdy, you
+[INFO] [04/07/2018 16:42:26.788] [helloAkka-akka.actor.default-dispatcher-6] [akka://helloAkka/user/printerActor] Greeting received (from Actor[akka://helloAkka/user/$a#451209049]): Howdy, the reader
+[INFO] [04/07/2018 16:42:26.788] [helloAkka-akka.actor.default-dispatcher-6] [akka://helloAkka/user/printerActor] Greeting received (from Actor[akka://helloAkka/user/$b#-1093865442]): Hello, a developer
+[INFO] [04/07/2018 16:42:26.788] [helloAkka-akka.actor.default-dispatcher-6] [akka://helloAkka/user/printerActor] Greeting received (from Actor[akka://helloAkka/user/$c#-1950071884]): G'day, person intereseted in akka
+</code></pre></div></div>
+
+<p>Let’s also integrate our controller with the akka system. First autowire the actor we’ll use in the controller.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Controller</span>
+<span class="k">class</span> <span class="nc">TestController</span> <span class="nd">@Autowired</span><span class="o">()</span> <span class="o">(</span><span class="k">private</span> <span class="k">val</span> <span class="n">infoRepository</span><span class="k">:</span> <span class="kt">InfoRepository</span><span class="o">,</span>
+                                   <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"goodDayActor"</span><span class="o">)</span> <span class="k">private</span> <span class="k">val</span> <span class="n">greetingActor</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span> <span class="o">{</span>
+</code></pre></div></div>
+
+<p>Next create the method that will send the greeting.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  <span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/greeting"</span><span class="o">))</span>
+  <span class="nd">@ResponseBody</span>
+  <span class="k">def</span> <span class="n">sendGreeting</span><span class="o">()</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">greetingActor</span> <span class="o">!</span> <span class="nc">WhoToGreet</span><span class="o">(</span><span class="s">"web api user"</span><span class="o">)</span>
+    <span class="n">greetingActor</span> <span class="o">!</span> <span class="nc">Greet</span>
+    <span class="s">"greeting was sent"</span>
+  <span class="o">}</span>
+</code></pre></div></div>
+
+<p>Start the app and navigate to <code class="highlighter-rouge">localhost:8080/greeting</code> and you’ll see the following message in the logs:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[INFO] [04/07/2018 16:47:50.997] [helloAkka-akka.actor.default-dispatcher-5] [akka://helloAkka/user/printerActor] Greeting received (from Actor[akka://helloAkka/user/$c#2132999611]): G'day, web api user
+</code></pre></div></div>
+
+<p>And that’s how you build a Spring Boot app with Scala and an Akka actor system running within it.</p>
+
+<h2 id="sources">Sources</h2>
+
+<ul>
+  <li><a href="https://dzone.com/articles/spring-boot-and-scala">Spring-boot and Scala</a></li>
+  <li><a href="https://developer.lightbend.com/guides/akka-quickstart-scala/">Akka quickstart with Scala</a></li>
+</ul>
+
+
+
+
+</body></html>

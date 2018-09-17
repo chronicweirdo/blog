@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="I’ll build a simple folder scanner using the Java 7 watch service. I want this service to constantly watch a folder for changes (in a separate thread) and, as soon as some change is detected to identify the type of change and notify a database about that change. The types of changes I’ll be watching for are file and folder creation, modification and deletion.">
+
+    <title>Building a folder scanner</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+
+<body>
+    <p class="header">
+        <a class="home" href="../index.html">home</a>
+        <span>/</span>
+        <span class="date">2015.06.25 14:00</span>
+
+        <span>/</span><span class="tag">java</span>
+
+        <span>/</span><span class="tag">nio</span>
+
+    </p>
+    <h1 class="title">Building a folder scanner</h1>
+
+    <p>I’ll build a simple folder scanner using the Java 7 watch service. I want this service to constantly watch a folder for changes (in a separate thread) and, as soon as some change is detected to identify the type of change and notify a database about that change. The types of changes I’ll be watching for are file and folder creation, modification and deletion.</p>
+
+    <p>Starting with the definition of the database interface. An implementation of this interface will handle the actions detected on the file system. For my particular implementation I am only interested in <strong>addFile</strong> and <strong>removeFile</strong> changes. Implementing this interface lets you decide what to do with this service.</p>
+
+    <pre><code class="java">
+import java.io.File;
+
+public interface FilesDatabase {
+
+    void addFile(File file);
+
+    void updateFile(File file);
+
+    void removeFile(File file);
+
+    void addFolder(File folder);
+
+    void updateFolder(File folder);
+
+    void removeFolder(File folder);
+}
+</code></pre>
+
+    <p>The next step is to create the scanning service itself. The service
+        needs to know which is the root folder it should be watching and what
+        database should it publish changes to. It will also have an internal <strong>WatchService</strong> that will do
+        the actual work. The <strong>init</strong> method creates the <strong>WatchService</strong>, starts the
+        preliminary scan and then starts the watch thread. The <strong>scan</strong>
+        method is a very simple recursive method that goes over the file system
+        tree, starting at the root folder. At each step it processes a file or
+        folder. If it is working with a file, it will call the <strong>addFile</strong> method in the database. If it
+        is working with a folder, it will call an <strong>addFolder</strong> method, not the one in the database, then
+        call the <strong>scan</strong> method for each child file or folder.</p>
+
+    <pre><code class="java">
+public class FilesScanner implements Runnable {
+
+	private String root;
+	private FilesDatabase database;
+	private WatchService watcher;
+
+	public FilesScanner(String root, FilesDatabase database) {
+		this.root = root;
+		this.database = database;
+	}
+
+	public void init() {
+        try {
+            watcher = FileSystems.getDefault().newWatchService();
+        } catch (IOException e) {
+            // log error
+        }
+
+        scan(new File(root));
+
+        new Thread(this).start();
+    }
+
+    private void scan(File file) {
+        if (file.isFile()) {
+            database.addFile(file);
+        } else {
+            addFolder(file);
+            for (File child: file.listFiles()) {
+                scan(child);
+            }
+        }
+    }
+</code></pre>
+
+    <p>We need to look at the <strong>addFolder</strong> method that we are using in the <strong>scan</strong> method.
+        We are not directly calling the <strong>addFolder</strong>
+        method in the database because we need to perform an extra processing
+        step when we discover folders and sub-folders that is specific to the
+        scanner service. The first thing we do is send the newly discovered
+        folder to the database, but after this we must register the folder with
+        the <strong>WatchService</strong>. We can’t do this once for the root
+        folder, it doesn’t work that way, we must register every sub-folder in
+        the file system tree. To do this, we use the <strong>register</strong> method in the <strong>Path</strong>
+        object, and we specify the event kinds we want to watch for, in our case create, delete and modify. The <strong>register</strong>
+        method returns a <strong>WatchKey</strong>
+        object that we could use if we wanted to cancel watching that folder.
+        We won’t need it, the only time we stop watching a folder in our case is
+        when that folder is deleted, and in that case we just won’t be able to
+        reset the key since the object that is associated with it does not exist
+        anymore.</p>
+
+    <pre><code class="java">
+private void addFolder(File folder) {
+	database.addFolder(folder);
+
+    Path path = folder.toPath();
+    try {
+		WatchKey key = path.register(watcher,
+				StandardWatchEventKinds.ENTRY_CREATE,
+            	StandardWatchEventKinds.ENTRY_DELETE,
+            	StandardWatchEventKinds.ENTRY_MODIFY
+            );
+	} catch (IOException e) {
+    	// log error
+	}
+}
+</code></pre>
+
+    <p>The last step is to handle changes as they get detected by the watch service. This is done in the <em>run</em>
+        method (if you did not notice, our service implements <strong>Runnable</strong>). The method will start an
+        infinite loop that will try call the <strong>take</strong> method on the <strong>WatchService</strong>. This
+        method blocks the execution of the thread until a <strong>WatchKey</strong>
+        containing some events can be returned. Once we have that key we need
+        to find out in what sub-folder were changes detected. Then we can go
+        over all watch events, find out which files or sub-folders were changed
+        (we need to resolve their path against the changed folder path) and
+        handle the event using <strong>handleEventOnFile</strong> method. The
+        last thing we must do after we have processed the changed key is to
+        reset it. This is crucial! If we do not reset the key, the folder
+        corresponding to that key will no longer be watched for changes. The <strong>reset</strong>
+        method returns false if the key is no longer valid, when the folder was
+        deleted. We could do something with this information, log it or stop
+        the service, but in the current implementation we don’t. We can also see
+        that the <strong>take</strong> method throws an <strong>InterruptedException</strong>. This is the way we can
+        exit the infinite loop and stop watching the folder if we want.</p>
+
+    <div class="language-java highlighter-rouge">
+        <div class="highlight">
+            <pre class="highlight"><code><span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">for</span> <span class="o">(;;)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="n">WatchKey</span> <span class="n">changedKey</span> <span class="o">=</span> <span class="n">watcher</span><span class="o">.</span><span class="na">take</span><span class="o">();</span>
+            <span class="n">Path</span> <span class="n">changedFolder</span> <span class="o">=</span> <span class="o">(</span><span class="n">Path</span><span class="o">)</span> <span class="n">changedKey</span><span class="o">.</span><span class="na">watchable</span><span class="o">();</span>
+
+            <span class="k">for</span> <span class="o">(</span><span class="n">WatchEvent</span> <span class="n">event</span> <span class="o">:</span> <span class="n">changedKey</span><span class="o">.</span><span class="na">pollEvents</span><span class="o">())</span> <span class="o">{</span>
+                <span class="n">WatchEvent</span><span class="o">&amp;</span><span class="n">lt</span><span class="o">;</span><span class="n">Path</span><span class="o">&amp;</span><span class="n">gt</span><span class="o">;</span> <span class="n">pathEvent</span> <span class="o">=</span> <span class="o">(</span><span class="n">WatchEvent</span><span class="o">&amp;</span><span class="n">lt</span><span class="o">;</span><span class="n">Path</span><span class="o">&amp;</span><span class="n">gt</span><span class="o">;)</span> <span class="n">event</span><span class="o">;</span>
+                <span class="n">Path</span> <span class="n">changedChildPath</span> <span class="o">=</span> <span class="n">changedFolder</span><span class="o">.</span><span class="na">resolve</span><span class="o">(</span><span class="n">pathEvent</span><span class="o">.</span><span class="na">context</span><span class="o">());</span>
+                <span class="n">File</span> <span class="n">changedChild</span> <span class="o">=</span> <span class="n">changedChildPath</span><span class="o">.</span><span class="na">toFile</span><span class="o">();</span>
+
+                <span class="n">handleEventOnFile</span><span class="o">(</span><span class="n">event</span><span class="o">,</span> <span class="n">changedChild</span><span class="o">);</span>
+            <span class="o">}</span>
+
+            <span class="kt">boolean</span> <span class="n">valid</span> <span class="o">=</span> <span class="n">changedKey</span><span class="o">.</span><span class="na">reset</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">InterruptedException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="c1">// log error</span>
+            <span class="k">break</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre>
+        </div>
+    </div>
+
+    <p>As for the <strong>handleEventOnFile</strong> method, there is not
+        much to say except that this method will notify the database of new
+        events. One note, when a new sub-folder has been added we must handle it
+        with the <strong>addFolder</strong> method, that way it will be registered with the watcher service.</p>
+
+    <pre><code class="java">
+private void handleEventOnFile(WatchEvent event, File changedChild) {
+	if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
+    	if (changedChild.isDirectory()) {
+        	addFolder(changedChild);
+        } else {
+        	database.addFile(changedChild);
+        }
+    } else if (event.kind() == StandardWatchEventKinds.ENTRY_MODIFY) {
+        if (changedChild.isDirectory()) {
+            database.updateFolder(changedChild);
+        } else {
+            database.updateFile(changedChild);
+        }
+    } else if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
+        if (changedChild.isDirectory()) {
+            database.removeFolder(changedChild);
+        } else {
+            database.removeFile(changedChild);
+        }
+    }
+}
+</code></pre>
+
+    <p>To use it, just create the service, passing the root folder and the database, and call the <strong>init</strong>
+        method.</p>
+
+    <pre><code class="java">
+FilesScanner scanner = new FilesScanner(rootFolder, database);
+scanner.init();
+</code></pre>
+
+    <p>Or an even more elegant solution, use spring to automatically inject the required parameters and trigger the
+        <strong>init</strong> method.</p>
+
+    <pre><code class="java">
+@Component
+public class FilesScanner implements Runnable {
+
+    @Value("${folder.root}")
+    private String root;
+
+    @Autowired
+    private FilesDatabase database;
+
+    private WatchService watcher;
+
+    @PostConstruct
+    public void init() {
+</code></pre>
+
+    <p>Download the <a href="folder_scanner/FilesDatabase.java">FilesDatabase interface</a>
+        and the <a href="folder_scanner/FilesScanner.java">FilesScanner class</a>.</p>
+
+</body>
+</html>

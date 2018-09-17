@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This is for all those times when you need to run some quick tests on a data file in CSV format. You could open it in excel, apply some filters on those columns, but I’m talking about those times when you need to bring the data into a programming language and be able to quickly run some queries on it or convert it into objects. With the new IO from Java 7 it’s already really easy to read a file, parse the lines and convert them into objects. You could also just parse the lines and write a shor...">
+
+    <title>Import CSV to in-memory DB</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.07.03 20:13</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">csv</span>
+    
+        <span>/</span><span class="tag">apache derby</span>
+    
+</p>
+<h1 class="title">Import CSV to in-memory DB</h1>
+
+<p>This is for all those times when you need to run some quick tests on a
+ data file in CSV format. You could open it in excel, apply some filters
+ on those columns, but I’m talking about those times when you need to 
+bring the data into a programming language and be able to quickly run 
+some queries on it or convert it into objects. With the new IO from Java
+ 7 it’s already really easy to read a file, parse the lines and convert 
+them into objects. You could also just parse the lines and write a short
+ program that searches for the exact lines you are looking for, but now 
+it’s starting to get verbose.</p>
+
+<p>So how about this: read the lines and load them to an in-memory 
+database. You can then run SQL queries on this database or convert the 
+data to object through some ORM framework. The CSV becomes a database 
+and you can take advantage of all the database processing tools we have 
+in Java.</p>
+
+<h2 id="quick-test-on-in-memory-database">Quick test on in-memory database</h2>
+
+<p>We need a simple way to create an in-memory database that we can read and write to using JDBC. I’ve used <a href="https://db.apache.org/derby/">Apache Derby</a>. I’ve started with <a href="http://hsqldb.org/">HSQLDB</a>
+ but I could not find a way to make it start in memory quick enough so I
+ switched to Derby. This is a surface exploration of a solution, so I 
+have not invested any time in finding out the best possible in-memory 
+database for Java, I just need one that works so I can move on to the 
+next step of the implementation.</p>
+
+<p>First, you need to import the Derby dependencies, and for Maven at the time I am writing this post they are:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;dependency&gt;</span>
+	<span class="nt">&lt;groupId&gt;</span>org.apache.derby<span class="nt">&lt;/groupId&gt;</span>
+	<span class="nt">&lt;artifactId&gt;</span>derby<span class="nt">&lt;/artifactId&gt;</span>
+	<span class="nt">&lt;version&gt;</span>10.11.1.1<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div></div>
+
+<p>Next, I went with a small unit test that starts the database server, creates the database, inserts some data and then reads it.</p>
+
+<p>First I try to get a connection to the database. It is recommended to
+ instantiate the Derby EmbeddedDriver class, so it is loaded in the 
+class manager when the DriverManager is trying to get a connection to 
+the Derby database; however it does not look like this is necessary in 
+Java 8, that is why the line is commented out. To start an in-memory 
+database you need to specify “memory” under the subprotocol entry in the
+ database URL. The “create=true” attribute lets Derby know that it 
+should create the database if it does not exist.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+<span class="k">try</span> <span class="o">{</span>
+    <span class="c1">// Class.forName("org.apache.derby.jdbc.EmbeddedDriver").newInstance();</span>
+    <span class="c1">// jdbc:derby:[subsubprotocol:][databaseName][;attribute=value]*</span>
+    <span class="n">connection</span> <span class="o">=</span> <span class="n">DriverManager</span><span class="o">.</span><span class="na">getConnection</span><span class="o">(</span>
+		<span class="s">"jdbc:derby:memory:testdb;create=true"</span><span class="o">);</span>
+<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">Exception</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">ex</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">fail</span><span class="o">(</span><span class="s">"Exception during database startup."</span><span class="o">);</span>
+<span class="o">}</span>
+<span class="n">Assert</span><span class="o">.</span><span class="na">assertNotNull</span><span class="o">(</span><span class="n">connection</span><span class="o">);</span>
+</code></pre></div></div>
+
+<p>Once we have the connection we can create a statement and start 
+working with the database. It is empty at first so we need to create a 
+table. This statement will return a 0 count, so we check that with an 
+assert. Then we insert something in our new table. A simple insert SQL 
+query that returns a count of 1 because we are inserting one row. 
+Finally, we load the data we just created to check it is there. A select
+ query, returning a ResultSet. We only expect one row that contains the 
+values we just inserted, so we check them with asserts and also the 
+number of rows that were loaded.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Statement</span> <span class="n">statement</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="na">createStatement</span><span class="o">();</span>
+
+<span class="n">String</span> <span class="n">createQuery</span> <span class="o">=</span> <span class="s">"create table data (id int, name varchar(255))"</span><span class="o">;</span>
+<span class="kt">int</span> <span class="n">createCount</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="na">executeUpdate</span><span class="o">(</span><span class="n">createQuery</span><span class="o">);</span>
+<span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">(</span><span class="n">createCount</span><span class="o">,</span> <span class="mi">0</span><span class="o">);</span>
+
+<span class="n">String</span> <span class="n">insertQuery</span> <span class="o">=</span> <span class="s">"insert into data values (10, 'thename')"</span><span class="o">;</span>
+<span class="kt">int</span> <span class="n">insertCount</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="na">executeUpdate</span><span class="o">(</span><span class="n">insertQuery</span><span class="o">);</span>
+<span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">(</span><span class="n">insertCount</span><span class="o">,</span> <span class="mi">1</span><span class="o">);</span>
+
+<span class="n">String</span> <span class="n">selectQuery</span> <span class="o">=</span> <span class="s">"select * from data"</span><span class="o">;</span>
+<span class="n">ResultSet</span> <span class="n">resultSet</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="na">executeQuery</span><span class="o">(</span><span class="n">selectQuery</span><span class="o">);</span>
+<span class="n">Assert</span><span class="o">.</span><span class="na">assertNotNull</span><span class="o">(</span><span class="n">resultSet</span><span class="o">);</span>
+<span class="kt">int</span> <span class="n">resultSetRowCount</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+<span class="k">while</span> <span class="o">(</span><span class="n">resultSet</span><span class="o">.</span><span class="na">next</span><span class="o">())</span> <span class="o">{</span>
+    <span class="n">resultSetRowCount</span><span class="o">++;</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">(</span><span class="n">resultSet</span><span class="o">.</span><span class="na">getInt</span><span class="o">(</span><span class="s">"id"</span><span class="o">),</span> <span class="mi">10</span><span class="o">);</span>
+    <span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">(</span><span class="n">resultSet</span><span class="o">.</span><span class="na">getString</span><span class="o">(</span><span class="s">"name"</span><span class="o">),</span> <span class="s">"thename"</span><span class="o">);</span>
+<span class="o">}</span>
+<span class="n">Assert</span><span class="o">.</span><span class="na">assertEquals</span><span class="o">(</span><span class="n">resultSetRowCount</span><span class="o">,</span> <span class="mi">1</span><span class="o">);</span>
+</code></pre></div></div>
+
+<p>The test passes, we can use Apache Derby to build our in-memory database on top of a CSV file. <a href="csv_import/ApacheDerbyTest.java">Download the test file </a>.</p>
+
+<h2 id="designing-a-database-on-top-of-csv">Designing a database on top of CSV</h2>
+
+<p>What we want is to be able to run queries on the file. A CSV file is a
+ table, so we can just load is as a table in the database. We can assume
+ the first row contains the column names. We should remember these names
+ because they can help us build the SQL queries that retrieve data, or 
+extract values from the rows in the fetched ResultSet. We can also 
+assume all values are strings; or we can try to infer the value types 
+from the file, but not today, I say. And what if we want to work with 
+multiple CSV files? Well, we’ll just create a new table for each file, 
+then we can run complex join queries on them. This gives us the 
+requirements of the Database object:</p>
+<ul>
+  <li>create separate tables for each CSV file;</li>
+  <li>map between file paths and table names;</li>
+  <li>assume first row in CSV file contains column names;</li>
+  <li>store column names for each file/table;</li>
+  <li>provide a Connection object back to the user.</li>
+</ul>
+
+<h2 id="writing-the-csv-database">Writing the CSV database</h2>
+
+<p>I’ll just focus on the main parts of the code, starting with the data
+ we need to keep: the list of files we added to the database as Path 
+objects and the column names for each table.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">Path</span><span class="o">&gt;</span> <span class="n">paths</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;&gt;();</span>
+<span class="kd">private</span> <span class="n">Map</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;&gt;</span> <span class="n">columnNames</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashMap</span><span class="o">&lt;&gt;();</span>
+</code></pre></div></div>
+
+<p>Processing a CSV file is done by first reading all the lines in the 
+file. Then we use the first column to get the column names and once we 
+have those we can create a new table for this CSV file. We also need the
+ table name, which is obtained through a utility method called <strong>getTableName</strong>.
+ This method provides the mapping between a file and its corresponding 
+table, and we are simply using the file name as the table name. (Of 
+course, if we have more files with the same name in different folders 
+we’ve got a problem, but that’s for another day.)</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kt">void</span> <span class="nf">read</span><span class="o">(</span><span class="n">Path</span> <span class="n">path</span><span class="o">,</span> <span class="n">String</span> <span class="n">charsetName</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">paths</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">path</span><span class="o">);</span>
+    <span class="n">Charset</span> <span class="n">charset</span> <span class="o">=</span> <span class="n">Charset</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="n">charsetName</span><span class="o">);</span>
+    <span class="n">String</span> <span class="n">tableName</span> <span class="o">=</span> <span class="n">getTableName</span><span class="o">(</span><span class="n">path</span><span class="o">);</span>
+
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">lines</span> <span class="o">=</span> <span class="n">Files</span><span class="o">.</span><span class="na">readAllLines</span><span class="o">(</span><span class="n">path</span><span class="o">,</span> <span class="n">charset</span><span class="o">);</span>
+
+        <span class="n">createTable</span><span class="o">(</span><span class="n">tableName</span><span class="o">,</span> <span class="n">lines</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="mi">0</span><span class="o">));</span>
+
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">lines</span><span class="o">.</span><span class="na">size</span><span class="o">();</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+            <span class="n">insertRow</span><span class="o">(</span><span class="n">tableName</span><span class="o">,</span> <span class="n">lines</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">i</span><span class="o">));</span>
+        <span class="o">}</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">SQLException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="kd">public</span> <span class="kd">static</span> <span class="n">String</span> <span class="nf">getTableName</span><span class="o">(</span><span class="n">Path</span> <span class="n">path</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="na">getFileName</span><span class="o">().</span><span class="na">toString</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The <strong>createTable</strong> method will split the line in 
+tokens, the column names, and build the create table query. We do a 
+little processing of the column name, trim the empty spaces on the 
+exterior and replace interior spaces with underscores. We add each 
+column to the create table query as a new varchar column (since we 
+assume all data is string). As we add the column names to the query, we 
+also add them to our collection of column names. Hope this runs since we
+ have no exception handling in this implementation.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">private</span> <span class="kt">void</span> <span class="nf">createTable</span><span class="o">(</span><span class="n">String</span> <span class="n">tableName</span><span class="o">,</span> <span class="n">String</span> <span class="n">line</span><span class="o">)</span>
+        <span class="kd">throws</span> <span class="n">SQLException</span> <span class="o">{</span>
+    <span class="n">String</span><span class="o">[]</span> <span class="n">columnNames</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="na">split</span><span class="o">(</span><span class="s">","</span><span class="o">);</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">columnNames</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">tableName</span><span class="o">,</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;&gt;());</span>
+
+    <span class="n">StringBuilder</span> <span class="n">query</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+    <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">"CREATE TABLE "</span><span class="o">).</span><span class="na">append</span><span class="o">(</span><span class="n">tableName</span><span class="o">);</span>
+    <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">" ("</span><span class="o">);</span>
+    <span class="n">String</span> <span class="n">prefix</span> <span class="o">=</span> <span class="s">""</span><span class="o">;</span>
+    <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="nl">columnName:</span> <span class="n">columnNames</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">trimmedColumnName</span> <span class="o">=</span> <span class="n">columnName</span><span class="o">.</span><span class="na">trim</span><span class="o">().</span><span class="na">replaceAll</span><span class="o">(</span><span class="s">"\\s"</span><span class="o">,</span> <span class="s">"_"</span><span class="o">);</span>
+        <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">prefix</span><span class="o">);</span>
+        <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">trimmedColumnName</span><span class="o">).</span><span class="na">append</span><span class="o">(</span><span class="s">" "</span><span class="o">).</span><span class="na">append</span><span class="o">(</span><span class="s">"varchar(255)"</span><span class="o">);</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="s">","</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">columnNames</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">tableName</span><span class="o">).</span><span class="na">add</span><span class="o">(</span><span class="n">trimmedColumnName</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">")"</span><span class="o">);</span>
+
+    <span class="n">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="n">getConnection</span><span class="o">();</span>
+    <span class="n">Statement</span> <span class="n">statement</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="na">createStatement</span><span class="o">();</span>
+    <span class="n">statement</span><span class="o">.</span><span class="na">executeUpdate</span><span class="o">(</span><span class="n">query</span><span class="o">.</span><span class="na">toString</span><span class="o">());</span>
+    <span class="n">statement</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+    <span class="n">connection</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Next, the <strong>insertRow</strong> method takes each row in the CSV
+ file, except the header, breaks it down and inserts it into the table 
+as string values. We don’t trim these values, maybe they are supposed to
+ have spaces in all sorts of places. This is not very efficient right 
+now because we open up a new connection, create a new statement and run a
+ query for each row. To improve it we could create a single bulk insert 
+query, or some paginated bulk query. But we’ll get away with it for now,
+ the database is stored in memory so it is fast enough. We’ll improve as
+ we extend the tool.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">private</span> <span class="kt">void</span> <span class="nf">insertRow</span><span class="o">(</span><span class="n">String</span> <span class="n">tableName</span><span class="o">,</span> <span class="n">String</span> <span class="n">line</span><span class="o">)</span>
+        <span class="kd">throws</span> <span class="n">SQLException</span> <span class="o">{</span>
+    <span class="n">String</span><span class="o">[]</span> <span class="n">values</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="na">split</span><span class="o">(</span><span class="s">","</span><span class="o">);</span>
+
+    <span class="n">StringBuilder</span> <span class="n">query</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+    <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">"INSERT INTO "</span><span class="o">).</span><span class="na">append</span><span class="o">(</span><span class="n">tableName</span><span class="o">);</span>
+    <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">" VALUES ("</span><span class="o">);</span>
+    <span class="n">String</span> <span class="n">prefix</span> <span class="o">=</span> <span class="s">""</span><span class="o">;</span>
+    <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="nl">value:</span> <span class="n">values</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">prefix</span><span class="o">);</span>
+        <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">"'"</span><span class="o">).</span><span class="na">append</span><span class="o">(</span><span class="n">value</span><span class="o">).</span><span class="na">append</span><span class="o">(</span><span class="s">"'"</span><span class="o">);</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="s">","</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="n">query</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">")"</span><span class="o">);</span>
+
+    <span class="n">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="n">getConnection</span><span class="o">();</span>
+    <span class="n">Statement</span> <span class="n">statement</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="na">createStatement</span><span class="o">();</span>
+    <span class="n">statement</span><span class="o">.</span><span class="na">executeUpdate</span><span class="o">(</span><span class="n">query</span><span class="o">.</span><span class="na">toString</span><span class="o">());</span>
+    <span class="n">statement</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+    <span class="n">connection</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The last method I’ll go over is <strong>getConnection</strong>, we’ve already been using this in the above code. But we already know how to do this from the Derby test above.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="n">Connection</span> <span class="nf">getConnection</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="n">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="s">"org.apache.derby.jdbc.EmbeddedDriver"</span><span class="o">).</span><span class="na">newInstance</span><span class="o">();</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">DriverManager</span><span class="o">.</span><span class="na">getConnection</span><span class="o">(</span><span class="s">"jdbc:derby:memory:"</span>
+                <span class="o">+</span> <span class="n">getDbName</span><span class="o">()</span> <span class="o">+</span> <span class="s">";create=true"</span><span class="o">);</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">Exception</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">ex</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="n">connection</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="n">String</span> <span class="nf">getDbName</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="s">"csvdb"</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>That is almost everything, but if you want to see everything, <a href="csv_import/Database.java">download the Database class file</a>.</p>
+
+<h2 id="testing-the-csv-database">Testing the CSV database</h2>
+
+<p>Let’s see if this works, I’ll write another <a href="csv_import/DatabaseTest.java">database test case</a> to verify the Database class, using files <a href="csv_import/csvdatabasetest.txt">csvdatabasetest.txt</a> and <a href="csv_import/csvdatabasetest2.txt">csvdatabasetest2.txt</a>, that does the following:</p>
+<ul>
+  <li>read the two files in a new Database object;</li>
+  <li>run queries to load and print data in each of the tables (use 
+Database methods to map the file path to a table name and to get the 
+name of the columns of each table);</li>
+  <li>run a complex join query on the two tables in the database and print the results.</li>
+</ul>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">testDatabase</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="n">Database</span> <span class="n">database</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Database</span><span class="o">();</span>
+    <span class="n">Path</span> <span class="n">path1</span> <span class="o">=</span> <span class="n">Paths</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="s">"src/test/resources/csvdatabasetest.txt"</span><span class="o">);</span>
+    <span class="n">database</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">path1</span><span class="o">);</span>
+    <span class="n">Path</span> <span class="n">path2</span> <span class="o">=</span> <span class="n">Paths</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="s">"src/test/resources/csvdatabasetest2.txt"</span><span class="o">);</span>
+    <span class="n">database</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">path2</span><span class="o">);</span>
+
+    <span class="n">Connection</span> <span class="n">connection</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="na">getConnection</span><span class="o">();</span>
+    <span class="n">Statement</span> <span class="n">statement</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="na">createStatement</span><span class="o">();</span>
+
+    <span class="n">String</span> <span class="n">selectQuery</span> <span class="o">=</span> <span class="s">"select * from "</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getTableName</span><span class="o">(</span><span class="n">path1</span><span class="o">);</span>
+    <span class="n">ResultSet</span> <span class="n">resultSet</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="na">executeQuery</span><span class="o">(</span><span class="n">selectQuery</span><span class="o">);</span>
+    <span class="n">printResultSet</span><span class="o">(</span><span class="n">database</span><span class="o">,</span> <span class="n">path1</span><span class="o">,</span> <span class="n">resultSet</span><span class="o">);</span>
+
+    <span class="n">String</span> <span class="n">selectQuery2</span> <span class="o">=</span> <span class="s">"select * from "</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getTableName</span><span class="o">(</span><span class="n">path2</span><span class="o">);</span>
+    <span class="n">ResultSet</span> <span class="n">resultSet2</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="na">executeQuery</span><span class="o">(</span><span class="n">selectQuery2</span><span class="o">);</span>
+    <span class="n">printResultSet</span><span class="o">(</span><span class="n">database</span><span class="o">,</span> <span class="n">path2</span><span class="o">,</span> <span class="n">resultSet2</span><span class="o">);</span>
+
+    <span class="n">String</span> <span class="n">selectQuery3</span> <span class="o">=</span> <span class="s">"select * from "</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getTableName</span><span class="o">(</span><span class="n">path1</span><span class="o">)</span>
+            <span class="o">+</span> <span class="s">" join "</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getTableName</span><span class="o">(</span><span class="n">path2</span><span class="o">)</span>
+            <span class="o">+</span> <span class="s">" on "</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getTableName</span><span class="o">(</span><span class="n">path1</span><span class="o">)</span>
+            <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getColumnNames</span><span class="o">(</span><span class="n">path1</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="mi">0</span><span class="o">)</span>
+            <span class="o">+</span> <span class="s">" = "</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getTableName</span><span class="o">(</span><span class="n">path2</span><span class="o">)</span>
+            <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">database</span><span class="o">.</span><span class="na">getColumnNames</span><span class="o">(</span><span class="n">path2</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+    <span class="n">ResultSet</span> <span class="n">resultSet3</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="na">executeQuery</span><span class="o">(</span><span class="n">selectQuery3</span><span class="o">);</span>
+    <span class="k">while</span> <span class="o">(</span><span class="n">resultSet3</span><span class="o">.</span><span class="na">next</span><span class="o">())</span> <span class="o">{</span>
+        <span class="n">StringBuilder</span> <span class="n">result</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+        <span class="n">result</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">resultSet3</span><span class="o">.</span><span class="na">getString</span><span class="o">(</span>
+                <span class="n">database</span><span class="o">.</span><span class="na">getColumnNames</span><span class="o">(</span><span class="n">path1</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="mi">1</span><span class="o">))).</span><span class="na">append</span><span class="o">(</span><span class="s">" "</span><span class="o">);</span>
+        <span class="n">result</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">resultSet3</span><span class="o">.</span><span class="na">getString</span><span class="o">(</span>
+                <span class="n">database</span><span class="o">.</span><span class="na">getColumnNames</span><span class="o">(</span><span class="n">path2</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="mi">1</span><span class="o">))).</span><span class="na">append</span><span class="o">(</span><span class="s">" "</span><span class="o">);</span>
+        <span class="n">result</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">resultSet3</span><span class="o">.</span><span class="na">getString</span><span class="o">(</span>
+                <span class="n">database</span><span class="o">.</span><span class="na">getColumnNames</span><span class="o">(</span><span class="n">path2</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="mi">2</span><span class="o">))).</span><span class="na">append</span><span class="o">(</span><span class="s">" "</span><span class="o">);</span>
+        <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">result</span><span class="o">.</span><span class="na">toString</span><span class="o">());</span>
+    <span class="o">}</span>
+
+    <span class="n">statement</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+    <span class="n">connection</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="kt">void</span> <span class="nf">printResultSet</span><span class="o">(</span><span class="n">Database</span> <span class="n">database</span><span class="o">,</span> <span class="n">Path</span> <span class="n">path</span><span class="o">,</span>
+        <span class="n">ResultSet</span> <span class="n">resultSet</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">SQLException</span> <span class="o">{</span>
+    <span class="k">while</span> <span class="o">(</span><span class="n">resultSet</span><span class="o">.</span><span class="na">next</span><span class="o">())</span> <span class="o">{</span>
+        <span class="n">StringBuilder</span> <span class="n">result</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+        <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="nl">column:</span> <span class="n">database</span><span class="o">.</span><span class="na">getColumnNames</span><span class="o">(</span><span class="n">path</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">result</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">resultSet</span><span class="o">.</span><span class="na">getString</span><span class="o">(</span><span class="n">column</span><span class="o">)).</span><span class="na">append</span><span class="o">(</span><span class="s">" "</span><span class="o">);</span>
+        <span class="o">}</span>
+        <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">result</span><span class="o">.</span><span class="na">toString</span><span class="o">());</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>I run, it works - there! A neat little tool!</p>
+
+
+
+
+</body></html>
