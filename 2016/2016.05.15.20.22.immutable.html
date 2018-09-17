@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Following is an example of building a dynamic query object using a mutable implementation at first, then converting it to an immutable implementation. Immutability introduces clarity of code since object functions don’t produce side-effects.The Query interfacepublic interface Query&lt;T&gt; {    Query&lt;T&gt; like(String fieldName, Object parameterValue);    Query&lt;T&gt; greaterThanOrEqualTo(String fieldName, Object limit);    Query&lt;T&gt; lessThanOrEqualTo(String fieldName, Object limit...">
+
+    <title>Mutable to immutable, with JPA</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2016.05.15 20:22</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">jpa</span>
+    
+        <span>/</span><span class="tag">criteria query</span>
+    
+        <span>/</span><span class="tag">immutable objects</span>
+    
+</p>
+<h1 class="title">Mutable to immutable, with JPA</h1>
+
+<p>Following is an example of building a dynamic query object using a 
+mutable implementation at first, then converting it to an immutable 
+implementation. Immutability introduces clarity of code since object 
+functions don’t produce side-effects.</p>
+
+<h2 id="the-query-interface">The Query interface</h2>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">interface</span> <span class="nc">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="o">{</span>
+
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">like</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">parameterValue</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">greaterThanOrEqualTo</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">limit</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">lessThanOrEqualTo</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">limit</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">equal</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">value</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">has</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">doesNotHave</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">pageStart</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageStart</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">pageNumber</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageNr</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">pageSize</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageSize</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">asc</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">);</span>
+    <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">desc</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">);</span>
+
+    <span class="n">List</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">run</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="the-query-manager">The Query manager</h2>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Component</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">QueryManager</span> <span class="o">{</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">EntityManager</span> <span class="n">entityManager</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">Query</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">query</span><span class="o">(</span><span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">clazz</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="n">entityManager</span><span class="o">,</span> <span class="n">clazz</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="the-mutable-class-in-all-its-ugliness">The mutable class, in all its ugliness</h2>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="kd">implements</span> <span class="n">Query</span> <span class="o">{</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">String</span> <span class="n">GTE_SUFFIX</span> <span class="o">=</span> <span class="s">"GTE"</span><span class="o">;</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">String</span> <span class="n">LTE_SUFFIX</span> <span class="o">=</span> <span class="s">"LTE"</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">EntityManager</span> <span class="n">entityManager</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">rootClass</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">CriteriaQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">criteriaQuery</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">Root</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">root</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Map</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">Object</span><span class="o">&gt;</span> <span class="n">parameters</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashMap</span><span class="o">&lt;&gt;();</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">pageStart</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">pageSize</span> <span class="o">=</span> <span class="mi">10</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Predicate</span> <span class="n">predicate</span><span class="o">;</span>
+
+    <span class="kd">protected</span> <span class="nf">MutableQuery</span><span class="o">(</span><span class="n">EntityManager</span> <span class="n">entityManager</span><span class="o">,</span> <span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">rootClass</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">entityManager</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">;</span>
+        <span class="n">criteriaBuilder</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">getCriteriaBuilder</span><span class="o">();</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">rootClass</span> <span class="o">=</span> <span class="n">rootClass</span><span class="o">;</span>
+
+        <span class="n">criteriaQuery</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">rootClass</span><span class="o">);</span>
+        <span class="n">root</span> <span class="o">=</span> <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="n">rootClass</span><span class="o">);</span>
+        <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">select</span><span class="o">(</span><span class="n">root</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Predicate</span> <span class="nf">getPredicate</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">predicate</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">predicate</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">conjunction</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="n">predicate</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">void</span> <span class="nf">add</span><span class="o">(</span><span class="n">Predicate</span> <span class="n">expression</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">getPredicate</span><span class="o">().</span><span class="na">getExpressions</span><span class="o">().</span><span class="na">add</span><span class="o">(</span><span class="n">expression</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">like</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">parameterValue</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">parameterValue</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">String</span> <span class="n">parameterName</span> <span class="o">=</span> <span class="n">fieldName</span><span class="o">;</span>
+            <span class="n">parameters</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">parameterName</span><span class="o">,</span> <span class="n">parameterValue</span><span class="o">);</span>
+            <span class="n">ParameterExpression</span> <span class="n">requestParameter</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">parameter</span><span class="o">(</span><span class="n">getFieldClass</span><span class="o">(</span><span class="n">rootClass</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">),</span> <span class="n">parameterName</span><span class="o">);</span>
+            <span class="n">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">like</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">),</span> <span class="n">requestParameter</span><span class="o">));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">greaterThanOrEqualTo</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">limit</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">limit</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">String</span> <span class="n">parameterName</span> <span class="o">=</span> <span class="n">fieldName</span> <span class="o">+</span> <span class="n">GTE_SUFFIX</span><span class="o">;</span>
+            <span class="n">parameters</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">parameterName</span><span class="o">,</span> <span class="n">limit</span><span class="o">);</span>
+            <span class="n">ParameterExpression</span> <span class="n">parameter</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">parameter</span><span class="o">(</span><span class="n">getFieldClass</span><span class="o">(</span><span class="n">rootClass</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">),</span> <span class="n">parameterName</span><span class="o">);</span>
+            <span class="n">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">greaterThanOrEqualTo</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">),</span> <span class="n">parameter</span><span class="o">));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">lessThanOrEqualTo</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">limit</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">limit</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">String</span> <span class="n">parameterName</span> <span class="o">=</span> <span class="n">fieldName</span> <span class="o">+</span> <span class="n">LTE_SUFFIX</span><span class="o">;</span>
+            <span class="n">parameters</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">parameterName</span><span class="o">,</span> <span class="n">limit</span><span class="o">);</span>
+            <span class="n">ParameterExpression</span> <span class="n">parameter</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">parameter</span><span class="o">(</span><span class="n">getFieldClass</span><span class="o">(</span><span class="n">rootClass</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">),</span> <span class="n">parameterName</span><span class="o">);</span>
+            <span class="n">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">lessThanOrEqualTo</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">),</span> <span class="n">parameter</span><span class="o">));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">equal</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">value</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">String</span> <span class="n">parameterName</span> <span class="o">=</span> <span class="n">fieldName</span><span class="o">;</span>
+            <span class="n">parameters</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="n">parameterName</span><span class="o">,</span> <span class="n">value</span><span class="o">);</span>
+            <span class="n">ParameterExpression</span> <span class="n">parameter</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">parameter</span><span class="o">(</span><span class="n">getFieldClass</span><span class="o">(</span><span class="n">rootClass</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">),</span> <span class="n">parameterName</span><span class="o">);</span>
+            <span class="n">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">equal</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">),</span> <span class="n">parameter</span><span class="o">));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">has</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">)));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">doesNotHave</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">isNull</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">)));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Class</span> <span class="nf">getFieldClass</span><span class="o">(</span><span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">rootClass</span><span class="o">,</span> <span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">rootClass</span><span class="o">.</span><span class="na">getDeclaredField</span><span class="o">(</span><span class="n">fieldName</span><span class="o">).</span><span class="na">getType</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">NoSuchFieldException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">pageStart</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageStart</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">pageStart</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span> <span class="o">=</span> <span class="n">pageStart</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">pageNumber</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageNr</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">pageNr</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span> <span class="o">=</span> <span class="n">pageNr</span> <span class="o">*</span> <span class="n">pageSize</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">pageSize</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageSize</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">pageSize</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span> <span class="o">=</span> <span class="n">pageSize</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">asc</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">getOrderList</span><span class="o">().</span><span class="na">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">asc</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">)));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">desc</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">getOrderList</span><span class="o">().</span><span class="na">add</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">desc</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">fieldName</span><span class="o">)))</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">predicate</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">where</span><span class="o">(</span><span class="n">predicate</span><span class="o">);</span>
+        <span class="o">}</span>
+
+        <span class="n">TypedQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">q</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">criteriaQuery</span><span class="o">);</span>
+        <span class="n">q</span><span class="o">.</span><span class="na">setFirstResult</span><span class="o">(</span><span class="n">pageStart</span><span class="o">);</span>
+        <span class="n">q</span><span class="o">.</span><span class="na">setMaxResults</span><span class="o">(</span><span class="n">pageSize</span><span class="o">);</span>
+        <span class="n">parameters</span><span class="o">.</span><span class="na">forEach</span><span class="o">((</span><span class="n">name</span><span class="o">,</span> <span class="n">value</span><span class="o">)</span> <span class="o">-&gt;</span> <span class="n">q</span><span class="o">.</span><span class="na">setParameter</span><span class="o">(</span><span class="n">name</span><span class="o">,</span> <span class="n">value</span><span class="o">));</span>
+        <span class="k">return</span> <span class="n">q</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="the-immutable-class-in-all-its-beauty">The immutable class, in all its beauty.</h2>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">ImmutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="kd">implements</span> <span class="n">Query</span> <span class="o">{</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">String</span> <span class="n">GTE</span> <span class="o">=</span> <span class="s">"GTE"</span><span class="o">;</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">String</span> <span class="n">LTE</span> <span class="o">=</span> <span class="s">"LTE"</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="kd">class</span> <span class="nc">QueryTerm</span> <span class="o">{</span>
+        <span class="kd">private</span> <span class="n">String</span> <span class="n">expression</span><span class="o">;</span>
+        <span class="kd">private</span> <span class="n">String</span> <span class="n">field</span><span class="o">;</span>
+        <span class="kd">private</span> <span class="n">Object</span> <span class="n">value</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="nf">QueryTerm</span><span class="o">(</span><span class="n">String</span> <span class="n">expression</span><span class="o">,</span> <span class="n">String</span> <span class="n">field</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">expression</span> <span class="o">=</span> <span class="n">expression</span><span class="o">;</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">field</span> <span class="o">=</span> <span class="n">field</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kd">private</span> <span class="nf">QueryTerm</span><span class="o">(</span><span class="n">String</span> <span class="n">expression</span><span class="o">,</span> <span class="n">String</span> <span class="n">field</span><span class="o">,</span> <span class="n">Object</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">expression</span> <span class="o">=</span> <span class="n">expression</span><span class="o">;</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">field</span> <span class="o">=</span> <span class="n">field</span><span class="o">;</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="nd">@Override</span>
+        <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">equals</span><span class="o">(</span><span class="n">Object</span> <span class="n">o</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="k">this</span> <span class="o">==</span> <span class="n">o</span><span class="o">)</span> <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">o</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">||</span> <span class="n">getClass</span><span class="o">()</span> <span class="o">!=</span> <span class="n">o</span><span class="o">.</span><span class="na">getClass</span><span class="o">())</span> <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+
+            <span class="n">QueryTerm</span> <span class="n">queryTerm</span> <span class="o">=</span> <span class="o">(</span><span class="n">QueryTerm</span><span class="o">)</span> <span class="n">o</span><span class="o">;</span>
+
+            <span class="k">if</span> <span class="o">(!</span><span class="n">expression</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">expression</span><span class="o">))</span> <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">field</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">))</span> <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+            <span class="k">return</span> <span class="n">value</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">value</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">value</span><span class="o">)</span> <span class="o">:</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">value</span> <span class="o">==</span> <span class="kc">null</span><span class="o">;</span>
+
+        <span class="o">}</span>
+
+        <span class="nd">@Override</span>
+        <span class="kd">public</span> <span class="kt">int</span> <span class="nf">hashCode</span><span class="o">()</span> <span class="o">{</span>
+            <span class="kt">int</span> <span class="n">result</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="na">hashCode</span><span class="o">();</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="mi">31</span> <span class="o">*</span> <span class="n">result</span> <span class="o">+</span> <span class="n">field</span><span class="o">.</span><span class="na">hashCode</span><span class="o">();</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="mi">31</span> <span class="o">*</span> <span class="n">result</span> <span class="o">+</span> <span class="o">(</span><span class="n">value</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">?</span> <span class="n">value</span><span class="o">.</span><span class="na">hashCode</span><span class="o">()</span> <span class="o">:</span> <span class="mi">0</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">result</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kd">class</span> <span class="nc">OrderTerm</span> <span class="o">{</span>
+        <span class="kd">private</span> <span class="n">String</span> <span class="n">field</span><span class="o">;</span>
+        <span class="kd">private</span> <span class="n">String</span> <span class="n">direction</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="nf">OrderTerm</span><span class="o">(</span><span class="n">String</span> <span class="n">field</span><span class="o">,</span> <span class="n">String</span> <span class="n">direction</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">field</span> <span class="o">=</span> <span class="n">field</span><span class="o">;</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">direction</span> <span class="o">=</span> <span class="n">direction</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Set</span><span class="o">&lt;</span><span class="n">QueryTerm</span><span class="o">&gt;</span> <span class="n">queryTerms</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">OrderTerm</span><span class="o">&gt;</span> <span class="n">orderTerms</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">EntityManager</span> <span class="n">entityManager</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">rootClass</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">pageStart</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">pageSize</span><span class="o">;</span>
+
+    <span class="kd">protected</span> <span class="nf">ImmutableQuery</span><span class="o">(</span><span class="n">EntityManager</span> <span class="n">entityManager</span><span class="o">,</span> <span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">rootClass</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">entityManager</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">rootClass</span> <span class="o">=</span> <span class="n">rootClass</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">queryTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashSet</span><span class="o">&lt;&gt;();</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">orderTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;&gt;();</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span> <span class="o">=</span> <span class="mi">10</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="nf">ImmutableQuery</span><span class="o">(</span><span class="n">ImmutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">originalQuery</span><span class="o">,</span> <span class="n">QueryTerm</span> <span class="n">newTerm</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">entityManager</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">entityManager</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">rootClass</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">rootClass</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">queryTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashSet</span><span class="o">&lt;&gt;(</span><span class="n">originalQuery</span><span class="o">.</span><span class="na">queryTerms</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">queryTerms</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">newTerm</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">orderTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;&gt;(</span><span class="n">originalQuery</span><span class="o">.</span><span class="na">orderTerms</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">pageSize</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">pageStart</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="nf">ImmutableQuery</span><span class="o">(</span><span class="n">ImmutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">originalQuery</span><span class="o">,</span> <span class="n">Integer</span> <span class="n">pageSize</span><span class="o">,</span> <span class="n">Integer</span> <span class="n">pageStart</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">entityManager</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">entityManager</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">rootClass</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">rootClass</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">queryTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashSet</span><span class="o">&lt;&gt;(</span><span class="n">originalQuery</span><span class="o">.</span><span class="na">queryTerms</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">orderTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;&gt;(</span><span class="n">originalQuery</span><span class="o">.</span><span class="na">orderTerms</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span> <span class="o">=</span> <span class="n">pageSize</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span> <span class="o">=</span> <span class="n">pageStart</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="nf">ImmutableQuery</span><span class="o">(</span><span class="n">ImmutableQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">originalQuery</span><span class="o">,</span> <span class="n">OrderTerm</span> <span class="n">newOrderTerm</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">entityManager</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">entityManager</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">rootClass</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">rootClass</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">queryTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HashSet</span><span class="o">&lt;&gt;(</span><span class="n">originalQuery</span><span class="o">.</span><span class="na">queryTerms</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">orderTerms</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;&gt;(</span><span class="n">originalQuery</span><span class="o">.</span><span class="na">orderTerms</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">orderTerms</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">newOrderTerm</span><span class="o">);</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">pageSize</span><span class="o">;</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span> <span class="o">=</span> <span class="n">originalQuery</span><span class="o">.</span><span class="na">pageStart</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">like</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">parameterValue</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span><span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">parameterValue</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">QueryTerm</span><span class="o">(</span><span class="s">"like"</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">parameterValue</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">greaterThanOrEqualTo</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">limit</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">limit</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">QueryTerm</span><span class="o">(</span><span class="s">"greaterThanOrEqualTo"</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">limit</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">lessThanOrEqualTo</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">limit</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">limit</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">QueryTerm</span><span class="o">(</span><span class="s">"lessThanOrEqualTo"</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">limit</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">equal</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">Object</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">value</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">QueryTerm</span><span class="o">(</span><span class="s">"equal"</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">,</span> <span class="n">value</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">has</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">QueryTerm</span><span class="o">(</span><span class="s">"has"</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">doesNotHave</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">QueryTerm</span><span class="o">(</span><span class="s">"doesNotHave"</span><span class="o">,</span> <span class="n">fieldName</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">pageStart</span><span class="o">(</span><span class="n">Integer</span> <span class="n">newPageStart</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">newPageStart</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span><span class="o">,</span> <span class="n">newPageStart</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">pageNumber</span><span class="o">(</span><span class="n">Integer</span> <span class="n">pageNr</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">pageNr</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="n">pageSize</span><span class="o">,</span> <span class="k">this</span><span class="o">.</span><span class="na">pageSize</span> <span class="o">*</span> <span class="n">pageNr</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">pageSize</span><span class="o">(</span><span class="n">Integer</span> <span class="n">newPageSize</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">newPageSize</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="n">newPageSize</span><span class="o">,</span> <span class="k">this</span><span class="o">.</span><span class="na">pageStart</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">asc</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">OrderTerm</span><span class="o">(</span><span class="n">fieldName</span><span class="o">,</span> <span class="s">"asc"</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">Query</span> <span class="nf">desc</span><span class="o">(</span><span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">fieldName</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">ImmutableQuery</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">,</span> <span class="k">new</span> <span class="n">OrderTerm</span><span class="o">(</span><span class="n">fieldName</span><span class="o">,</span> <span class="s">"desc"</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Class</span> <span class="nf">getFieldClass</span><span class="o">(</span><span class="n">Class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">rootClass</span><span class="o">,</span> <span class="n">String</span> <span class="n">fieldName</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">rootClass</span><span class="o">.</span><span class="na">getDeclaredField</span><span class="o">(</span><span class="n">fieldName</span><span class="o">).</span><span class="na">getType</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">NoSuchFieldException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+        <span class="c1">// build query</span>
+        <span class="n">CriteriaBuilder</span> <span class="n">criteriaBuilder</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">getCriteriaBuilder</span><span class="o">();</span>
+        <span class="n">CriteriaQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">criteriaQuery</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">rootClass</span><span class="o">);</span>
+        <span class="n">Root</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">root</span> <span class="o">=</span> <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="n">rootClass</span><span class="o">);</span>
+        <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">select</span><span class="o">(</span><span class="n">root</span><span class="o">);</span>
+        <span class="n">Predicate</span> <span class="n">predicate</span> <span class="o">=</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">conjunction</span><span class="o">();</span>
+        <span class="n">List</span><span class="o">&lt;</span><span class="n">Expression</span><span class="o">&lt;</span><span class="n">Boolean</span><span class="o">&gt;&gt;</span> <span class="n">expressions</span> <span class="o">=</span> <span class="n">predicate</span><span class="o">.</span><span class="na">getExpressions</span><span class="o">();</span>
+        <span class="n">queryTerms</span><span class="o">.</span><span class="na">forEach</span><span class="o">(</span><span class="n">queryTerm</span> <span class="o">-&gt;</span>
+                <span class="n">getExpression</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">root</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">).</span><span class="na">ifPresent</span><span class="o">(</span><span class="n">expression</span> <span class="o">-&gt;</span> <span class="n">expressions</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">expression</span><span class="o">)));</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">expressions</span><span class="o">.</span><span class="na">size</span><span class="o">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">where</span><span class="o">(</span><span class="n">predicate</span><span class="o">);</span>
+        <span class="o">}</span>
+        <span class="n">criteriaQuery</span><span class="o">.</span><span class="na">orderBy</span><span class="o">(</span><span class="n">orderTerms</span><span class="o">.</span><span class="na">stream</span><span class="o">()</span>
+                <span class="o">.</span><span class="na">map</span><span class="o">(</span><span class="n">orderTerm</span> <span class="o">-&gt;</span> <span class="n">getOrder</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">root</span><span class="o">,</span> <span class="n">orderTerm</span><span class="o">))</span>
+                <span class="o">.</span><span class="na">filter</span><span class="o">(</span><span class="n">order</span> <span class="o">-&gt;</span> <span class="n">order</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+                <span class="o">.</span><span class="na">collect</span><span class="o">(</span><span class="n">Collectors</span><span class="o">.</span><span class="na">toList</span><span class="o">())</span>
+        <span class="o">);</span>
+
+        <span class="n">TypedQuery</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">typedQuery</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">criteriaQuery</span><span class="o">);</span>
+        <span class="c1">// set page</span>
+        <span class="n">typedQuery</span><span class="o">.</span><span class="na">setFirstResult</span><span class="o">(</span><span class="n">pageStart</span><span class="o">);</span>
+        <span class="n">typedQuery</span><span class="o">.</span><span class="na">setMaxResults</span><span class="o">(</span><span class="n">pageSize</span><span class="o">);</span>
+        <span class="c1">// populate parameters</span>
+        <span class="n">queryTerms</span><span class="o">.</span><span class="na">forEach</span><span class="o">(</span><span class="n">queryTerm</span> <span class="o">-&gt;</span>
+                <span class="n">getParameter</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">).</span><span class="na">ifPresent</span><span class="o">(</span><span class="n">parameter</span> <span class="o">-&gt;</span>
+                        <span class="n">typedQuery</span><span class="o">.</span><span class="na">setParameter</span><span class="o">(</span><span class="n">parameter</span><span class="o">.</span><span class="na">getName</span><span class="o">(),</span> <span class="n">parameter</span><span class="o">.</span><span class="na">getValue</span><span class="o">())</span>
+                <span class="o">)</span>
+        <span class="o">);</span>
+        <span class="c1">// run query</span>
+        <span class="k">return</span> <span class="n">typedQuery</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Order</span> <span class="nf">getOrder</span><span class="o">(</span><span class="n">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">Root</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">root</span><span class="o">,</span> <span class="n">OrderTerm</span> <span class="n">orderTerm</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">switch</span> <span class="o">(</span><span class="n">orderTerm</span><span class="o">.</span><span class="na">direction</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">case</span> <span class="s">"asc"</span><span class="o">:</span> <span class="k">return</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">asc</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">orderTerm</span><span class="o">.</span><span class="na">field</span><span class="o">));</span>
+            <span class="k">case</span> <span class="s">"desc"</span><span class="o">:</span> <span class="k">return</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">desc</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">orderTerm</span><span class="o">.</span><span class="na">field</span><span class="o">));</span>
+            <span class="k">default</span><span class="o">:</span> <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kd">class</span> <span class="nc">Parameter</span> <span class="o">{</span>
+        <span class="kd">private</span> <span class="n">String</span> <span class="n">name</span><span class="o">;</span>
+        <span class="kd">private</span> <span class="n">Object</span> <span class="n">value</span><span class="o">;</span>
+
+        <span class="kd">public</span> <span class="nf">Parameter</span><span class="o">(</span><span class="n">String</span> <span class="n">name</span><span class="o">,</span> <span class="n">Object</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">;</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kd">public</span> <span class="n">String</span> <span class="nf">getName</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">name</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="kd">public</span> <span class="n">Object</span> <span class="nf">getValue</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">value</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Optional</span><span class="o">&lt;</span><span class="n">Parameter</span><span class="o">&gt;</span> <span class="nf">getParameter</span><span class="o">(</span><span class="n">QueryTerm</span> <span class="n">queryTerm</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">switch</span> <span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">expression</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">case</span> <span class="s">"greaterThanOrEqualTo"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="k">new</span> <span class="n">Parameter</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span> <span class="o">+</span> <span class="n">GTE</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">value</span><span class="o">));</span>
+            <span class="k">case</span> <span class="s">"lessThanOrEqualTo"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="k">new</span> <span class="n">Parameter</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span> <span class="o">+</span> <span class="n">LTE</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">value</span><span class="o">));</span>
+            <span class="k">case</span> <span class="s">"has"</span><span class="o">:</span>
+            <span class="k">case</span> <span class="s">"doesNotHave"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">empty</span><span class="o">();</span>
+            <span class="k">default</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="k">new</span> <span class="n">Parameter</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">value</span><span class="o">));</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">Optional</span><span class="o">&lt;</span><span class="n">Expression</span><span class="o">&lt;</span><span class="n">Boolean</span><span class="o">&gt;&gt;</span> <span class="nf">getExpression</span><span class="o">(</span><span class="n">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">Root</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">root</span><span class="o">,</span> <span class="n">QueryTerm</span> <span class="n">queryTerm</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">switch</span> <span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">expression</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">case</span> <span class="s">"like"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">like</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">),</span> <span class="n">getParameter</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">)));</span>
+            <span class="k">case</span> <span class="s">"greaterThanOrEqualTo"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">greaterThanOrEqualTo</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">),</span><span class="n">getParameter</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">,</span> <span class="n">GTE</span><span class="o">)));</span>
+            <span class="k">case</span> <span class="s">"lessThanOrEqualTo"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">lessThanOrEqualTo</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">),</span><span class="n">getParameter</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">,</span> <span class="n">LTE</span><span class="o">)));</span>
+            <span class="k">case</span> <span class="s">"equal"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">equal</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">),</span><span class="n">getParameter</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">)));</span>
+            <span class="k">case</span> <span class="s">"has"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">)));</span>
+            <span class="k">case</span> <span class="s">"doesNotHave"</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">isNull</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">)));</span>
+            <span class="k">default</span><span class="o">:</span>
+                <span class="k">return</span> <span class="n">Optional</span><span class="o">.</span><span class="na">empty</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">ParameterExpression</span> <span class="nf">getParameter</span><span class="o">(</span><span class="n">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">QueryTerm</span> <span class="n">queryTerm</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="nf">getParameter</span><span class="o">(</span><span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">,</span> <span class="kc">null</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">ParameterExpression</span> <span class="nf">getParameter</span><span class="o">(</span><span class="n">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">,</span> <span class="n">QueryTerm</span> <span class="n">queryTerm</span><span class="o">,</span> <span class="n">String</span> <span class="n">suffix</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">suffix</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">parameter</span><span class="o">(</span><span class="n">getFieldClass</span><span class="o">(</span><span class="n">rootClass</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">),</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">criteriaBuilder</span><span class="o">.</span><span class="na">parameter</span><span class="o">(</span><span class="n">getFieldClass</span><span class="o">(</span><span class="n">rootClass</span><span class="o">,</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span><span class="o">),</span> <span class="n">queryTerm</span><span class="o">.</span><span class="na">field</span> <span class="o">+</span> <span class="n">suffix</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h1 id="resources">Resources</h1>
+
+<ul>
+  <li><a href="http://docs.oracle.com/javaee/6/tutorial/doc/gjivm.html">Using criteria queries</a></li>
+</ul>
+</body></html>

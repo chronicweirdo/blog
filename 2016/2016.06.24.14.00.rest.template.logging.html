@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Being able to fully log all interactions between your code and a REST API can be vital for quickly diagnosing problems in your interaction with the API. The difficulty arises when you realize that most frameworks avoid logging the response body. The response body can only be read once since it is received in stream format. The solution for this is to buffer the stream, that way you can read it for logging and when mapping to Java objects.">
+
+    <title>Full logging with RestTemplate</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2016.06.24 14:00</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">rest</span>
+    
+        <span>/</span><span class="tag">logging</span>
+    
+</p>
+<h1 class="title">Full logging with RestTemplate</h1>
+
+<p>Being able to fully log all interactions between your code and a REST
+ API can be vital for quickly diagnosing problems in your interaction 
+with the API. The difficulty arises when you realize that most 
+frameworks avoid logging the response body. The response body can only 
+be read once since it is received in stream format. The solution for 
+this is to buffer the stream, that way you can read it for logging and 
+when mapping to Java objects.</p>
+
+<!--more-->
+
+<p>The first step, when implementing this, is to correctly instantiate the RestTemplate object:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="nd">@Configuration</span>
+<span class="nd">@ComponentScan</span><span class="o">(</span><span class="n">basePackages</span> <span class="o">=</span> <span class="o">{</span><span class="s">"com.cacoveanu.service"</span><span class="o">})</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ServiceConfig</span> <span class="o">{</span>
+
+    <span class="nd">@Autowired</span>
+    <span class="kd">private</span> <span class="n">RestLogRepository</span> <span class="n">restLogRepository</span><span class="o">;</span>
+
+    <span class="nd">@Bean</span>
+    <span class="kd">public</span> <span class="n">RestTemplate</span> <span class="nf">restTemplate</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">RestTemplate</span> <span class="n">rest</span> <span class="o">=</span> <span class="k">new</span> <span class="n">RestTemplate</span><span class="o">();</span>
+        <span class="n">rest</span><span class="o">.</span><span class="na">getMessageConverters</span><span class="o">().</span><span class="na">add</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="n">mappingJacksonHttpMessageConverter</span><span class="o">());</span>
+
+        <span class="c1">// set up a buffering request factory, so response body is always buffered</span>
+        <span class="n">SimpleClientHttpRequestFactory</span> <span class="n">requestFactory</span> <span class="o">=</span> <span class="k">new</span> <span class="n">SimpleClientHttpRequestFactory</span><span class="o">();</span>
+        <span class="n">BufferingClientHttpRequestFactory</span> <span class="n">bufferingClientHttpRequestFactory</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BufferingClientHttpRequestFactory</span><span class="o">(</span><span class="n">requestFactory</span><span class="o">);</span>
+        <span class="n">requestFactory</span><span class="o">.</span><span class="na">setOutputStreaming</span><span class="o">(</span><span class="kc">false</span><span class="o">);</span>
+        <span class="n">rest</span><span class="o">.</span><span class="na">setRequestFactory</span><span class="o">(</span><span class="n">bufferingClientHttpRequestFactory</span><span class="o">);</span>
+
+        <span class="c1">// add the interceptor that will handle logging</span>
+        <span class="n">List</span><span class="o">&lt;</span><span class="n">ClientHttpRequestInterceptor</span><span class="o">&gt;</span> <span class="n">interceptors</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;</span><span class="n">ClientHttpRequestInterceptor</span><span class="o">&gt;();</span>
+        <span class="n">interceptors</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="k">new</span> <span class="n">FullLoggingInterceptor</span><span class="o">(</span><span class="n">restLogRepository</span><span class="o">));</span>
+        <span class="n">rest</span><span class="o">.</span><span class="na">setInterceptors</span><span class="o">(</span><span class="n">interceptors</span><span class="o">);</span>
+
+        <span class="k">return</span> <span class="n">rest</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">MappingJackson2HttpMessageConverter</span> <span class="nf">mappingJacksonHttpMessageConverter</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">MappingJackson2HttpMessageConverter</span> <span class="n">converter</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MappingJackson2HttpMessageConverter</span><span class="o">();</span>
+        <span class="n">converter</span><span class="o">.</span><span class="na">setObjectMapper</span><span class="o">(</span><span class="n">myObjectMapper</span><span class="o">());</span>
+        <span class="k">return</span> <span class="n">converter</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Bean</span>
+    <span class="kd">public</span> <span class="n">ObjectMapper</span> <span class="nf">myObjectMapper</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">ObjectMapper</span> <span class="n">objectMapper</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ObjectMapper</span><span class="o">();</span>
+        <span class="n">objectMapper</span><span class="o">.</span><span class="na">configure</span><span class="o">(</span><span class="n">DeserializationFeature</span><span class="o">.</span><span class="na">READ_UNKNOWN_ENUM_VALUES_AS_NULL</span><span class="o">,</span> <span class="kc">true</span><span class="o">);</span>
+        <span class="n">objectMapper</span><span class="o">.</span><span class="na">configure</span><span class="o">(</span><span class="n">DeserializationFeature</span><span class="o">.</span><span class="na">FAIL_ON_UNKNOWN_PROPERTIES</span><span class="o">,</span> <span class="kc">false</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">objectMapper</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The next step is to add the interceptor that handles the actual logging:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">FullLoggingInterceptor</span> <span class="kd">implements</span> <span class="n">ClientHttpRequestInterceptor</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="n">Logger</span> <span class="n">logger</span> <span class="o">=</span> <span class="n">LoggerFactory</span><span class="o">.</span><span class="na">getLogger</span><span class="o">(</span><span class="n">FullLoggingInterceptor</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+
+    <span class="kd">private</span> <span class="n">RestLogRepository</span> <span class="n">restLogRepository</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="n">ObjectMapper</span> <span class="n">mapper</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ObjectMapper</span><span class="o">();</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kt">int</span> <span class="n">MAX_RESULT_SIZE</span> <span class="o">=</span> <span class="mi">524288</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="nf">FullLoggingInterceptor</span><span class="o">(</span><span class="n">RestLogRepository</span> <span class="n">restLogRepository</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">restLogRepository</span> <span class="o">=</span> <span class="n">restLogRepository</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="n">ClientHttpResponse</span> <span class="nf">intercept</span><span class="o">(</span><span class="n">HttpRequest</span> <span class="n">request</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">body</span><span class="o">,</span> <span class="n">ClientHttpRequestExecution</span> <span class="n">execution</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">RestLog</span> <span class="n">restLog</span> <span class="o">=</span> <span class="k">new</span> <span class="n">RestLog</span><span class="o">();</span>
+        <span class="n">traceRequest</span><span class="o">(</span><span class="n">request</span><span class="o">,</span> <span class="n">body</span><span class="o">);</span>
+        <span class="n">populate</span><span class="o">(</span><span class="n">restLog</span><span class="o">,</span> <span class="n">request</span><span class="o">,</span> <span class="n">body</span><span class="o">);</span>
+        <span class="n">Stopwatch</span> <span class="n">stopwatch</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Stopwatch</span><span class="o">();</span>
+        <span class="n">ClientHttpResponse</span> <span class="n">response</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="n">stopwatch</span><span class="o">.</span><span class="na">start</span><span class="o">();</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">execution</span><span class="o">.</span><span class="na">execute</span><span class="o">(</span><span class="n">request</span><span class="o">,</span> <span class="n">body</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">Throwable</span> <span class="n">t</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">getThrowableString</span><span class="o">(</span><span class="n">t</span><span class="o">).</span><span class="na">ifPresent</span><span class="o">(</span><span class="nl">restLog:</span><span class="o">:</span><span class="n">setException</span><span class="o">);</span>
+            <span class="k">throw</span> <span class="n">t</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+            <span class="n">stopwatch</span><span class="o">.</span><span class="na">stop</span><span class="o">();</span>
+            <span class="n">traceResponse</span><span class="o">(</span><span class="n">response</span><span class="o">);</span>
+            <span class="n">populate</span><span class="o">(</span><span class="n">restLog</span><span class="o">,</span> <span class="n">response</span><span class="o">);</span>
+            <span class="n">populate</span><span class="o">(</span><span class="n">restLog</span><span class="o">,</span> <span class="n">stopwatch</span><span class="o">);</span>
+            <span class="k">try</span> <span class="o">{</span>
+                <span class="n">restLogRepository</span><span class="o">.</span><span class="na">save</span><span class="o">(</span><span class="n">restLog</span><span class="o">);</span>
+            <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">DataAccessException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">logger</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="s">"failed to save REST log to database"</span><span class="o">,</span> <span class="n">e</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="n">response</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getBodyAsJson</span><span class="o">(</span><span class="n">String</span> <span class="n">bodyString</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">bodyString</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">||</span> <span class="n">bodyString</span><span class="o">.</span><span class="na">length</span><span class="o">()</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">isValidJSON</span><span class="o">(</span><span class="n">bodyString</span><span class="o">))</span> <span class="o">{</span>
+                <span class="k">return</span> <span class="n">bodyString</span><span class="o">;</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">bodyString</span><span class="o">.</span><span class="na">replaceAll</span><span class="o">(</span><span class="s">"\""</span><span class="o">,</span> <span class="s">"\\\""</span><span class="o">);</span>
+                <span class="k">return</span> <span class="s">"\""</span> <span class="o">+</span> <span class="n">bodyString</span> <span class="o">+</span> <span class="s">"\""</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">void</span> <span class="nf">populate</span><span class="o">(</span><span class="n">RestLog</span> <span class="n">restLog</span><span class="o">,</span> <span class="n">Stopwatch</span> <span class="n">stopwatch</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setCorrelationId</span><span class="o">(</span><span class="n">CorrelationId</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setStartDate</span><span class="o">(</span><span class="n">stopwatch</span><span class="o">.</span><span class="na">getStartDate</span><span class="o">());</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setEndDate</span><span class="o">(</span><span class="n">stopwatch</span><span class="o">.</span><span class="na">getStopDate</span><span class="o">());</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setDuration</span><span class="o">(</span><span class="n">stopwatch</span><span class="o">.</span><span class="na">getTime</span><span class="o">());</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">void</span> <span class="nf">populate</span><span class="o">(</span><span class="n">RestLog</span> <span class="n">restLog</span><span class="o">,</span> <span class="n">HttpRequest</span> <span class="n">request</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">body</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setRequestBody</span><span class="o">(</span><span class="n">getRequestBody</span><span class="o">(</span><span class="n">body</span><span class="o">));</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setRequestUrl</span><span class="o">(</span><span class="n">getRequestUrl</span><span class="o">(</span><span class="n">request</span><span class="o">));</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setRequestType</span><span class="o">(</span><span class="n">getRequestType</span><span class="o">(</span><span class="n">request</span><span class="o">));</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setRequestHeaders</span><span class="o">(</span><span class="n">LogUtil</span><span class="o">.</span><span class="na">serialize</span><span class="o">(</span><span class="n">mapper</span><span class="o">,</span> <span class="n">getRequestHeaders</span><span class="o">(</span><span class="n">request</span><span class="o">),</span> <span class="n">MAX_RESULT_SIZE</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">HttpHeaders</span> <span class="nf">getRequestHeaders</span><span class="o">(</span><span class="n">HttpRequest</span> <span class="n">request</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">request</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getRequestType</span><span class="o">(</span><span class="n">HttpRequest</span> <span class="n">request</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">request</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">request</span><span class="o">.</span><span class="na">getMethod</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="na">getMethod</span><span class="o">().</span><span class="na">toString</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getRequestUrl</span><span class="o">(</span><span class="n">HttpRequest</span> <span class="n">request</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">request</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">request</span><span class="o">.</span><span class="na">getURI</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="na">getURI</span><span class="o">().</span><span class="na">toString</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getRequestBody</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">body</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">UnsupportedEncodingException</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">body</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">body</span><span class="o">.</span><span class="na">length</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="nf">getBodyAsJson</span><span class="o">(</span><span class="k">new</span> <span class="n">String</span><span class="o">(</span><span class="n">body</span><span class="o">,</span> <span class="s">"UTF-8"</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">void</span> <span class="nf">traceRequest</span><span class="o">(</span><span class="n">HttpRequest</span> <span class="n">request</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">body</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">debug</span><span class="o">(</span><span class="s">"request URI : "</span> <span class="o">+</span> <span class="n">request</span><span class="o">.</span><span class="na">getURI</span><span class="o">());</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">debug</span><span class="o">(</span><span class="s">"request method : "</span> <span class="o">+</span> <span class="n">request</span><span class="o">.</span><span class="na">getMethod</span><span class="o">());</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">debug</span><span class="o">(</span><span class="s">"request body : "</span> <span class="o">+</span> <span class="n">getRequestBody</span><span class="o">(</span><span class="n">body</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">void</span> <span class="nf">populate</span><span class="o">(</span><span class="n">RestLog</span> <span class="n">restLog</span><span class="o">,</span> <span class="n">ClientHttpResponse</span> <span class="n">response</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setResponseBody</span><span class="o">(</span><span class="n">getBodyAsJson</span><span class="o">(</span><span class="n">getBodyString</span><span class="o">(</span><span class="n">response</span><span class="o">)));</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setResponseHeaders</span><span class="o">(</span><span class="n">LogUtil</span><span class="o">.</span><span class="na">serialize</span><span class="o">(</span><span class="n">mapper</span><span class="o">,</span> <span class="n">getResponseHeaders</span><span class="o">(</span><span class="n">response</span><span class="o">),</span> <span class="n">MAX_RESULT_SIZE</span><span class="o">));</span>
+        <span class="n">restLog</span><span class="o">.</span><span class="na">setResponseStatus</span><span class="o">(</span><span class="n">getStatusCode</span><span class="o">(</span><span class="n">response</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">HttpHeaders</span> <span class="nf">getResponseHeaders</span><span class="o">(</span><span class="n">ClientHttpResponse</span> <span class="n">response</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">response</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getStatusCode</span><span class="o">(</span><span class="n">ClientHttpResponse</span> <span class="n">response</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">response</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">response</span><span class="o">.</span><span class="na">getStatusCode</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="na">getStatusCode</span><span class="o">().</span><span class="na">toString</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">void</span> <span class="nf">traceResponse</span><span class="o">(</span><span class="n">ClientHttpResponse</span> <span class="n">response</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">body</span> <span class="o">=</span> <span class="n">getBodyString</span><span class="o">(</span><span class="n">response</span><span class="o">);</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">debug</span><span class="o">(</span><span class="s">"response status code: "</span> <span class="o">+</span> <span class="n">response</span><span class="o">.</span><span class="na">getStatusCode</span><span class="o">());</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">debug</span><span class="o">(</span><span class="s">"response status text: "</span> <span class="o">+</span> <span class="n">response</span><span class="o">.</span><span class="na">getStatusText</span><span class="o">());</span>
+        <span class="n">logger</span><span class="o">.</span><span class="na">debug</span><span class="o">(</span><span class="s">"response body : "</span> <span class="o">+</span> <span class="n">body</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="nf">getBodyString</span><span class="o">(</span><span class="n">ClientHttpResponse</span> <span class="n">response</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">response</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">response</span><span class="o">.</span><span class="na">getBody</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">isReadableResponse</span><span class="o">(</span><span class="n">response</span><span class="o">))</span> <span class="o">{</span>
+                <span class="n">StringBuilder</span> <span class="n">inputStringBuilder</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+                <span class="n">BufferedReader</span> <span class="n">bufferedReader</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BufferedReader</span><span class="o">(</span><span class="k">new</span> <span class="n">InputStreamReader</span><span class="o">(</span><span class="n">response</span><span class="o">.</span><span class="na">getBody</span><span class="o">(),</span> <span class="s">"UTF-8"</span><span class="o">));</span>
+                <span class="n">String</span> <span class="n">line</span> <span class="o">=</span> <span class="n">bufferedReader</span><span class="o">.</span><span class="na">readLine</span><span class="o">();</span>
+                <span class="k">while</span> <span class="o">(</span><span class="n">line</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">inputStringBuilder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">line</span><span class="o">);</span>
+                    <span class="n">inputStringBuilder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="sc">'\n'</span><span class="o">);</span>
+                    <span class="n">line</span> <span class="o">=</span> <span class="n">bufferedReader</span><span class="o">.</span><span class="na">readLine</span><span class="o">();</span>
+                <span class="o">}</span>
+                <span class="k">return</span> <span class="n">inputStringBuilder</span><span class="o">.</span><span class="na">toString</span><span class="o">();</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">logger</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="n">e</span><span class="o">.</span><span class="na">getMessage</span><span class="o">(),</span> <span class="n">e</span><span class="o">);</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">boolean</span> <span class="nf">isReadableResponse</span><span class="o">(</span><span class="n">ClientHttpResponse</span> <span class="n">response</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">for</span> <span class="o">(</span><span class="n">String</span> <span class="nl">contentType:</span> <span class="n">response</span><span class="o">.</span><span class="na">getHeaders</span><span class="o">().</span><span class="na">get</span><span class="o">(</span><span class="s">"Content-Type"</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">isReadableContentType</span><span class="o">(</span><span class="n">contentType</span><span class="o">))</span> <span class="o">{</span>
+                <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">private</span> <span class="kt">boolean</span> <span class="nf">isReadableContentType</span><span class="o">(</span><span class="n">String</span> <span class="n">contentType</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">contentType</span><span class="o">.</span><span class="na">startsWith</span><span class="o">(</span><span class="s">"application/json"</span><span class="o">)</span>
+                <span class="o">||</span> <span class="n">contentType</span><span class="o">.</span><span class="na">startsWith</span><span class="o">(</span><span class="s">"text"</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">isValidJSON</span><span class="o">(</span><span class="kd">final</span> <span class="n">String</span> <span class="n">json</span><span class="o">)</span> <span class="o">{</span>
+        <span class="kt">boolean</span> <span class="n">valid</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="n">ObjectMapper</span> <span class="n">objectMapper</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ObjectMapper</span><span class="o">();</span>
+            <span class="n">objectMapper</span><span class="o">.</span><span class="na">readTree</span><span class="o">(</span><span class="n">json</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span><span class="o">(</span><span class="n">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">valid</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="n">valid</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>This rather large class is doing several things. The requests and 
+responses are printed to the application logs, but they are also saved 
+to a database as a <code class="highlighter-rouge">RestLog</code> object using the <code class="highlighter-rouge">RestLogRepository</code> class. One particularly interesting method in the above code is the <code class="highlighter-rouge">isValidJSON</code>
+ method, which tries to find out if the request/response body is a JSON 
+or not. If it is not, we convert the request/response body to a JSON 
+string. That way, we can save all data in the database as JSON and then 
+build a simple REST management API for our project that is able to 
+interrogate the logs and return results as JSON.</p>
+</body></html>

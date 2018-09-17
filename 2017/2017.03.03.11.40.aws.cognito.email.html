@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Amazon Cognito is a user identity service in the AWS suite. It helps you create users and user pools and delegate the authentication process to AWS. Cognito will also send emails to new users as they are added to the system, and those emails can be customized to some extent. This post investigates what customizations Cognito will let us do, how far we can push those customizations. I expect to be able to set up an email with two bodies, one HTML (to allow us to style the email) and the other ...">
+
+    <title>Amazon Cognito email customization</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2017.03.03 11:40</span>
+    
+        <span>/</span><span class="tag">java mail</span>
+    
+        <span>/</span><span class="tag">aws</span>
+    
+        <span>/</span><span class="tag">cognito</span>
+    
+        <span>/</span><span class="tag">ses</span>
+    
+        <span>/</span><span class="tag">lambda</span>
+    
+</p>
+<h1 class="title">Amazon Cognito email customization</h1>
+
+<p>Amazon Cognito is a user identity service in the AWS suite. It helps 
+you create users and user pools and delegate the authentication process 
+to AWS. Cognito will also send emails to new users as they are added to 
+the system, and those emails can be customized to some extent. This post
+ investigates what customizations Cognito will let us do, how far we can
+ push those customizations. I expect to be able to set up an email with 
+two bodies, one HTML (to allow us to style the email) and the other 
+text-only (to maximize accessibility). I’m setting myself up for 
+(spoiler alert) disappointment.</p>
+
+<!--more-->
+
+<h2 id="send-multipart-emails-from-java">Send multipart emails from Java</h2>
+
+<p>First we’ll try to check that we can deliver emails with multiple 
+content bodies. We want to have a HTML body email but also provide a 
+text-only body for users that don’t have mail clients that support HTML 
+(accessibility reasons). In the following example, I am doing this using
+ the Java mail client and my gmail account. First, the dependencies:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>javax.mail<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>javax.mail-api<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>1.5.6<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>com.sun.mail<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>javax.mail<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>1.5.6<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div></div>
+
+<p>And the code for this is very simple:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">sendEmail</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">MessagingException</span> <span class="o">{</span>
+    <span class="n">String</span> <span class="n">username</span> <span class="o">=</span> <span class="s">"****@gmail.com"</span><span class="o">;</span>
+    <span class="n">String</span> <span class="n">password</span> <span class="o">=</span> <span class="s">"****"</span><span class="o">;</span>
+    <span class="n">String</span> <span class="n">host</span> <span class="o">=</span> <span class="s">"smtp.gmail.com"</span><span class="o">;</span>
+
+    <span class="n">Properties</span> <span class="n">props</span> <span class="o">=</span> <span class="n">System</span><span class="o">.</span><span class="na">getProperties</span><span class="o">();</span>
+    <span class="n">props</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="s">"mail.smtp.starttls.enable"</span><span class="o">,</span> <span class="s">"true"</span><span class="o">);</span>
+    <span class="n">props</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="s">"mail.smtp.host"</span><span class="o">,</span> <span class="n">host</span><span class="o">);</span>
+    <span class="n">props</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="s">"mail.smtp.user"</span><span class="o">,</span> <span class="n">username</span><span class="o">);</span>
+    <span class="n">props</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="s">"mail.smtp.password"</span><span class="o">,</span> <span class="n">password</span><span class="o">);</span>
+    <span class="n">props</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="s">"mail.smtp.port"</span><span class="o">,</span> <span class="s">"587"</span><span class="o">);</span>
+    <span class="n">props</span><span class="o">.</span><span class="na">put</span><span class="o">(</span><span class="s">"mail.smtp.auth"</span><span class="o">,</span> <span class="s">"true"</span><span class="o">);</span>
+
+    <span class="n">Session</span> <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="o">.</span><span class="na">getDefaultInstance</span><span class="o">(</span><span class="n">props</span><span class="o">);</span>
+
+    <span class="n">MimeMessage</span> <span class="n">message</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeMessage</span><span class="o">(</span><span class="n">session</span><span class="o">);</span>
+
+    <span class="n">message</span><span class="o">.</span><span class="na">setFrom</span><span class="o">(</span><span class="n">username</span><span class="o">);</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">addRecipient</span><span class="o">(</span><span class="n">Message</span><span class="o">.</span><span class="na">RecipientType</span><span class="o">.</span><span class="na">TO</span><span class="o">,</span> <span class="k">new</span> <span class="n">InternetAddress</span><span class="o">(</span><span class="n">username</span><span class="o">));</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">setSubject</span><span class="o">(</span><span class="s">"Lovely Email"</span><span class="o">);</span>
+
+    <span class="n">MimeBodyPart</span> <span class="n">textPart</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeBodyPart</span><span class="o">();</span>
+    <span class="n">textPart</span><span class="o">.</span><span class="na">setText</span><span class="o">(</span><span class="s">"This is a simple text email."</span><span class="o">,</span> <span class="s">"utf-8"</span><span class="o">);</span>
+
+    <span class="n">MimeBodyPart</span> <span class="n">htmlPart</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeBodyPart</span><span class="o">();</span>
+    <span class="n">htmlPart</span><span class="o">.</span><span class="na">setContent</span><span class="o">(</span><span class="s">"This &lt;strong&gt;email&lt;/strong&gt; has some &lt;em&gt;html&lt;/em&gt; in it."</span><span class="o">,</span> <span class="s">"text/html; charset=utf-8"</span><span class="o">);</span>
+
+    <span class="n">Multipart</span> <span class="n">multiPart</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeMultipart</span><span class="o">(</span><span class="s">"alternative"</span><span class="o">);</span>
+    <span class="n">multiPart</span><span class="o">.</span><span class="na">addBodyPart</span><span class="o">(</span><span class="n">textPart</span><span class="o">);</span>
+    <span class="n">multiPart</span><span class="o">.</span><span class="na">addBodyPart</span><span class="o">(</span><span class="n">htmlPart</span><span class="o">);</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">setContent</span><span class="o">(</span><span class="n">multiPart</span><span class="o">);</span>
+
+    <span class="n">Transport</span> <span class="n">transport</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="na">getTransport</span><span class="o">(</span><span class="s">"smtp"</span><span class="o">);</span>
+    <span class="n">transport</span><span class="o">.</span><span class="na">connect</span><span class="o">(</span><span class="n">host</span><span class="o">,</span> <span class="n">username</span><span class="o">,</span> <span class="n">password</span><span class="o">);</span>
+    <span class="n">transport</span><span class="o">.</span><span class="na">sendMessage</span><span class="o">(</span><span class="n">message</span><span class="o">,</span> <span class="n">message</span><span class="o">.</span><span class="na">getAllRecipients</span><span class="o">());</span>
+    <span class="n">transport</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>An important detail to note in the above code is using <code class="highlighter-rouge">alternative</code> subtype when creating the <code class="highlighter-rouge">MimeMultipart</code>. If you don’t use that subtype, both MIME parts will be displayed in the email.</p>
+
+<p>When running this for the first time, you may have some trouble with 
+gmail not allowing the connection. You’ll need to allow less secure apps
+ to use your gmail account (preferable not to use your main account for 
+testing). At this moment, to enable this setting you need to log in to 
+google, go to your account settings and under <em>sign-in &amp; security &gt; connected apps &amp; sites</em> turn on the <em>Allow less secure</em> apps setting.</p>
+
+<p>After sending your first email, you should see the html content in 
+your gmail web client. You can view the raw message by clicking the <em>more</em> dropdown (down arrow on the right side of your email) and selecting <em>show original</em>. The original message should look something like this (excerpt):</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Content-Type: multipart/alternative; boundary="----=_Part_0_1330106945.1488382096094"
+
+------=_Part_0_1330106945.1488382096094
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+This is a simple text email.
+------=_Part_0_1330106945.1488382096094
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+This &lt;strong&gt;email&lt;/strong&gt; has some &lt;em&gt;html&lt;/em&gt; in&lt;br /&gt; it
+------=_Part_0_1330106945.1488382096094--
+</code></pre></div></div>
+
+<p>To test if the text part of the email is used in text-only clients, we can use <a href="https://www.mozilla.org/en-US/thunderbird/">Thunderbird</a>. Download Thunderbird, set up your gmail account with it, then open the <em>lovely email</em>. The default HTML content is displayed by default, but now you can go in the menu and select <em>view &gt; message body as &gt; plain text</em>.
+ The text part of the email should now be displayed. Other emails in 
+your inbox that are not as considerate towards their users will not 
+display a very clean message.</p>
+
+<h2 id="using-lambda-to-send-custom-cognito-emails">Using Lambda to send custom Cognito emails</h2>
+
+<p>AWS Cognito will let you customize the emails sent to users when new 
+accounts are created, but your customization options are limited. You 
+can’t send alternate message bodies. You can use Lambdas to further 
+customize the email you are sending.</p>
+
+<p>A first try would be to decide what kind of message you want to send 
+to a user, either text-only or HTML, based on some custom user property.
+ The JavaScript Lambda below does just that:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">exports</span><span class="p">.</span><span class="nx">handler</span> <span class="o">=</span> <span class="p">(</span><span class="nx">event</span><span class="p">,</span> <span class="nx">context</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span>
+    <span class="k">if</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">userPoolId</span> <span class="o">===</span> <span class="s2">"us-west-2_*********"</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">triggerSource</span> <span class="o">===</span> <span class="s2">"CustomMessage_AdminCreateUser"</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">event</span><span class="p">.</span><span class="nx">response</span><span class="p">.</span><span class="nx">emailSubject</span> <span class="o">=</span> <span class="s1">'Message from Lambda'</span><span class="p">;</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">userAttributes</span><span class="p">[</span><span class="s1">'custom:basicMail'</span><span class="p">]</span> <span class="o">===</span> <span class="s2">"true"</span><span class="p">)</span> <span class="p">{</span>
+                <span class="nx">event</span><span class="p">.</span><span class="nx">response</span><span class="p">.</span><span class="nx">emailMessage</span> <span class="o">=</span> <span class="nx">getBasicMailMessage</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">usernameParameter</span><span class="p">,</span>
+                    <span class="nx">event</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">codeParameter</span><span class="p">);</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="nx">event</span><span class="p">.</span><span class="nx">response</span><span class="p">.</span><span class="nx">emailMessage</span> <span class="o">=</span> <span class="nx">getHtmlMailMessage</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">usernameParameter</span><span class="p">,</span>
+                    <span class="nx">event</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">codeParameter</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">event</span><span class="p">);</span>
+    <span class="c1">// return result to cognito</span>
+    <span class="nx">context</span><span class="p">.</span><span class="nx">done</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">event</span><span class="p">);</span>
+<span class="p">};</span>
+
+<span class="kd">function</span> <span class="nx">getBasicMailMessage</span><span class="p">(</span><span class="nx">usernameParameter</span><span class="p">,</span> <span class="nx">codeParameter</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="s1">'Thank you for signing up. Your username is '</span> <span class="o">+</span> <span class="nx">usernameParameter</span> <span class="o">+</span> <span class="s2">" and "</span>
+            <span class="o">+</span> <span class="nx">codeParameter</span> <span class="o">+</span> <span class="s1">' is your verification code.'</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">getHtmlMailMessage</span><span class="p">(</span><span class="nx">usernameParameter</span><span class="p">,</span> <span class="nx">codeParameter</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="s1">'&lt;em&gt;Thank you for signing up.&lt;/em&gt;&lt;br /&gt; Your username is '</span> <span class="o">+</span> <span class="nx">usernameParameter</span>
+            <span class="o">+</span> <span class="s2">" and &lt;strong&gt;"</span> <span class="o">+</span> <span class="nx">codeParameter</span> <span class="o">+</span> <span class="s1">'&lt;/strong&gt; is your verification code.'</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The code above checks the user pool ID and the event that occurred (a
+ new user was added by an administrator). Then, based on the <code class="highlighter-rouge">custom:basicMail</code> attribute value, the email message we sent will either be a text-only message or an HTML message.</p>
+
+<p>You can plug this Lambda in by going to the Cognito console, selecting your user pool, and under <em>Triggers</em>, select your Lambda for the desired trigger (in this case <em>Custom message</em> trigger).</p>
+
+<p>To be able to debug your Lambda you’ll need to make sure the role you
+ are using to run the Lambda has permissions to write logs to 
+CloudWatch. To do this, you can go to the IAM console and under Roles 
+select your role name and then Create Role Policy. I have used the 
+following policy:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "Version": "2017-03-01",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": [
+        "arn:aws:logs:*:*:*"
+      ]
+    }
+  ]
+}
+</code></pre></div></div>
+
+<p>Doing this will let you view the logs generated by your Lambdas but going into the CloudWatch console, under <em>Logs</em> and select the log group corresponding to your Lambda (or just click the link for <em>View logs in CloudWatch</em> under the <em>Monitoring</em>
+ tab in you Lambda view). It may take a while for the settings you made 
+in IAM to take effect, so give it an hour before you run your Lambda.</p>
+
+<p>Those are a lot of services we had to configure to have more control 
+over the email we send, but the setup is still not doing what we want it
+ to do. This setup will send an email message with either a text-only OR
+ an HTML body, depending on a flag set for the user account when the 
+account is created. But what we want is to send multiple message bodies 
+and let the mail client used by our users decide what to display. For 
+this, we’ll need to plug in the first part of this post into another AWS
+ service.</p>
+
+<h2 id="using-ses-to-send-multiple-body-emails">Using SES to send multiple body emails</h2>
+
+<p>What we’ll need to try and do is use a Java Lambda to cancel the 
+default email send event, and call AWS SES (Simple Email Service) to 
+send an email message with multiple bodies.</p>
+
+<p>We’ll first run a small test to see if SES lets us send emails with 
+multiple bodies. But first, we need to configure SES. Go in the SES 
+console and under <em>Identity Management &gt; Email Addresses</em> click <em>Verify a New Email Address</em> and setup the address you want to use for this test.</p>
+
+<p>So, does SES let us send emails with multiple bodies? It does, but we need to use the <code class="highlighter-rouge">sendRawEmail</code> call:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">sendEmail</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">IOException</span><span class="o">,</span> <span class="n">MessagingException</span> <span class="o">{</span>
+    <span class="n">String</span> <span class="n">email</span> <span class="o">=</span> <span class="s">"****@gmail.com"</span><span class="o">;</span>
+
+    <span class="n">AmazonSimpleEmailService</span> <span class="n">client</span> <span class="o">=</span> <span class="n">AmazonSimpleEmailServiceClientBuilder</span><span class="o">.</span><span class="na">defaultClient</span><span class="o">();</span>
+
+    <span class="n">RawMessage</span> <span class="n">message</span> <span class="o">=</span> <span class="k">new</span> <span class="n">RawMessage</span><span class="o">().</span><span class="na">withData</span><span class="o">(</span><span class="n">ByteBuffer</span><span class="o">.</span><span class="na">wrap</span><span class="o">(</span><span class="n">getMessageBytes</span><span class="o">(</span><span class="n">email</span><span class="o">)));</span>
+    <span class="n">SendRawEmailRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="k">new</span> <span class="n">SendRawEmailRequest</span><span class="o">(</span><span class="n">message</span><span class="o">);</span>
+    <span class="n">SendRawEmailResult</span> <span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="na">sendRawEmail</span><span class="o">(</span><span class="n">request</span><span class="o">);</span>
+    <span class="n">assertNotNull</span><span class="o">(</span><span class="n">result</span><span class="o">);</span>
+    <span class="n">assertNotNull</span><span class="o">(</span><span class="n">result</span><span class="o">.</span><span class="na">getMessageId</span><span class="o">());</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>And we can build that raw message using the Java mail client:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">private</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">getMessageBytes</span><span class="o">(</span><span class="n">String</span> <span class="n">to</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">MessagingException</span><span class="o">,</span> <span class="n">IOException</span> <span class="o">{</span>
+    <span class="n">Session</span> <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="o">.</span><span class="na">getDefaultInstance</span><span class="o">(</span><span class="k">new</span> <span class="n">Properties</span><span class="o">());</span>
+
+    <span class="n">MimeMessage</span> <span class="n">message</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeMessage</span><span class="o">(</span><span class="n">session</span><span class="o">);</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">setSubject</span><span class="o">(</span><span class="s">"Lovely email"</span><span class="o">);</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">setFrom</span><span class="o">(</span><span class="n">to</span><span class="o">);</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">addRecipient</span><span class="o">(</span><span class="n">javax</span><span class="o">.</span><span class="na">mail</span><span class="o">.</span><span class="na">Message</span><span class="o">.</span><span class="na">RecipientType</span><span class="o">.</span><span class="na">TO</span><span class="o">,</span> <span class="k">new</span> <span class="n">InternetAddress</span><span class="o">(</span><span class="n">to</span><span class="o">));</span>
+
+    <span class="n">MimeBodyPart</span> <span class="n">textPart</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeBodyPart</span><span class="o">();</span>
+    <span class="n">textPart</span><span class="o">.</span><span class="na">setText</span><span class="o">(</span><span class="s">"This is a simple text email."</span><span class="o">,</span> <span class="s">"utf-8"</span><span class="o">);</span>
+
+    <span class="n">MimeBodyPart</span> <span class="n">htmlPart</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeBodyPart</span><span class="o">();</span>
+    <span class="n">htmlPart</span><span class="o">.</span><span class="na">setContent</span><span class="o">(</span><span class="s">"This &lt;strong&gt;email&lt;/strong&gt; has some &lt;em&gt;html&lt;/em&gt; in it."</span><span class="o">,</span> <span class="s">"text/html; charset=utf-8"</span><span class="o">);</span>
+
+    <span class="n">Multipart</span> <span class="n">multiPart</span> <span class="o">=</span> <span class="k">new</span> <span class="n">MimeMultipart</span><span class="o">(</span><span class="s">"alternative"</span><span class="o">);</span>
+    <span class="n">multiPart</span><span class="o">.</span><span class="na">addBodyPart</span><span class="o">(</span><span class="n">textPart</span><span class="o">);</span>
+    <span class="n">multiPart</span><span class="o">.</span><span class="na">addBodyPart</span><span class="o">(</span><span class="n">htmlPart</span><span class="o">);</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">setContent</span><span class="o">(</span><span class="n">multiPart</span><span class="o">);</span>
+
+    <span class="n">ByteOutputStream</span> <span class="n">stream</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ByteOutputStream</span><span class="o">();</span>
+    <span class="n">message</span><span class="o">.</span><span class="na">writeTo</span><span class="o">(</span><span class="n">stream</span><span class="o">);</span>
+    <span class="kt">byte</span><span class="o">[]</span> <span class="n">bytes</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="na">getBytes</span><span class="o">();</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">String</span><span class="o">(</span><span class="n">bytes</span><span class="o">));</span>
+    <span class="k">return</span> <span class="n">bytes</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Some shortcuts were taken in writing the above code (no exception 
+handling, from and to addresses are the same), but it works, SES does 
+the job. Now we only have to build a Lambda that can use this method to 
+create the emails we want for Cognito.</p>
+
+<h2 id="using-lambda-and-ses-to-send-custom-cognito-emails">Using Lambda and SES to send custom Cognito emails</h2>
+
+<p>Next step, build a Java Lambda that can be plugged in to Cognito to 
+serve custom messages. You’ll need to create a new project (see previous
+ post about how you can create a maven artifact for quickly setting up 
+Java Lambda projects). We’ll use input and output streams to have 
+maximum control over how our Lambda interracts with the Cognito events. 
+The following code will do approximately the same thing the JavaScript 
+Lambda defined above does:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">CognitoMessageLambda</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">ObjectMapper</span> <span class="n">mapper</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ObjectMapper</span><span class="o">();</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">handler</span><span class="o">(</span><span class="n">InputStream</span> <span class="n">inputStream</span><span class="o">,</span> <span class="n">OutputStream</span> <span class="n">outputStream</span><span class="o">,</span> <span class="n">Context</span> <span class="n">context</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">StringWriter</span> <span class="n">writer</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringWriter</span><span class="o">();</span>
+        <span class="n">String</span> <span class="n">eventString</span> <span class="o">=</span> <span class="n">IOUtils</span><span class="o">.</span><span class="na">toString</span><span class="o">(</span><span class="n">inputStream</span><span class="o">);</span>
+
+        <span class="n">Event</span> <span class="n">event</span> <span class="o">=</span> <span class="n">mapper</span><span class="o">.</span><span class="na">readValue</span><span class="o">(</span><span class="n">eventString</span><span class="o">,</span> <span class="n">Event</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+
+        <span class="k">if</span> <span class="o">(</span><span class="s">"CustomMessage_AdminCreateUser"</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getTriggerSource</span><span class="o">()))</span> <span class="o">{</span>
+            <span class="n">context</span><span class="o">.</span><span class="na">getLogger</span><span class="o">().</span><span class="na">log</span><span class="o">(</span><span class="s">"input event: "</span> <span class="o">+</span> <span class="n">mapper</span><span class="o">.</span><span class="na">writeValueAsString</span><span class="o">(</span><span class="n">event</span><span class="o">));</span>
+
+            <span class="n">Request</span> <span class="n">request</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getRequest</span><span class="o">();</span>
+
+            <span class="n">Response</span> <span class="n">response</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Response</span><span class="o">();</span>
+            <span class="n">response</span><span class="o">.</span><span class="na">setEmailSubject</span><span class="o">(</span><span class="s">"Hi from Java"</span><span class="o">);</span>
+            <span class="n">StringBuilder</span> <span class="n">builder</span> <span class="o">=</span> <span class="k">new</span> <span class="n">StringBuilder</span><span class="o">();</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">"This is a mail message generated by Java"</span><span class="o">)</span>
+                    <span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">" that tells you a user named "</span><span class="o">)</span>
+                    <span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">request</span><span class="o">.</span><span class="na">getUsernameParameter</span><span class="o">())</span>
+                    <span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="s">" was created for you with the temporary password "</span><span class="o">)</span>
+                    <span class="o">.</span><span class="na">append</span><span class="o">(</span><span class="n">request</span><span class="o">.</span><span class="na">getCodeParameter</span><span class="o">());</span>
+            <span class="n">response</span><span class="o">.</span><span class="na">setEmailMessage</span><span class="o">(</span><span class="n">builder</span><span class="o">.</span><span class="na">toString</span><span class="o">());</span>
+
+            <span class="n">event</span><span class="o">.</span><span class="na">setResponse</span><span class="o">(</span><span class="n">response</span><span class="o">);</span>
+
+            <span class="n">context</span><span class="o">.</span><span class="na">getLogger</span><span class="o">().</span><span class="na">log</span><span class="o">(</span><span class="s">"output event: "</span> <span class="o">+</span> <span class="n">mapper</span><span class="o">.</span><span class="na">writeValueAsString</span><span class="o">(</span><span class="n">event</span><span class="o">));</span>
+            <span class="n">mapper</span><span class="o">.</span><span class="na">writeValue</span><span class="o">(</span><span class="n">outputStream</span><span class="o">,</span> <span class="n">event</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+            <span class="n">outputStream</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">eventString</span><span class="o">.</span><span class="na">getBytes</span><span class="o">());</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>In more detail, the code above:</p>
+
+<ul>
+  <li>defines a Lambda that takes an input stream, output stream and the context object as parameters</li>
+  <li>the input stream is the string value of a json object representing the Cognito event</li>
+  <li>Cognito expects the output stream to contain a string 
+representation of the same event, with possible changes on the response 
+object</li>
+  <li>we first read the input stream to a string; we’ll need to return 
+this exact string on the output stream if the Lambda is triggered in 
+other situations if we don’t want to introduce errors in our setup</li>
+  <li>we’ll then try to read the string into an Event object (using Jackson)</li>
+  <li>if the trigger source is the one we expect, we can process the event</li>
+  <li>we use the context object to access the logger and log to CloudWatch</li>
+  <li>we are building the Response object, containing the email subject 
+and message, using the code and username parameters on the Request 
+object</li>
+  <li>we set the new Response object on the Event</li>
+  <li>last step, we serialize the updated Event with Jackson and write it to the output stream</li>
+</ul>
+
+<p>The following represents a json event object that Cognito sends 
+thorugh the custom message trigger (different triggers will have a 
+different structure):</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+    </span><span class="s2">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"region"</span><span class="p">:</span><span class="w"> </span><span class="s2">"us-west-2"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"userPoolId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"us-west-2_*********"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"userName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"testuser1488376471957"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"callerContext"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="s2">"awsSdkVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"aws-sdk-java-1.11.93"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"clientId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CLIENT_ID_NOT_APPLICABLE"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="s2">"triggerSource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CustomMessage_AdminCreateUser"</span><span class="p">,</span><span class="w">
+    </span><span class="s2">"request"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="s2">"userAttributes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="s2">"sub"</span><span class="p">:</span><span class="w"> </span><span class="s2">"aa820a7e-db4c-4f86-b250-dfbc51f4e3de"</span><span class="p">,</span><span class="w">
+            </span><span class="s2">"cognito:user_status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FORCE_CHANGE_PASSWORD"</span><span class="p">,</span><span class="w">
+            </span><span class="s2">"custom:basicMail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"true"</span><span class="p">,</span><span class="w">
+            </span><span class="s2">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"****@example.com"</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="s2">"codeParameter"</span><span class="p">:</span><span class="w"> </span><span class="s2">"{####}"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"usernameParameter"</span><span class="p">:</span><span class="w"> </span><span class="s2">"{username}"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="s2">"response"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="s2">"smsMessage"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"emailMessage"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"emailSubject"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>I’ve also built a set of Java objects to mirror the json structure:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@JsonIgnoreProperties</span><span class="o">(</span><span class="n">ignoreUnknown</span> <span class="o">=</span> <span class="kc">true</span><span class="o">)</span>
+<span class="kd">class</span> <span class="nc">Event</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">version</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">region</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">userPoolId</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">userName</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">triggerSource</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">CallerContext</span> <span class="n">callerContext</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Request</span> <span class="n">request</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">Response</span> <span class="n">response</span><span class="o">;</span>
+
+    <span class="c1">// getters and setters</span>
+<span class="o">}</span>
+
+<span class="nd">@JsonIgnoreProperties</span><span class="o">(</span><span class="n">ignoreUnknown</span> <span class="o">=</span> <span class="kc">true</span><span class="o">)</span>
+<span class="kd">class</span> <span class="nc">CallerContext</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">awsSdkVersion</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">clientId</span><span class="o">;</span>
+
+    <span class="c1">// getters and setters</span>
+<span class="o">}</span>
+
+<span class="nd">@JsonIgnoreProperties</span><span class="o">(</span><span class="n">ignoreUnknown</span> <span class="o">=</span> <span class="kc">true</span><span class="o">)</span>
+<span class="kd">class</span> <span class="nc">Request</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">UserAttributes</span> <span class="n">userAttributes</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">codeParameter</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">usernameParameter</span><span class="o">;</span>
+
+    <span class="c1">// getters and setters</span>
+<span class="o">}</span>
+
+<span class="nd">@JsonIgnoreProperties</span><span class="o">(</span><span class="n">ignoreUnknown</span> <span class="o">=</span> <span class="kc">true</span><span class="o">)</span>
+<span class="kd">class</span> <span class="nc">UserAttributes</span> <span class="o">{</span>
+
+    <span class="nd">@JsonProperty</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"cognito:user_status"</span><span class="o">)</span> <span class="kd">private</span> <span class="n">String</span> <span class="n">userStatus</span><span class="o">;</span>
+    <span class="nd">@JsonProperty</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"custom:basicMail"</span><span class="o">)</span> <span class="kd">private</span> <span class="n">String</span> <span class="n">basicMail</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">sub</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">email</span><span class="o">;</span>
+
+    <span class="c1">// getters and setters</span>
+<span class="o">}</span>
+
+<span class="nd">@JsonIgnoreProperties</span><span class="o">(</span><span class="n">ignoreUnknown</span> <span class="o">=</span> <span class="kc">true</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Response</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">smsMessage</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">emailMessage</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">emailSubject</span><span class="o">;</span>
+
+    <span class="c1">// getters and setters</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Run <code class="highlighter-rouge">mvn install</code>, upload your 
+Lambda to AWS, link it in Cognito and now, when you add a new user to 
+the pool, that user will receive the welcome messages, just like they 
+received them from the JavaScript Lambda. Next step will be, of course, 
+to plug in the Java mail client plus SES code to send a custom email 
+with two bodies:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">CognitoMessageLambda</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">ObjectMapper</span> <span class="n">mapper</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ObjectMapper</span><span class="o">();</span>
+    <span class="kd">private</span> <span class="n">CustomEmailService</span> <span class="n">customEmailService</span> <span class="o">=</span> <span class="k">new</span> <span class="n">CustomEmailService</span><span class="o">();</span>
+
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">handler</span><span class="o">(</span><span class="n">InputStream</span> <span class="n">inputStream</span><span class="o">,</span> <span class="n">OutputStream</span> <span class="n">outputStream</span><span class="o">,</span> <span class="n">Context</span> <span class="n">context</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+        <span class="n">String</span> <span class="n">eventString</span> <span class="o">=</span> <span class="n">IOUtils</span><span class="o">.</span><span class="na">toString</span><span class="o">(</span><span class="n">inputStream</span><span class="o">);</span>
+        <span class="n">Event</span> <span class="n">event</span> <span class="o">=</span> <span class="n">mapper</span><span class="o">.</span><span class="na">readValue</span><span class="o">(</span><span class="n">eventString</span><span class="o">,</span> <span class="n">Event</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+
+        <span class="k">if</span> <span class="o">(</span><span class="s">"CustomMessage_AdminCreateUser"</span><span class="o">.</span><span class="na">equals</span><span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getTriggerSource</span><span class="o">()))</span> <span class="o">{</span>
+
+            <span class="n">context</span><span class="o">.</span><span class="na">getLogger</span><span class="o">().</span><span class="na">log</span><span class="o">(</span><span class="s">"input event: "</span> <span class="o">+</span> <span class="n">mapper</span><span class="o">.</span><span class="na">writeValueAsString</span><span class="o">(</span><span class="n">event</span><span class="o">));</span>
+
+            <span class="n">Request</span> <span class="n">request</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getRequest</span><span class="o">();</span>
+
+            <span class="k">try</span> <span class="o">{</span>
+                <span class="n">context</span><span class="o">.</span><span class="na">getLogger</span><span class="o">().</span><span class="na">log</span><span class="o">(</span><span class="s">"trying to send custom email through SES"</span><span class="o">);</span>
+                <span class="n">String</span> <span class="n">email</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="na">getUserAttributes</span><span class="o">().</span><span class="na">getEmail</span><span class="o">();</span>
+                <span class="n">String</span> <span class="n">username</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getUserName</span><span class="o">();</span>
+                <span class="n">String</span> <span class="n">password</span> <span class="o">=</span> <span class="s">"?"</span><span class="o">;</span>
+                <span class="n">customEmailService</span><span class="o">.</span><span class="na">sendEmail</span><span class="o">(</span><span class="n">email</span><span class="o">,</span> <span class="n">username</span><span class="o">,</span> <span class="n">password</span><span class="o">);</span>
+            <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">MessagingException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">context</span><span class="o">.</span><span class="na">getLogger</span><span class="o">().</span><span class="na">log</span><span class="o">(</span><span class="s">"failed to send custom email through SES because "</span> <span class="o">+</span> <span class="n">e</span><span class="o">.</span><span class="na">getMessage</span><span class="o">());</span>
+            <span class="o">}</span>
+
+            <span class="n">context</span><span class="o">.</span><span class="na">getLogger</span><span class="o">().</span><span class="na">log</span><span class="o">(</span><span class="s">"output event: "</span> <span class="o">+</span> <span class="n">mapper</span><span class="o">.</span><span class="na">writeValueAsString</span><span class="o">(</span><span class="n">event</span><span class="o">));</span>
+            <span class="n">mapper</span><span class="o">.</span><span class="na">writeValue</span><span class="o">(</span><span class="n">outputStream</span><span class="o">,</span> <span class="n">event</span><span class="o">);</span>
+        <span class="o">}</span>
+        <span class="n">outputStream</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">eventString</span><span class="o">.</span><span class="na">getBytes</span><span class="o">());</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>This new and improved Lambda has a new component, the 
+CustomEmailService, which I am not including here, but will use SES to 
+send the email we want, just like in the previous section. Just a note 
+on that, you can initialize the SES client with the default settings and
+ the role used to run your Lambda will also be used to access SES, so 
+make sure you go to the IAM console and give this role SES privileges.</p>
+
+<p>Now, looking back at this Lambda that finally achieves what we were 
+looking for, we can spot a few problems. First, we don’t have access to 
+the temporary password generated by Cognito. One way to go around that 
+would be to set our own temporary password when we create the user, 
+Cognito will let us do that. We could use a key to encrypt the username,
+ share that key between the code that adds the new user and the Lambda 
+code and rebuild the temporary password in the Lambda using the 
+username. We are taking some responsibility away from Cognito and moving
+ it in our code, which somewhat defeats the purpose of using Cognito, 
+but we can console ourselves that this is just the initial temporary 
+password.</p>
+
+<p>The second problem you’ll notice when you test the Lambda. We now get
+ two welcome emails, one coming from Cognito and another one from our 
+CustomEmailService. I’ve looked for ways to disable the Cognito emails 
+and was not able to find one. If we don’t assign any values to the email
+ subject and message in the Lambda, Cognito will just use the defaults 
+set in its web console. You can’t delete those defaults using the 
+console. Trying to delete them through the SDK will result in validation
+ errors. At the moment, it looks like I am not really able to achieve 
+the email customization I want with Amazon Cognito. Either settle for 
+what Cognito is providing or consider writing your own authentication 
+service.</p>
+
+
+
+
+</body></html>

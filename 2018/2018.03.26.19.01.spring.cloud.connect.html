@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Now that we have some microservices, we need to look at a simple way to make them interact with each other and give rise to the functionality we expect from our system. We want our system to have a few features to make our work easier:  services should be able to find each other easily  system should allow us to start and stop multiple instances of the same service  system should load-balance communication between services automatically  system should have tools that allow us to inspect the r...">
+
+    <title>Java Cloud Apps Workshop - Connecting them all</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2018.03.26 19:01</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">cloud</span>
+    
+        <span>/</span><span class="tag">microservices</span>
+    
+        <span>/</span><span class="tag">spring boot</span>
+    
+        <span>/</span><span class="tag">spring cloud netflix</span>
+    
+</p>
+<h1 class="title">Java Cloud Apps Workshop - Connecting them all</h1>
+
+<p>Now that we have some microservices, we need to look at a simple way 
+to make them interact with each other and give rise to the functionality
+ we expect from our system. We want our system to have a few features to
+ make our work easier:</p>
+
+<ul>
+  <li>services should be able to find each other easily</li>
+  <li>system should allow us to start and stop multiple instances of the same service</li>
+  <li>system should load-balance communication between services automatically</li>
+  <li>system should have tools that allow us to inspect the running services, their state and communication between them</li>
+</ul>
+
+<h2 id="the-supervisor---eureka">The supervisor - Eureka</h2>
+
+<p>To bring all the above mentioned functionality into our project we’ll rely on the <a href="https://cloud.spring.io/spring-cloud-netflix/">Spring Cloud Netflix</a> project. The first part of this project we’ll use is the service registration and discovery tool <a href="https://spring.io/guides/gs/service-registration-and-discovery/">Eureka</a>.
+ Once we have an Eureka server set up, our services will be able to 
+communicate with it it, to register themselves with it and to obtain 
+URLs for services they need to work with from Eureka.</p>
+
+<p>First, run over to the <a href="https://start.spring.io/">Spring Initializr</a> and generate a project named <code class="highlighter-rouge">com.msdm.eureka</code> with  <code class="highlighter-rouge">Eureka Server</code> dependency. Download it and copy it into your workspace. Then, open the project and add the <code class="highlighter-rouge">@EnableEurekaServer</code> annotation to the main application class <code class="highlighter-rouge">EurekaApplication</code>. Also, add the following to your <code class="highlighter-rouge">application.properties</code> file:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>eureka.client.register-with-eureka=false
+eureka.client.fetch-registry=false
+server.port=8761
+</code></pre></div></div>
+
+<p>Now you can start your service and navigate to <a href="http://localhost:8761/">localhost:8761</a> in your browser to see that you have a running Eureka server.</p>
+
+<p>Next, we need to make a few changes to the <code class="highlighter-rouge">pom.xml</code> file in one of your other microservices, let’s say the users service:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[...]
+<span class="nt">&lt;properties&gt;</span>
+	[...]
+    <span class="nt">&lt;spring-cloud.version&gt;</span>Dalston.SR4<span class="nt">&lt;/spring-cloud.version&gt;</span>
+<span class="nt">&lt;/properties&gt;</span>
+<span class="nt">&lt;dependencies&gt;</span>
+    [...]
+    <span class="nt">&lt;dependency&gt;</span>
+        <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+        <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-eureka<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;/dependency&gt;</span>
+<span class="nt">&lt;/dependencies&gt;</span>
+<span class="nt">&lt;dependencyManagement&gt;</span>
+    <span class="nt">&lt;dependencies&gt;</span>
+        <span class="nt">&lt;dependency&gt;</span>
+            <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+            <span class="nt">&lt;artifactId&gt;</span>spring-cloud-dependencies<span class="nt">&lt;/artifactId&gt;</span>
+            <span class="nt">&lt;version&gt;</span>${spring-cloud.version}<span class="nt">&lt;/version&gt;</span>
+            <span class="nt">&lt;type&gt;</span>pom<span class="nt">&lt;/type&gt;</span>
+            <span class="nt">&lt;scope&gt;</span>import<span class="nt">&lt;/scope&gt;</span>
+        <span class="nt">&lt;/dependency&gt;</span>
+    <span class="nt">&lt;/dependencies&gt;</span>
+<span class="nt">&lt;/dependencyManagement&gt;</span>
+[...]
+</code></pre></div></div>
+
+<p>We need to ensure that the Eureka client dependency is downloaded for a specific spring cloud version for the required <code class="highlighter-rouge">@EnableDiscoveryClient</code>
+ annotation to be available in your project. You need to add that 
+annotation to you microservice application class. You also need to add a
+ line with the name of the microservice in your <code class="highlighter-rouge">application.properties</code> file. For the users service, this line would be: <code class="highlighter-rouge">spring.application.name=users-service</code>. Now you should start your users service, then navigate to <code class="highlighter-rouge">localhost:8761</code>.
+ Give it a minute and your new service should now show up as running. 
+You will need to make these changes for all the microservices we have 
+created in the previous sections of this workshop and start them up to 
+see them connect to the Eureka server:</p>
+
+<p><img src="spring_cloud_connect/eureka_all_services.png" alt="All services in Eureka"></p>
+
+<h2 id="injecting-services">Injecting services</h2>
+
+<p>Now we need to refactor our executer service, the one service that 
+communicates with other services in the system. We want our executer 
+service to be able to automatically find and use other services in the 
+system automatically, by looking at what services are registered in 
+Eureka. We will be referring to services by name, from now on, instead 
+of by IP and port.</p>
+
+<p>We will start by adding a few dependencies to the executer <code class="highlighter-rouge">pom.xml</code>,
+ the xml file will look like this in the end (the versions your spring 
+cloud and spring boot will have may be different depending on when you 
+used Spring Initializr to generate your projects):</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;project</span> <span class="na">xmlns=</span><span class="s">"http://maven.apache.org/POM/4.0.0"</span> <span class="na">xmlns:xsi=</span><span class="s">"http://www.w3.org/2001/XMLSchema-instance"</span>
+	<span class="na">xsi:schemaLocation=</span><span class="s">"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"</span><span class="nt">&gt;</span>
+	<span class="nt">&lt;modelVersion&gt;</span>4.0.0<span class="nt">&lt;/modelVersion&gt;</span>
+
+	<span class="nt">&lt;groupId&gt;</span>com.msdm<span class="nt">&lt;/groupId&gt;</span>
+	<span class="nt">&lt;artifactId&gt;</span>executer<span class="nt">&lt;/artifactId&gt;</span>
+	<span class="nt">&lt;version&gt;</span>0.0.1-SNAPSHOT<span class="nt">&lt;/version&gt;</span>
+	<span class="nt">&lt;packaging&gt;</span>jar<span class="nt">&lt;/packaging&gt;</span>
+
+	<span class="nt">&lt;name&gt;</span>executer<span class="nt">&lt;/name&gt;</span>
+	<span class="nt">&lt;description&gt;</span>Demo project for Spring Boot<span class="nt">&lt;/description&gt;</span>
+
+	<span class="nt">&lt;parent&gt;</span>
+		<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+		<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-parent<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;version&gt;</span>1.5.8.RELEASE<span class="nt">&lt;/version&gt;</span>
+		<span class="nt">&lt;relativePath/&gt;</span> <span class="c">&lt;!-- lookup parent from repository --&gt;</span>
+	<span class="nt">&lt;/parent&gt;</span>
+
+	<span class="nt">&lt;properties&gt;</span>
+		<span class="nt">&lt;project.build.sourceEncoding&gt;</span>UTF-8<span class="nt">&lt;/project.build.sourceEncoding&gt;</span>
+		<span class="nt">&lt;project.reporting.outputEncoding&gt;</span>UTF-8<span class="nt">&lt;/project.reporting.outputEncoding&gt;</span>
+		<span class="nt">&lt;java.version&gt;</span>1.8<span class="nt">&lt;/java.version&gt;</span>
+		<span class="nt">&lt;spring-cloud.version&gt;</span>Dalston.SR4<span class="nt">&lt;/spring-cloud.version&gt;</span>
+	<span class="nt">&lt;/properties&gt;</span>
+
+	<span class="nt">&lt;dependencies&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-actuator<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-eureka<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-ribbon<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-web<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-test<span class="nt">&lt;/artifactId&gt;</span>
+			<span class="nt">&lt;scope&gt;</span>test<span class="nt">&lt;/scope&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+	<span class="nt">&lt;/dependencies&gt;</span>
+
+	<span class="nt">&lt;dependencyManagement&gt;</span>
+		<span class="nt">&lt;dependencies&gt;</span>
+			<span class="nt">&lt;dependency&gt;</span>
+				<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+				<span class="nt">&lt;artifactId&gt;</span>spring-cloud-dependencies<span class="nt">&lt;/artifactId&gt;</span>
+				<span class="nt">&lt;version&gt;</span>${spring-cloud.version}<span class="nt">&lt;/version&gt;</span>
+				<span class="nt">&lt;type&gt;</span>pom<span class="nt">&lt;/type&gt;</span>
+				<span class="nt">&lt;scope&gt;</span>import<span class="nt">&lt;/scope&gt;</span>
+			<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;/dependencies&gt;</span>
+	<span class="nt">&lt;/dependencyManagement&gt;</span>
+
+	<span class="nt">&lt;build&gt;</span>
+		<span class="nt">&lt;plugins&gt;</span>
+			<span class="nt">&lt;plugin&gt;</span>
+				<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+				<span class="nt">&lt;artifactId&gt;</span>spring-boot-maven-plugin<span class="nt">&lt;/artifactId&gt;</span>
+			<span class="nt">&lt;/plugin&gt;</span>
+		<span class="nt">&lt;/plugins&gt;</span>
+	<span class="nt">&lt;/build&gt;</span>
+
+<span class="nt">&lt;/project&gt;</span>
+</code></pre></div></div>
+
+<p>Some new appearances are <code class="highlighter-rouge">actuator</code> and <code class="highlighter-rouge">ribbon</code>. The one we are interested in eight now is Ribbon, a client-side load balancer, fully integrated with <code class="highlighter-rouge">RestTemplate</code>. All we need to do to enable <code class="highlighter-rouge">RestTemplate</code> to find services by name, and load-balance calls to a service in case we have multiple instances of that services, is to add a <code class="highlighter-rouge">@LoadBalanced</code> annotation in our code, where <code class="highlighter-rouge">RestTemplate</code> is created, in <code class="highlighter-rouge">ExecuterApplication</code></p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@LoadBalanced</span>
+<span class="nd">@Bean</span>
+<span class="kd">public</span> <span class="n">RestTemplate</span> <span class="nf">restTemplate</span><span class="o">()</span> <span class="o">{</span>
+	<span class="k">return</span> <span class="k">new</span> <span class="nf">RestTemplate</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We also need to change the values used to refer to our services from 
+IP and port to the service name. To make our properties more manageable,
+ we will first change the extension of our properties file, renaming it 
+from <code class="highlighter-rouge">application.properties</code> to <code class="highlighter-rouge">application.yml</code>. Once we have done that, we can rewrite its contents in YAML format:</p>
+
+<div class="language-yml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="s">8092</span>
+
+<span class="na">analysis</span><span class="pi">:</span>
+  <span class="na">url</span><span class="pi">:</span> <span class="s">http://analysis-service</span>
+  <span class="na">endpoint</span><span class="pi">:</span>
+    <span class="na">analyses</span><span class="pi">:</span> <span class="s">analyses</span>
+    <span class="na">scheduler</span><span class="pi">:</span> <span class="s">scheduler</span>
+    <span class="na">failure</span><span class="pi">:</span> <span class="s">result/failed</span>
+    <span class="na">success</span><span class="pi">:</span> <span class="s">result/success</span>
+
+<span class="na">file</span><span class="pi">:</span>
+  <span class="na">url</span><span class="pi">:</span> <span class="s">http://files-service</span>
+  <span class="na">endpoint</span><span class="pi">:</span>
+    <span class="na">download</span><span class="pi">:</span> <span class="s">download</span>
+
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">executer-service</span>
+
+<span class="na">eureka</span><span class="pi">:</span>
+  <span class="na">instance</span><span class="pi">:</span>
+    <span class="na">leaseRenewalIntervalInSeconds</span><span class="pi">:</span> <span class="s">1</span>
+    <span class="na">leaseExpirationDurationInSeconds</span><span class="pi">:</span> <span class="s">2</span>
+  <span class="na">client</span><span class="pi">:</span>
+    <span class="na">serviceUrl</span><span class="pi">:</span>
+      <span class="na">defaultZone</span><span class="pi">:</span> <span class="s">http://127.0.0.1:8761/eureka/</span>
+    <span class="na">healthcheck</span><span class="pi">:</span>
+      <span class="na">enabled</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="na">lease</span><span class="pi">:</span>
+      <span class="na">duration</span><span class="pi">:</span> <span class="s">5</span>
+
+<span class="na">management</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="s">8093</span>
+  <span class="na">context-path</span><span class="pi">:</span> <span class="s">/details</span>
+  <span class="na">security</span><span class="pi">:</span>
+    <span class="na">enabled</span><span class="pi">:</span> <span class="no">false</span>
+</code></pre></div></div>
+
+<p>As you can observe, we no longer refer to the analysis service URL as <code class="highlighter-rouge">http://localhost:8091</code>, we have replaced it with <code class="highlighter-rouge">http://analysis-service</code>,
+ and we have done the same with the file service. If we now run our 
+system and submit a new analysis to the analysis service, we will see 
+that the executer service is able to retrieve and execute the analysis, 
+communicating with the analysis and file service without any problems.</p>
+
+<p>And that <code class="highlighter-rouge">actuator</code> dependency 
+we also added in the POM file? It’s Spring Boot’s way of offering us a 
+set of diagnosis tools for our microservice. It will make available a 
+set of URLs that retrieve operation data about your microservice, like:</p>
+
+<ul>
+  <li><code class="highlighter-rouge">http://localhost:8093/details/health</code> for a general health overview</li>
+  <li><code class="highlighter-rouge">http://localhost:8093/health/dump</code> for a memory dump</li>
+  <li><code class="highlighter-rouge">http://localhost:8093/health/beans</code> to see a list of instantiated beans</li>
+</ul>
+
+<p>And others. It has its own property entries in the YAML file, and in 
+our example we are running without any security, on a different port 
+than our main server and at the <code class="highlighter-rouge">/details</code> context path.</p>
+
+
+
+
+</body></html>

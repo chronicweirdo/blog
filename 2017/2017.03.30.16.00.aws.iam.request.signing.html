@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This document explores the process of accessing services exposed through Amazon’s API Gateway that are secured with IAM credentials instead of Cognito tokens. The mechanism for getting access to those services is based on signing the request using our secret key instead of actually sending the key over. When accessing Amazon services through the SDK, the SDK takes care of this signing process for you, but if you want to access your own custom services exposed through API Gateway you will have...">
+
+    <title>Signing requests with Amazon IAM credentials</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2017.03.30 16:00</span>
+    
+        <span>/</span><span class="tag">aws</span>
+    
+        <span>/</span><span class="tag">api gateway</span>
+    
+        <span>/</span><span class="tag">iam</span>
+    
+        <span>/</span><span class="tag">sigv4</span>
+    
+</p>
+<h1 class="title">Signing requests with Amazon IAM credentials</h1>
+
+<p>This document explores the process of accessing services exposed 
+through Amazon’s API Gateway that are secured with IAM credentials 
+instead of Cognito tokens. The mechanism for getting access to those 
+services is based on signing the request using our secret key instead of
+ actually sending the key over. When accessing Amazon services through 
+the SDK, the SDK takes care of this signing process for you, but if you 
+want to access your own custom services exposed through API Gateway you 
+will have to write your own code to sign that request, and this is quite
+ an involved process.</p>
+
+<h2 id="creating-a-mock-service-and-exposing-it-throguh-the-api-gateway">Creating a mock service and exposing it throguh the API Gateway</h2>
+
+<p>First we need a service we want to access. I’ve created a simple javascript Lambda that returns some JSON data (I named it <em>getUserForms</em>):</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">exports</span><span class="p">.</span><span class="nx">handler</span> <span class="o">=</span> <span class="p">(</span><span class="nx">event</span><span class="p">,</span> <span class="nx">context</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">result</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">'fields'</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span> <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'family name'</span><span class="p">,</span> <span class="s1">'value'</span><span class="p">:</span> <span class="s1">''</span><span class="p">},</span>
+            <span class="p">{</span> <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'first name'</span><span class="p">,</span> <span class="s1">'value'</span><span class="p">:</span> <span class="s1">''</span><span class="p">},</span>
+            <span class="p">{</span> <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'address'</span><span class="p">,</span> <span class="s1">'value'</span><span class="p">:</span> <span class="s1">''</span><span class="p">},</span>
+            <span class="p">{</span> <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'postcode'</span><span class="p">,</span> <span class="s1">'value'</span><span class="p">:</span> <span class="s1">''</span><span class="p">}</span>
+        <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">callback</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">result</span><span class="p">);</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>Next, I make this service accessible through API Gateway by creating a new resource and a <em>GET</em>
+ method invoking the Lambda. Once the API is published to staging, we 
+can invoke it to obtain our data with some very simple javascript code:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">https</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'https'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">bl</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'bl'</span><span class="p">);</span>
+
+<span class="kd">function</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">function</span> <span class="nx">onceCollected</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">toString</span><span class="p">();</span>
+            <span class="nx">callback</span><span class="p">(</span><span class="nx">string</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">setEncoding</span><span class="p">(</span><span class="s1">'utf8'</span><span class="p">);</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">bl</span><span class="p">(</span><span class="nx">onceCollected</span><span class="p">));</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">loadForms</span><span class="p">(</span><span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">method</span><span class="p">:</span> <span class="s1">'GET'</span><span class="p">,</span>
+            <span class="na">host</span><span class="p">:</span> <span class="s1">'staging url'</span><span class="p">,</span>
+            <span class="na">path</span><span class="p">:</span> <span class="s1">'/cognitotest/forms'</span>
+    <span class="p">};</span>
+    <span class="kd">var</span> <span class="nx">request</span> <span class="o">=</span> <span class="nx">https</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">));</span>
+    <span class="nx">request</span><span class="p">.</span><span class="nx">end</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="nx">loadForms</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">result</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<p>I’ve added this code to a file <em>test.js</em>. Running it on node 
+(with the appropriate dependencies available), we see the data getting 
+printed on screen. Now it’s time to secure this endpoint. Go back to the
+ API Gateway console, on your <em>forms</em> resource and the <em>GET</em> method and click the <em>method request</em> section. Under <em>authorization settings</em> select <em>AWS_IAM</em> for the <em>authorization</em>
+ field and click the small check sign to confirm (small side note: the 
+role corresponding to the credentials you will use to connect to the API
+ needs to have permissions to execute API Gateway endpoints, and you can
+ take care of that in the IAM console). Deploy to staging and run the <em>test.js</em> script again and you should see the following message:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s2">"message"</span><span class="p">:</span><span class="s2">"Missing Authentication Token"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="signing-a-request">Signing a request</h2>
+
+<p>Signing a request is a complicated process. I have added relevant 
+links about this at the end of the document, but I will go over the 
+process and its implementation in the following sections, step by step, 
+providing a library that can be used for signing <em>almost</em> any requests (there are still some parts I have not addressed).</p>
+
+<p>The process for singing a request are:</p>
+
+<ul>
+  <li>prepare a request</li>
+  <li>convert it to a canonical request - a specific text representation of the request</li>
+  <li>use the canonical request and some additional information to create a <em>string to sign</em></li>
+  <li>use your <em>AWS secret key</em> to derive the signing key</li>
+  <li>use the <em>derived key</em> and the <em>string to sign</em> to create a <em>signature</em></li>
+  <li>add the resulting <em>signature</em> to the request in a header (or as a query string parameter)</li>
+  <li>execute the request</li>
+</ul>
+
+<p>These steps would work on the <code class="highlighter-rouge">options</code> object used to make the request. Besides the <code class="highlighter-rouge">options</code> object, other inputs will be</p>
+
+<ul>
+  <li>the <code class="highlighter-rouge">requestBody</code></li>
+  <li>the <code class="highlighter-rouge">accessKeyID</code> - will be part of the signature header</li>
+  <li>the <code class="highlighter-rouge">secretKey</code> - this will be used to sign the request</li>
+  <li>the <code class="highlighter-rouge">region</code> - needed for the signature header</li>
+  <li>the <code class="highlighter-rouge">service</code> - needed for the signature header</li>
+  <li>the <code class="highlighter-rouge">sessionToken</code> - this is 
+required when we are working with temporary credentials obtained from 
+STS, which is the case when we are using federated Cognito identities</li>
+</ul>
+
+<p>The following <code class="highlighter-rouge">signRequest</code> is the main method which will handle the whole process:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">signRequest</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">requestBody</span><span class="p">,</span> <span class="nx">accessKeyID</span><span class="p">,</span> <span class="nx">secretKey</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">,</span> <span class="nx">sessionToken</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">formatHeaders</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">sessionToken</span><span class="p">);</span>
+
+    <span class="kd">var</span> <span class="nx">canonicalRequestAndHash</span> <span class="o">=</span> <span class="nx">toCanonicalRequestAndHash</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">requestBody</span><span class="p">)</span>
+    <span class="kd">var</span> <span class="nx">stringToSign</span> <span class="o">=</span> <span class="nx">createStringToSign</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">canonicalRequestAndHash</span><span class="p">.</span><span class="nx">rehashedCanonicalRequest</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">)</span>
+    <span class="kd">var</span> <span class="nx">signingKey</span> <span class="o">=</span> <span class="nx">createSigningKey</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">secretKey</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">signature</span> <span class="o">=</span> <span class="nx">calculateSignature</span><span class="p">(</span><span class="nx">signingKey</span><span class="p">,</span> <span class="nx">stringToSign</span><span class="p">.</span><span class="nx">stringToSign</span><span class="p">)</span>
+    <span class="kd">var</span> <span class="nx">authorization</span> <span class="o">=</span> <span class="nx">createAuthorizationHeader</span><span class="p">(</span><span class="nx">accessKeyID</span><span class="p">,</span> <span class="nx">stringToSign</span><span class="p">.</span><span class="nx">credentialsScope</span><span class="p">,</span> <span class="nx">canonicalRequestAndHash</span><span class="p">.</span><span class="nx">signedHeaders</span><span class="p">,</span> <span class="nx">signature</span><span class="p">);</span>
+
+    <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="s1">'Authorization'</span><span class="p">]</span> <span class="o">=</span> <span class="nx">authorization</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we first need to format the headers on the request; there are some
+ required headers for sending this request to Amazon and we need to add 
+them if they are missing</li>
+  <li>then we obtain the <em>canonical request</em> and a hash of the <em>canonical request</em></li>
+  <li>we create the <em>string to sign</em>, which includes the <em>canonical request</em> hash and some other information</li>
+  <li>we create the <em>signing key</em> using our <em>secret key</em></li>
+  <li>we finally create the <em>signature</em> using the <em>signing key</em> and the <em>string to sign</em></li>
+  <li>and then we create the <em>authorization</em> header and add it to the request</li>
+</ul>
+
+<h3 id="formatting-headers">Formatting headers</h3>
+
+<p>A signed request to API Gateway will require an <em>amazon date</em> header and the <em>host</em> header. The <em>session token</em> will also need to be included in a header if we have one.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">formatHeaders</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">sessionToken</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">options</span><span class="p">.</span><span class="nx">headers</span> <span class="o">==</span> <span class="kc">undefined</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">AMAZON_DATE_HEADER</span><span class="p">]</span> <span class="o">==</span> <span class="kc">undefined</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">AMAZON_DATE_HEADER</span><span class="p">]</span> <span class="o">=</span> <span class="nx">getISO8601UTC</span><span class="p">();</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">HOST_HEADER</span><span class="p">]</span> <span class="o">==</span> <span class="kc">undefined</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">HOST_HEADER</span><span class="p">]</span> <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">host</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">sessionToken</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">AMAZON_SESSION_TOKEN_HEADER</span><span class="p">]</span> <span class="o">=</span> <span class="nx">sessionToken</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The date itself needs to be the UTC date in ISO8601 format, and I compute it with the following (very unrefined) code:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">getISO8601UTC</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">today</span> <span class="o">=</span> <span class="k">new</span> <span class="nb">Date</span><span class="p">();</span>
+    <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="s1">''</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="nx">today</span><span class="p">.</span><span class="nx">getUTCFullYear</span><span class="p">()</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="nx">withLeadingZero</span><span class="p">((</span><span class="nx">today</span><span class="p">.</span><span class="nx">getUTCMonth</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="nx">withLeadingZero</span><span class="p">(</span><span class="nx">today</span><span class="p">.</span><span class="nx">getUTCDate</span><span class="p">())</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="s1">'T'</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="nx">withLeadingZero</span><span class="p">(</span><span class="nx">today</span><span class="p">.</span><span class="nx">getUTCHours</span><span class="p">())</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="nx">withLeadingZero</span><span class="p">(</span><span class="nx">today</span><span class="p">.</span><span class="nx">getUTCMinutes</span><span class="p">())</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="nx">withLeadingZero</span><span class="p">(</span><span class="nx">today</span><span class="p">.</span><span class="nx">getUTCSeconds</span><span class="p">())</span>
+    <span class="nx">string</span> <span class="o">+=</span> <span class="s1">'Z'</span>
+    <span class="k">return</span> <span class="nx">string</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">withLeadingZero</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">value</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="s1">'0'</span> <span class="o">+</span> <span class="nx">value</span><span class="p">;</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">value</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="the-canonical-request">The canonical request</h3>
+
+<p>The Amazon documentation tells us the canonical request is just a very text representation of the request in the following form:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>CanonicalRequest =
+   HTTPRequestMethod + '\n' +
+   CanonicalURI + '\n' +
+   CanonicalQueryString + '\n' +
+   CanonicalHeaders + '\n' +
+   SignedHeaders + '\n' +
+   HexEncode(Hash(RequestPayload))
+</code></pre></div></div>
+
+<p><code class="highlighter-rouge">Hash</code> is a function that produces a message digest, typically <em>SHA-256</em>, <code class="highlighter-rouge">HexEncode</code> returns a base-16 encoding of the digest in lowercase characters. My implementation of this follows:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">toCanonicalRequestAndHash</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">requestBody</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">canonicalRequest</span> <span class="o">=</span> <span class="s1">''</span><span class="p">;</span>
+    <span class="nx">canonicalRequest</span> <span class="o">+=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">method</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span><span class="p">;</span>
+    <span class="nx">canonicalRequest</span> <span class="o">+=</span> <span class="nx">canonicalURI</span><span class="p">(</span><span class="nx">options</span><span class="p">);</span>
+    <span class="nx">canonicalRequest</span> <span class="o">+=</span> <span class="nx">canonicalQueryString</span><span class="p">(</span><span class="nx">options</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">canonicalHeaders</span> <span class="o">=</span> <span class="nx">canonicalHeadersAndSignedHeaders</span><span class="p">(</span><span class="nx">options</span><span class="p">);</span>
+    <span class="nx">canonicalRequest</span> <span class="o">+=</span> <span class="nx">canonicalHeaders</span><span class="p">.</span><span class="nx">combined</span>
+    <span class="kd">var</span> <span class="nx">canonicalRequestHash</span> <span class="o">=</span> <span class="nx">hashAndHexEncode</span><span class="p">(</span><span class="nx">requestBody</span><span class="p">)</span>
+    <span class="nx">canonicalRequest</span> <span class="o">+=</span> <span class="nx">canonicalRequestHash</span><span class="p">;</span>
+    <span class="kd">var</span> <span class="nx">rehashedCanonicalRequest</span> <span class="o">=</span> <span class="nx">hashAndHexEncode</span><span class="p">(</span><span class="nx">canonicalRequest</span><span class="p">);</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">'canonicalRequest'</span><span class="p">:</span> <span class="nx">canonicalRequest</span><span class="p">,</span>
+        <span class="s1">'canonicalRequestHash'</span><span class="p">:</span> <span class="nx">canonicalRequestHash</span><span class="p">,</span>
+        <span class="s1">'signedHeaders'</span><span class="p">:</span> <span class="nx">canonicalHeaders</span><span class="p">.</span><span class="nx">signedHeaders</span><span class="p">,</span>
+        <span class="s1">'rehashedCanonicalRequest'</span><span class="p">:</span> <span class="nx">rehashedCanonicalRequest</span>
+    <span class="p">};</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we instatiate the <code class="highlighter-rouge">canonicalRequest</code> to an empty string</li>
+  <li>we add the <code class="highlighter-rouge">options.method</code> to this string, followed by newline (note: maybe that <code class="highlighter-rouge">options.method</code> should be capitalized)</li>
+  <li>we add a new line containing the <em>canonical URI</em></li>
+  <li>we follow with another line containing the <em>canonical query string</em></li>
+  <li>the <em>canonical headers</em> are represented on multiple lines, and we need to keep a subset list of the <em>signed headers</em> and pass it along since this will be used later</li>
+  <li>next, we hash and encode the request body and add a line with the hash to the <em>canonical request</em></li>
+  <li>finally, we hash the whole <em>canonical request</em> (including the hash of the request body) and pass it on the return object since we will need this hash later</li>
+</ul>
+
+<p>Next, let’s visit the individual methods, starting with <code class="highlighter-rouge">canonicalURI</code>:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">canonicalURI</span><span class="p">(</span><span class="nx">options</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">path</span> <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">path</span><span class="p">;</span>
+    <span class="kd">var</span> <span class="nx">parametersStart</span> <span class="o">=</span> <span class="nx">path</span><span class="p">.</span><span class="nx">indexOf</span><span class="p">(</span><span class="s2">"?"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">parametersStart</span> <span class="o">&gt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">path</span> <span class="o">=</span> <span class="nx">path</span><span class="p">.</span><span class="nx">substring</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nx">parametersStart</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">path</span> <span class="o">&amp;&amp;</span> <span class="nx">path</span><span class="p">.</span><span class="nx">length</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nb">encodeURI</span><span class="p">(</span><span class="nx">path</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span><span class="p">;</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nb">encodeURI</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li><code class="highlighter-rouge">canonicalURI</code> just takes the path, excluding the host and excluding the parameters, and returns it as a string on a single line</li>
+  <li>if we are making a request to the root path, we must return <code class="highlighter-rouge">/</code> as the <em>canonical URI</em></li>
+</ul>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">canonicalQueryString</span><span class="p">(</span><span class="nx">options</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// todo: implement</span>
+    <span class="k">return</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>this method I did not implement because I was not working with URI parameters and I wanted to focus on the daunting task ahead</li>
+</ul>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">canonicalHeadersAndSignedHeaders</span><span class="p">(</span><span class="nx">options</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">sList</span> <span class="o">=</span> <span class="nx">sortedList</span><span class="p">(</span><span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">cHeaders</span> <span class="o">=</span> <span class="s1">''</span><span class="p">;</span>
+    <span class="kd">var</span> <span class="nx">sHeaders</span> <span class="o">=</span> <span class="s1">''</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kd">var</span> <span class="nx">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="o">&lt;</span> <span class="nx">sList</span><span class="p">.</span><span class="nx">length</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">cHeaders</span> <span class="o">+=</span> <span class="nx">sList</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">name</span> <span class="o">+</span> <span class="s1">':'</span> <span class="o">+</span> <span class="nx">sList</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">value</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span>
+        <span class="nx">sHeaders</span> <span class="o">+=</span> <span class="s1">';'</span> <span class="o">+</span> <span class="nx">sList</span><span class="p">[</span><span class="nx">i</span><span class="p">].</span><span class="nx">name</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">cHeaders</span><span class="p">.</span><span class="nx">length</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// probably will never occur since the host header always needs to be included</span>
+        <span class="nx">cHeaders</span> <span class="o">+=</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="nx">sHeaders</span> <span class="o">=</span> <span class="nx">sHeaders</span><span class="p">.</span><span class="nx">substring</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">'canonicalHeaders'</span><span class="p">:</span> <span class="nx">cHeaders</span><span class="p">,</span>
+        <span class="s1">'signedHeaders'</span><span class="p">:</span> <span class="nx">sHeaders</span><span class="p">,</span>
+        <span class="s1">'combined'</span><span class="p">:</span> <span class="p">(</span><span class="nx">cHeaders</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span> <span class="o">+</span> <span class="nx">sHeaders</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">sortedList</span><span class="p">(</span><span class="nx">map</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="p">(</span><span class="nx">name</span> <span class="k">in</span> <span class="nx">map</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">list</span><span class="p">.</span><span class="nx">push</span><span class="p">({</span><span class="s1">'name'</span><span class="p">:</span> <span class="nx">lowercase</span><span class="p">(</span><span class="nx">name</span><span class="p">),</span> <span class="s1">'value'</span><span class="p">:</span> <span class="nx">trimall</span><span class="p">(</span><span class="nx">map</span><span class="p">[</span><span class="nx">name</span><span class="p">])});</span>
+    <span class="p">}</span>
+    <span class="nx">list</span><span class="p">.</span><span class="nx">sort</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span> <span class="nx">b</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">a</span><span class="p">.</span><span class="nx">name</span><span class="p">.</span><span class="nx">localeCompare</span><span class="p">(</span><span class="nx">b</span><span class="p">.</span><span class="nx">name</span><span class="p">);</span>
+    <span class="p">});</span>
+    <span class="k">return</span> <span class="nx">list</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">lowercase</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">value</span><span class="p">.</span><span class="nx">toLowerCase</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">trimall</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">value</span><span class="p">.</span><span class="nx">trim</span><span class="p">().</span><span class="nx">replace</span><span class="p">(</span><span class="k">new</span> <span class="nb">RegExp</span><span class="p">(</span><span class="sr">/</span><span class="se">\s</span><span class="sr">+/gi</span><span class="p">),</span> <span class="s2">" "</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>encoding the headers is a more complicated matter</li>
+  <li>headers must be sorted by header name, that is what we use the <code class="highlighter-rouge">sortedList</code> method for</li>
+  <li>header names must be in lowercase</li>
+  <li>we must trim all extra spaces from the header values, this 
+includes replacing multiple spaces inside the header value with a single
+ space character; we use the <code class="highlighter-rouge">trimall</code> method for that</li>
+  <li>the <em>canonical headers</em> will have each header name, followed by a colon, followed by the header value on separate lines</li>
+  <li>the <em>canonical headers</em> end with an empty line, followed by the <em>signed headers</em> list, which are the names of all header names included in the <em>canonical headers</em> separated by semicolon, and a final newline character</li>
+  <li>we are also including the <em>signed headers</em> as a separate field in the return object because we will need to use them later</li>
+</ul>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">hashAndHexEncode</span><span class="p">(</span><span class="nx">requestBody</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">sha256</span> <span class="o">=</span> <span class="nx">crypto</span><span class="p">.</span><span class="nx">createHash</span><span class="p">(</span><span class="s2">"sha256"</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">hashObject</span> <span class="o">=</span> <span class="nx">sha256</span><span class="p">.</span><span class="nx">update</span><span class="p">(</span><span class="nx">requestBody</span> <span class="o">||</span> <span class="s1">''</span><span class="p">,</span> <span class="s1">'utf8'</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">hex</span> <span class="o">=</span> <span class="nx">hashObject</span><span class="p">.</span><span class="nx">digest</span><span class="p">(</span><span class="s1">'hex'</span><span class="p">).</span><span class="nx">toLowerCase</span><span class="p">();</span>
+    <span class="k">return</span> <span class="nx">hex</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we are using node’s <code class="highlighter-rouge">crypto</code> library to create a hash using the <code class="highlighter-rouge">sha256</code> algorithm</li>
+  <li>next we are creating a <code class="highlighter-rouge">hex</code> digest and converting all characters to lowercase</li>
+  <li>this method is used to first hash the request body</li>
+  <li>then the request body hash is added to the <em>canonical request</em> and a new hash of the whole <em>canonical request</em> is created using this method</li>
+</ul>
+
+<h3 id="the-string-to-sign">The string to sign</h3>
+
+<p>The algorithm (in pseudocode) for creating a <em>string to sign</em> is:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>StringToSign =
+    Algorithm + \n +
+    RequestDateTime + \n +
+    CredentialScope + \n +
+    HashedCanonicalRequest
+</code></pre></div></div>
+
+<ul>
+  <li>we specify the hashing algorithm first</li>
+  <li>we add the request date and time in ISO8601 format, the UTC value</li>
+  <li>we add a <em>credential scope</em> string</li>
+  <li>the final line contains the hash of the <em>canonical request</em> we obtained previously</li>
+</ul>
+
+<p>The <code class="highlighter-rouge">createStringToSign</code> method follows this algorithm very closely, but the return object of this method contains two fields, one the <em>string to sign</em> and the other the <em>credential scope</em>, because we will need both fields later.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">createStringToSign</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">canonicalRequestHash</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">stringToSign</span> <span class="o">=</span> <span class="s1">''</span><span class="p">;</span>
+    <span class="nx">stringToSign</span> <span class="o">+=</span> <span class="s1">'AWS4-HMAC-SHA256'</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span> <span class="c1">// corresponds to SHA256</span>
+    <span class="nx">stringToSign</span> <span class="o">+=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">AMAZON_DATE_HEADER</span><span class="p">]</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span>
+    <span class="kd">var</span> <span class="nx">credentialsScope</span> <span class="o">=</span> <span class="nx">createCredentialsScope</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">)</span>
+    <span class="nx">stringToSign</span> <span class="o">+=</span> <span class="nx">credentialsScope</span> <span class="o">+</span> <span class="s1">'</span><span class="err">\</span><span class="s1">n'</span>
+    <span class="nx">stringToSign</span> <span class="o">+=</span> <span class="nx">canonicalRequestHash</span><span class="p">;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">'stringToSign'</span><span class="p">:</span> <span class="nx">stringToSign</span><span class="p">,</span>
+        <span class="s1">'credentialsScope'</span><span class="p">:</span> <span class="nx">credentialsScope</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">createCredentialsScope</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">date</span> <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">AMAZON_DATE_HEADER</span><span class="p">].</span><span class="nx">substring</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">);</span>
+    <span class="k">return</span> <span class="nx">date</span> <span class="o">+</span> <span class="s1">'/'</span> <span class="o">+</span> <span class="nx">region</span> <span class="o">+</span> <span class="s1">'/'</span> <span class="o">+</span> <span class="nx">service</span> <span class="o">+</span> <span class="s1">'/aws4_request'</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <em>credentials scope</em> consists of a string starting with 
+the date (year, month and day), the AWS region we are accessing, the 
+Amazon service we are accessing and always ends with the <code class="highlighter-rouge">aws4_request</code> string (we are implementing teh version 4 signature, there is a version 2 signing process as well).</li>
+</ul>
+
+<h3 id="getting-the-signing-key">Getting the signing key</h3>
+
+<p>The signing key is created by following this algorithm:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>kSecret = secret access key
+kDate = HMAC("AWS4" + kSecret, Date)
+kRegion = HMAC(kDate, Region)
+kService = HMAC(kRegion, Service)
+kSigning = HMAC(kService, "aws4_request")
+</code></pre></div></div>
+
+<ul>
+  <li>we are creating a series of HMACs (hash-based message authentication codes)</li>
+  <li>we start by encoding the <em>date</em> (year, month, day) with our <em>secret key</em>, obtaining the <em>date key</em></li>
+  <li>we then create the <em>region key</em> by encoding the <em>region</em> with the <em>date key</em></li>
+  <li>next we get the <em>service key</em> by encoding the <em>service</em> with the <em>region key</em></li>
+  <li>finally we get the <em>signing key</em> by encoding the <code class="highlighter-rouge">aws4_request</code> string with the <em>service key</em></li>
+</ul>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">createSigningKey</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">secret</span><span class="p">,</span> <span class="nx">region</span><span class="p">,</span> <span class="nx">service</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">date</span> <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">headers</span><span class="p">[</span><span class="nx">AMAZON_DATE_HEADER</span><span class="p">].</span><span class="nx">substring</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">);</span>
+
+    <span class="kd">var</span> <span class="nx">kDate</span> <span class="o">=</span> <span class="nx">HMAC</span><span class="p">(</span><span class="s2">"AWS4"</span> <span class="o">+</span> <span class="nx">secret</span><span class="p">,</span> <span class="nx">date</span><span class="p">)</span>
+    <span class="kd">var</span> <span class="nx">kRegion</span> <span class="o">=</span> <span class="nx">HMAC</span><span class="p">(</span><span class="nx">kDate</span><span class="p">,</span> <span class="nx">region</span><span class="p">)</span>
+    <span class="kd">var</span> <span class="nx">kService</span> <span class="o">=</span> <span class="nx">HMAC</span><span class="p">(</span><span class="nx">kRegion</span><span class="p">,</span> <span class="nx">service</span><span class="p">)</span>
+    <span class="kd">var</span> <span class="nx">kSigning</span> <span class="o">=</span> <span class="nx">HMAC</span><span class="p">(</span><span class="nx">kService</span><span class="p">,</span> <span class="s2">"aws4_request"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nx">kSigning</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">HMAC</span><span class="p">(</span><span class="nx">original</span><span class="p">,</span> <span class="nx">update</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">crypto</span><span class="p">.</span><span class="nx">createHmac</span><span class="p">(</span><span class="s1">'sha256'</span><span class="p">,</span> <span class="nx">original</span><span class="p">).</span><span class="nx">update</span><span class="p">(</span><span class="nx">update</span><span class="p">).</span><span class="nx">digest</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">createSigningKey</code> method follows every step of this algoritm</li>
+  <li>the <code class="highlighter-rouge">HMAC</code> method takes the <code class="highlighter-rouge">original</code>, the key, and the <code class="highlighter-rouge">update</code>, the value that is getting encoded</li>
+  <li>the <code class="highlighter-rouge">HMAC</code> method returns a binary digest of the key (this is a buffer)</li>
+  <li>in the early lazy stages of investigating how I can access a 
+service exposed through the API Gateway using federated identities I ran
+ into an implementation of the signing process that tried to use <code class="highlighter-rouge">.digest('binary')</code>, which does not work because <code class="highlighter-rouge">binary</code> is not an accepted input for that method; this is why I ended up implementing the whole process from scratch</li>
+</ul>
+
+<h3 id="computing-the-signature">Computing the signature</h3>
+
+<p>We now have all we need to compute the signature, with the <code class="highlighter-rouge">calculateSignature</code> method. We are signing the <em>string to sign</em> with the <em>signing key</em> we obtained before:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">calculateSignature</span><span class="p">(</span><span class="nx">signingKey</span><span class="p">,</span> <span class="nx">stringToSign</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">crypto</span><span class="p">.</span><span class="nx">createHmac</span><span class="p">(</span><span class="s1">'sha256'</span><span class="p">,</span> <span class="nx">signingKey</span><span class="p">).</span><span class="nx">update</span><span class="p">(</span><span class="nx">stringToSign</span><span class="p">).</span><span class="nx">digest</span><span class="p">(</span><span class="s1">'hex'</span><span class="p">).</span><span class="nx">toLowerCase</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="building-the-authorization-header">Building the authorization header</h3>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">createAuthorizationHeader</span><span class="p">(</span><span class="nx">accessKeyID</span><span class="p">,</span> <span class="nx">credentialsScope</span><span class="p">,</span> <span class="nx">signedHeaders</span><span class="p">,</span> <span class="nx">signature</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">authorization</span> <span class="o">=</span> <span class="s1">''</span><span class="p">;</span>
+    <span class="nx">authorization</span> <span class="o">+=</span> <span class="s1">'AWS4-HMAC-SHA256'</span> <span class="o">+</span> <span class="s1">' '</span><span class="p">;</span>
+    <span class="nx">authorization</span> <span class="o">+=</span> <span class="s1">'Credential='</span> <span class="o">+</span> <span class="nx">accessKeyID</span> <span class="o">+</span> <span class="s1">'/'</span> <span class="o">+</span> <span class="nx">credentialsScope</span> <span class="o">+</span> <span class="s1">', '</span><span class="p">;</span>
+    <span class="nx">authorization</span> <span class="o">+=</span> <span class="s1">'SignedHeaders='</span> <span class="o">+</span> <span class="nx">signedHeaders</span> <span class="o">+</span> <span class="s1">', '</span>
+    <span class="nx">authorization</span> <span class="o">+=</span> <span class="s1">'Signature='</span> <span class="o">+</span> <span class="nx">signature</span>
+    <span class="k">return</span> <span class="nx">authorization</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <em>authorization header</em> is a single line of text consisting of several sections</li>
+  <li>it starts with the code for the algorithm used to create the signature, which for <em>SHA-256</em> is <code class="highlighter-rouge">AWS4-HMAC-SHA256</code></li>
+  <li>next we include the credentials, containing the <code class="highlighter-rouge">accessKeyID</code> and the <em>credentials scope</em> we obtained in the <code class="highlighter-rouge">createStringToSign</code> method</li>
+  <li>then we add the <em>signed headers</em> list, obtained in the <code class="highlighter-rouge">toCanonicalRequestAndHash</code> method</li>
+  <li>finally we add the <em>signature</em> obtained by the <code class="highlighter-rouge">calculateSignature</code> method</li>
+  <li>the <code class="highlighter-rouge">signRequest</code> method is also adding the value computed by <code class="highlighter-rouge">createAuthorizationHeader</code> to the request options, under the <code class="highlighter-rouge">Authorization</code> header name</li>
+</ul>
+
+<p>Last thing we need to do is export the <code class="highlighter-rouge">signRequest</code> method and we can use our library to make signed calls to API Gateway:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">exports</span><span class="p">.</span><span class="nx">signRequest</span> <span class="o">=</span> <span class="nx">signRequest</span>
+</code></pre></div></div>
+
+<h2 id="sending-a-signed-request">Sending a signed request</h2>
+
+<p>In the <em>test.js</em> I created another method, <code class="highlighter-rouge">loadFormsWithAuth</code> that will use our library to sign the request before sending it to API Gateway:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">signature</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'./signature.js'</span><span class="p">);</span>
+
+<span class="kd">function</span> <span class="nx">loadFormsWithAuth</span><span class="p">(</span><span class="nx">callback</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">method</span><span class="p">:</span> <span class="s1">'GET'</span><span class="p">,</span>
+            <span class="na">host</span><span class="p">:</span> <span class="s1">'api gateway url'</span><span class="p">,</span>
+            <span class="na">path</span><span class="p">:</span> <span class="s1">'/cognitotest/forms'</span>
+    <span class="p">};</span>
+    <span class="c1">// build the signature</span>
+    <span class="kd">var</span> <span class="nx">accessKeyId</span> <span class="o">=</span> <span class="s1">'access key id'</span>
+    <span class="kd">var</span> <span class="nx">secretKey</span> <span class="o">=</span> <span class="s1">'secret key'</span>
+    <span class="kd">var</span> <span class="nx">sessionToken</span> <span class="o">=</span> <span class="s1">'session token'</span>
+    <span class="nx">signature</span><span class="p">.</span><span class="nx">signRequest</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="s1">''</span><span class="p">,</span> <span class="nx">accessKeyId</span><span class="p">,</span> <span class="nx">secretKey</span><span class="p">,</span> <span class="s1">'region'</span><span class="p">,</span> <span class="s1">'execute-api'</span><span class="p">,</span> <span class="nx">sessionToken</span><span class="p">);</span>
+
+
+    <span class="kd">var</span> <span class="nx">request</span> <span class="o">=</span> <span class="nx">https</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="nx">collecter</span><span class="p">(</span><span class="nx">callback</span><span class="p">));</span>
+    <span class="nx">request</span><span class="p">.</span><span class="nx">end</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="nx">loadFormsWithAuth</span><span class="p">(</span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">);</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">accessKeyID</code>, <code class="highlighter-rouge">secretKey</code> and <code class="highlighter-rouge">sessionToken</code> values are hardcoded here, I explain how to obtain them in the Cognito federated identities document</li>
+  <li>the <em>service</em> name for API Gateway is <code class="highlighter-rouge">execute-api</code></li>
+</ul>
+
+<p>Running the code, you should now have access to the secured API and see the following output on the console:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{ fields:
+   [ { name: 'family name', value: '' },
+     { name: 'first name', value: '' },
+     { name: 'address', value: '' },
+     { name: 'postcode', value: '' } ] }
+</code></pre></div></div>
+
+<h2 id="references">References</h2>
+
+<ul>
+  <li><a href="https://aws.amazon.com/premiumsupport/knowledge-center/iam-authentication-api-gateway/">implementing IAM authentication for APIs created with API Gateway</a></li>
+  <li><a href="https://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html">create canonical request for sigv4</a></li>
+  <li><a href="https://docs.aws.amazon.com/apigateway/api-reference/signing-requests/">create credentials scope for API Gateway</a></li>
+  <li><a href="https://docs.aws.amazon.com/general/latest/gr/sigv4-add-signature-to-request.html">sig4 add signature to request, create authorization header</a></li>
+</ul>
+
+
+
+
+</body></html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Usually when I want to dynamically manipulate the CSS of some elements on a page, I wait for the document to load and then use JavaScript to apply the new CSS to all elements that match some rule. At least, I used to do that, but it’s not the best approach. If the document takes longer to load, let’s say you have a video embedded on the page, you’ll be looking at an incorrectly-formatted page for a while before everything falls into place. Surely, an undesirable situation.">
+
+    <title>Dynamic CSS</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.08.04 09:30</span>
+    
+        <span>/</span><span class="tag">css</span>
+    
+        <span>/</span><span class="tag">ui</span>
+    
+        <span>/</span><span class="tag">javascript</span>
+    
+</p>
+<h1 class="title">Dynamic CSS</h1>
+
+<p>Usually when I want to dynamically manipulate the CSS of some 
+elements on a page, I wait for the document to load and then use 
+JavaScript to apply the new CSS to all elements that match some rule. At
+ least, I used to do that, but it’s not the best approach. If the 
+document takes longer to load, let’s say you have a video embedded on 
+the page, you’ll be looking at an incorrectly-formatted page for a while
+ before everything falls into place. Surely, an undesirable situation.</p>
+
+<!--more-->
+
+<p>But first, why would one have dynamic CSS? In my case, I want to set 
+some dimension settings based on the window size. The best approach is 
+to have a well-designed CSS file, with media queries for different 
+screen sizes, but in the real world one can’t always go with the best 
+approach. So let’s not judge and focus on finding a solution. Firstly, 
+design your CSS as best you can and make your site usable and proper for
+ those instances when the browser loading it does not allow scripts.</p>
+
+<p>Secondly, we’ll look at a better method to apply dynamic CSS. The 
+idea is simple: apply the style when you have enough information (the 
+window size) but before the document body starts loading. Apply the 
+dynamic CSS after the head of the document was loaded. And for this CSS 
+to work on the elements that are about to load, create a dynamic style 
+sheet in the document head instead of trying to apply the rules directly
+ on the elements.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">$</span><span class="p">(</span><span class="s1">'head'</span><span class="p">).</span><span class="nx">ready</span><span class="p">(</span><span class="kd">function</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nx">buildDynamicStyle</span><span class="p">();</span>
+<span class="p">});</span>
+
+<span class="kd">function</span> <span class="nx">buildDynamicStyle</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">style</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nx">createElement</span><span class="p">(</span><span class="s2">"style"</span><span class="p">);</span>
+    <span class="nx">style</span><span class="p">.</span><span class="nx">appendChild</span><span class="p">(</span><span class="nb">document</span><span class="p">.</span><span class="nx">createTextNode</span><span class="p">(</span><span class="s2">""</span><span class="p">));</span>
+    <span class="nb">document</span><span class="p">.</span><span class="nx">head</span><span class="p">.</span><span class="nx">appendChild</span><span class="p">(</span><span class="nx">style</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">sheet</span> <span class="o">=</span> <span class="nx">style</span><span class="p">.</span><span class="nx">sheet</span><span class="p">;</span>
+
+    <span class="kd">var</span> <span class="nx">rule</span> <span class="o">=</span> <span class="nx">computeDynamicRule</span><span class="p">();</span>
+    <span class="nx">sheet</span><span class="p">.</span><span class="nx">insertRule</span><span class="p">(</span><span class="nx">computeDynamicRule</span><span class="p">(),</span> <span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">computeDynamicRule</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">padding</span> <span class="o">=</span> <span class="nx">computePadding</span><span class="p">();</span>
+    <span class="k">return</span> <span class="s1">'body &gt; * {'</span>
+         <span class="o">+</span> <span class="s1">'    padding-left:'</span> <span class="o">+</span> <span class="nx">padding</span> <span class="o">+</span> <span class="s1">';'</span>
+         <span class="o">+</span> <span class="s1">'    padding-right:'</span> <span class="o">+</span> <span class="nx">padding</span> <span class="o">+</span> <span class="s1">';'</span>
+         <span class="o">+</span> <span class="s1">'}'</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kd">function</span> <span class="nx">computePadding</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">clientWidth</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nx">documentElement</span><span class="p">.</span><span class="nx">clientWidth</span><span class="p">;</span>
+    <span class="kd">var</span> <span class="nx">padding</span> <span class="o">=</span> <span class="p">((</span><span class="nx">clientWidth</span> <span class="o">-</span> <span class="mi">800</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'px'</span><span class="p">;</span>
+    <span class="k">return</span> <span class="nx">padding</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>You can see in the code above that as soon as the head element is 
+loaded we run our script to generate the dynamic CSS. We create a new <em>style</em>
+ element in the document and insert a generated rule into it. The rule 
+is the CSS as string. We build this CSS string using information we have
+ about the window width.</p>
+
+<p>There is more to talk about on this subject, and you can gain more insight here:</p>
+
+<ol>
+  <li><a href="http://davidwalsh.name/add-rules-stylesheets">Add Rules to Stylesheets with JavaScript</a></li>
+  <li><a href="http://www.quirksmode.org/dom/changess.html">Change style sheet</a></li>
+</ol>
+</body></html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="I just had to do something at work that I already knew I was going to hate: export some data to an Excel file and the file should also contain a chart based on that data. I knew I was going to hate this because I’ve worked on manipulating Excel files from Java before and it’s not easy. The good news is I figured it out and managed to keep my sanity.">
+
+    <title>Creating charts in Excel using Apache POI</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.08.27 15:15</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">apache poi</span>
+    
+</p>
+<h1 class="title">Creating charts in Excel using Apache POI</h1>
+
+<p>I just had to do something at work that I already knew I was going to
+ hate: export some data to an Excel file and the file should also 
+contain a chart based on that data. I knew I was going to hate this 
+because I’ve worked on manipulating Excel files from Java before and 
+it’s not easy. The good news is I figured it out and managed to keep my 
+sanity.</p>
+
+<h2 id="the-first-test">The first test</h2>
+
+<p>I’ve used <a href="https://poi.apache.org/">Apache POI</a> (version 
+3.11-beta2), as far as I was able to find it’s the only free option for 
+manipulating Excel files from Java. Here are the maven dependencies:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.apache.poi<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>poi<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>3.11-beta2<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.apache.poi<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>poi-ooxml<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>3.11-beta2<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div></div>
+
+<p>Writing data to an excel file, with multiple sheets, is easy enough. I’ve quickly set up a test to verify this:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">exportTwoSheets</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="n">HSSFWorkbook</span> <span class="n">workbook</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HSSFWorkbook</span><span class="o">();</span>
+
+    <span class="n">HSSFSheet</span> <span class="n">sheet1</span> <span class="o">=</span> <span class="n">workbook</span><span class="o">.</span><span class="na">createSheet</span><span class="o">(</span><span class="s">"sheet name 1"</span><span class="o">);</span>
+    <span class="n">writeToSheet</span><span class="o">(</span><span class="n">mockStringData</span><span class="o">(),</span> <span class="n">sheet1</span><span class="o">);</span>
+
+    <span class="n">HSSFSheet</span> <span class="n">sheet2</span> <span class="o">=</span> <span class="n">workbook</span><span class="o">.</span><span class="na">createSheet</span><span class="o">(</span><span class="s">"sheet name 2"</span><span class="o">);</span>
+    <span class="n">writeToSheet</span><span class="o">(</span><span class="n">mockStringData</span><span class="o">(),</span> <span class="n">sheet2</span><span class="o">);</span>
+
+    <span class="n">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="n">File</span><span class="o">(</span><span class="s">"testTwoSheets.xls"</span><span class="o">);</span>
+    <span class="n">FileOutputStream</span> <span class="n">fileOutputStream</span> <span class="o">=</span> <span class="k">new</span> <span class="n">FileOutputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+    <span class="n">workbook</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">fileOutputStream</span><span class="o">);</span>
+    <span class="n">fileOutputStream</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;&gt;</span> <span class="nf">mockStringData</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">List</span><span class="o">&lt;</span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;&gt;</span> <span class="n">data</span> <span class="o">=</span> <span class="k">new</span> <span class="n">ArrayList</span><span class="o">&lt;</span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;&gt;();</span>
+    <span class="n">data</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="k">new</span> <span class="n">String</span><span class="o">[]</span> <span class="o">{</span><span class="s">"column 1"</span><span class="o">,</span> <span class="s">"column 2"</span><span class="o">,</span> <span class="s">"column 3"</span><span class="o">}));</span>
+    <span class="n">data</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="k">new</span> <span class="n">String</span><span class="o">[]</span> <span class="o">{</span><span class="s">"value 1 1"</span><span class="o">,</span> <span class="s">"value 1 2"</span><span class="o">,</span> <span class="s">"value 1 3"</span><span class="o">}));</span>
+    <span class="n">data</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="k">new</span> <span class="n">String</span><span class="o">[]</span> <span class="o">{</span><span class="s">"value 2 1"</span><span class="o">,</span> <span class="s">"value 2 2"</span><span class="o">,</span> <span class="s">"value 2 3"</span><span class="o">}));</span>
+    <span class="n">data</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">Arrays</span><span class="o">.</span><span class="na">asList</span><span class="o">(</span><span class="k">new</span> <span class="n">String</span><span class="o">[]</span> <span class="o">{</span><span class="s">"value 3 1"</span><span class="o">,</span> <span class="s">"value 3 2"</span><span class="o">,</span> <span class="s">"value 3 3"</span><span class="o">}));</span>
+    <span class="k">return</span> <span class="n">data</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>I’ll also add this here for future reference, a test that exports an excel sheet with a function:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">exportFunction</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="n">HSSFWorkbook</span> <span class="n">workbook</span> <span class="o">=</span> <span class="k">new</span> <span class="n">HSSFWorkbook</span><span class="o">();</span>
+
+    <span class="n">HSSFSheet</span> <span class="n">sheet</span> <span class="o">=</span> <span class="n">workbook</span><span class="o">.</span><span class="na">createSheet</span><span class="o">();</span>
+
+    <span class="n">String</span><span class="o">[]</span> <span class="n">names</span> <span class="o">=</span> <span class="k">new</span> <span class="n">String</span><span class="o">[]</span> <span class="o">{</span><span class="s">"name1"</span><span class="o">,</span> <span class="s">"name2"</span><span class="o">,</span> <span class="s">"name3"</span><span class="o">};</span>
+    <span class="n">Integer</span><span class="o">[]</span> <span class="n">values</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Integer</span><span class="o">[]</span> <span class="o">{</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">};</span>
+
+    <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">names</span><span class="o">.</span><span class="na">length</span><span class="o">;</span> <span class="n">index</span><span class="o">++)</span> <span class="o">{</span>
+        <span class="n">HSSFRow</span> <span class="n">row</span> <span class="o">=</span> <span class="n">sheet</span><span class="o">.</span><span class="na">createRow</span><span class="o">(</span><span class="n">index</span><span class="o">);</span>
+        <span class="n">HSSFCell</span> <span class="n">nameCell</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="na">createCell</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+        <span class="n">nameCell</span><span class="o">.</span><span class="na">setCellType</span><span class="o">(</span><span class="n">Cell</span><span class="o">.</span><span class="na">CELL_TYPE_STRING</span><span class="o">);</span>
+        <span class="n">nameCell</span><span class="o">.</span><span class="na">setCellValue</span><span class="o">(</span><span class="n">names</span><span class="o">[</span><span class="n">index</span><span class="o">]);</span>
+
+        <span class="n">HSSFCell</span> <span class="n">valueCell</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="na">createCell</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+        <span class="n">valueCell</span><span class="o">.</span><span class="na">setCellType</span><span class="o">(</span><span class="n">Cell</span><span class="o">.</span><span class="na">CELL_TYPE_NUMERIC</span><span class="o">);</span>
+        <span class="n">valueCell</span><span class="o">.</span><span class="na">setCellValue</span><span class="o">(</span><span class="n">values</span><span class="o">[</span><span class="n">index</span><span class="o">]);</span>
+    <span class="o">}</span>
+
+    <span class="n">HSSFRow</span> <span class="n">formulaRow</span> <span class="o">=</span> <span class="n">sheet</span><span class="o">.</span><span class="na">createRow</span><span class="o">(</span><span class="n">names</span><span class="o">.</span><span class="na">length</span><span class="o">);</span>
+    <span class="n">HSSFCell</span> <span class="n">formulaCell</span> <span class="o">=</span> <span class="n">formulaRow</span><span class="o">.</span><span class="na">createCell</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+    <span class="n">formulaCell</span><span class="o">.</span><span class="na">setCellValue</span><span class="o">(</span><span class="n">Cell</span><span class="o">.</span><span class="na">CELL_TYPE_FORMULA</span><span class="o">);</span>
+    <span class="n">formulaCell</span><span class="o">.</span><span class="na">setCellFormula</span><span class="o">(</span><span class="s">"SUM(B1:B3)"</span><span class="o">);</span>
+
+    <span class="n">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="n">File</span><span class="o">(</span><span class="s">"testFormula.xls"</span><span class="o">);</span>
+    <span class="n">FileOutputStream</span> <span class="n">fileOutputStream</span> <span class="o">=</span> <span class="k">new</span> <span class="n">FileOutputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+    <span class="n">workbook</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">fileOutputStream</span><span class="o">);</span>
+    <span class="n">fileOutputStream</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h2 id="and-now-for-something-completely-more-complicated">And now, for something completely more complicated</h2>
+
+<p>Next I had to create a chart based on the data I am writing to the 
+excel file. I’ve read around a bit and the following three were my 
+options:</p>
+
+<ol>
+  <li>create chart with Apache POI;</li>
+  <li>use some other library to create an image of a chart and insert it into the Excel file;</li>
+  <li>create a template Excel file that contains a chart, then use Apache POI to fill the template with data.</li>
+</ol>
+
+<p>The first one sounded like the most elegant option. Apache POI supports chart creation, as long as it is a line (<a href="https://svn.apache.org/repos/asf/poi/trunk/src/examples/src/org/apache/poi/xssf/usermodel/examples/LineChart.java">see how to create a line chart with Apache POI</a>) or a scatter chart (<a href="https://svn.apache.org/repos/asf/poi/trunk/src/examples/src/org/apache/poi/xssf/usermodel/examples/ScatterChart.java">see how to create a scatter chart with Apache POI</a>). But I wanted to create a bar chart. Exactly…</p>
+
+<p>The second option I did not even explore. There are resources on how 
+to do that, but if you’re doing that there is no point of exporting an 
+Excel file, you can just export the data and the chart in a PDF. The 
+Excel file is dynamic, you send it to your users and they can modify the
+ data and see how different values would affect the chart. I moved on to
+ the third option.</p>
+
+<h2 id="excel-templates">Excel templates</h2>
+
+<p>To make the template approach work, we need to go through the following steps:</p>
+
+<ul>
+  <li>define your table, the headers followed by data;</li>
+  <li>define a chart that can dynamically use the data in the table.</li>
+</ul>
+
+<p>A very elegant way to do this would be to use the table feature in Excel (<a href="http://www.techrepublic.com/blog/microsoft-office/two-ways-to-build-dynamic-charts-in-excel/">create dynamic charts in Excel using the table feature</a>).
+ That doesn’t work in Apache POI. Opening the template file with Apache 
+POI will break the table feature and the chart based on the table. You 
+can insert your data, but neither the table nor the chart will be 
+updated.</p>
+
+<p>What is left is using dynamic series (<a href="http://www.techrepublic.com/blog/microsoft-office/two-ways-to-build-dynamic-charts-in-excel/">create dynamic charts in Excel using dynamic series</a>). I’ll walk you through the steps of making this work in the tutorial section.</p>
+
+<h2 id="tutorial">Tutorial</h2>
+
+<p>First, create your file and the structure of you data sheet. Enter 
+the name of the sheet, then write a title and your table header.</p>
+
+<p class="image"><img src="apache_poi/apachepoi001.png" alt="Create Excel file and column headers"></p>
+
+<p>Enter some dummy data.</p>
+
+<p class="image"><img src="apache_poi/apachepoi002.png" alt="Enter dummy data in the Excel file"></p>
+
+<p>Define the dynamic series you are going to use in the chart (go to Formulas, Name Manager).</p>
+
+<p class="image">
+    <img src="apache_poi/apachepoi003.png" alt="Open name manager">
+    <img src="apache_poi/apachepoi004.png" alt="Create new series">
+    <img src="apache_poi/apachepoi005.png" alt="Fill out series name and formula">
+</p>
+
+<p>The formulas are (the difference is because the title gets counted for column A):</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>labelRange=OFFSET(datasheet!$A$4,0,0,COUNTA(datasheet!$A:$A)-2)
+valueRange=OFFSET(datasheet!$B$4,0,0,COUNTA(datasheet!$B:$B)-1)
+</code></pre></div></div>
+
+<p>Verify the formulas are good.</p>
+
+<p class="image"><img src="apache_poi/apachepoi006.png" alt="Verify formulas refer to correct cells"></p>
+
+<p>Create a chart based on your data.</p>
+
+<p class="image">
+    <img src="apache_poi/apachepoi007.png" alt="Create a new chart">
+    <img src="apache_poi/apachepoi008.png" alt="Verify labels and data are correctly displayed in chart">
+</p>
+
+<p>Replace chart data with dynamic series names.</p>
+
+<p class="image">
+    <img src="apache_poi/apachepoi009.png" alt="Open chart definition window">
+    <img src="apache_poi/apachepoi010.png" alt="Select values data range and click edit">
+    <img src="apache_poi/apachepoi011.png" alt="Replace data range with name of values dynamic series">
+    <img src="apache_poi/apachepoi012.png" alt="Replace data range with name of values dynamic series">
+    <img src="apache_poi/apachepoi013.png" alt="Select labels data tange and click edit">
+    <img src="apache_poi/apachepoi014.png" alt="Replace labels data range with name of labels dynamic series">
+</p>
+
+<p>When you add new labels and values, they should show up in the chart.</p>
+
+<p class="image"><img src="apache_poi/apachepoi015.png" alt="Verify that chart is updated when adding new values to the table"></p>
+
+<p>Move the chart to a separate sheet.</p>
+
+<p class="image">
+    <img src="apache_poi/apachepoi016.png" alt="Right-click chart and select Move Chart">
+    <img src="apache_poi/apachepoi017.png" alt="Select new sheet and fill out name">
+    <img src="apache_poi/apachepoi018.png" alt="Verify chart was moved to new sheet">
+</p>
+
+<p>Remove dummy data.</p>
+
+<p class="image"><img src="apache_poi/apachepoi019.png" alt="Remove dummy data"></p>
+
+<p>Save the template.</p>
+
+<p>The java code that writes data in the template:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">writeSimpleTemplate</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+    <span class="n">XSSFWorkbook</span> <span class="n">wb</span> <span class="o">=</span> <span class="k">new</span> <span class="n">XSSFWorkbook</span><span class="o">(</span><span class="n">OPCPackage</span><span class="o">.</span><span class="na">open</span><span class="o">(</span><span class="s">"simpleTemplate.xlsx"</span><span class="o">));</span>
+    <span class="n">XSSFSheet</span> <span class="n">sheet</span> <span class="o">=</span> <span class="n">wb</span><span class="o">.</span><span class="na">getSheetAt</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+
+    <span class="n">sheet</span><span class="o">.</span><span class="na">createRow</span><span class="o">(</span><span class="mi">3</span><span class="o">).</span><span class="na">createCell</span><span class="o">(</span><span class="mi">0</span><span class="o">).</span><span class="na">setCellValue</span><span class="o">((</span><span class="k">new</span> <span class="n">Date</span><span class="o">()).</span><span class="na">toString</span><span class="o">());</span>
+    <span class="n">sheet</span><span class="o">.</span><span class="na">getRow</span><span class="o">(</span><span class="mi">3</span><span class="o">).</span><span class="na">createCell</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="na">setCellValue</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+
+    <span class="n">sheet</span><span class="o">.</span><span class="na">createRow</span><span class="o">(</span><span class="mi">4</span><span class="o">).</span><span class="na">createCell</span><span class="o">(</span><span class="mi">0</span><span class="o">).</span><span class="na">setCellValue</span><span class="o">((</span><span class="k">new</span> <span class="n">Date</span><span class="o">()).</span><span class="na">toString</span><span class="o">());</span>
+    <span class="n">sheet</span><span class="o">.</span><span class="na">getRow</span><span class="o">(</span><span class="mi">4</span><span class="o">).</span><span class="na">createCell</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="na">setCellValue</span><span class="o">(</span><span class="mi">3</span><span class="o">);</span>
+
+    <span class="n">sheet</span><span class="o">.</span><span class="na">createRow</span><span class="o">(</span><span class="mi">5</span><span class="o">).</span><span class="na">createCell</span><span class="o">(</span><span class="mi">0</span><span class="o">).</span><span class="na">setCellValue</span><span class="o">((</span><span class="k">new</span> <span class="n">Date</span><span class="o">()).</span><span class="na">toString</span><span class="o">());</span>
+    <span class="n">sheet</span><span class="o">.</span><span class="na">getRow</span><span class="o">(</span><span class="mi">5</span><span class="o">).</span><span class="na">createCell</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="na">setCellValue</span><span class="o">(</span><span class="mi">8</span><span class="o">);</span>
+
+    <span class="n">FileOutputStream</span> <span class="n">fileOut</span> <span class="o">=</span> <span class="k">new</span> <span class="n">FileOutputStream</span><span class="o">(</span><span class="s">"testSimpleTemplate.xlsx"</span><span class="o">);</span>
+    <span class="n">wb</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">fileOut</span><span class="o">);</span>
+    <span class="n">fileOut</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The result.</p>
+
+<p class="image">
+    <img src="apache_poi/apachepoi020.png" alt="Verify data was written to the table">
+    <img src="apache_poi/apachepoi021.png" alt="Verify chart was updated to reflect new data">
+</p>
+</body></html>

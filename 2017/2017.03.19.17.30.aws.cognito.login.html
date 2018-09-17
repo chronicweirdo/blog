@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="This document describes how to write a simple React UI for logging in to Amazon Cognito using the AWS SDK for JavaScript. We are designing the login form to allow user login, as well as handle user password change scenario when the user is logging in for the first time.">
+
+    <title>Logging in to Amazon Cognito</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2017.03.19 17:30</span>
+    
+        <span>/</span><span class="tag">aws</span>
+    
+        <span>/</span><span class="tag">cognito</span>
+    
+        <span>/</span><span class="tag">node</span>
+    
+        <span>/</span><span class="tag">react</span>
+    
+</p>
+<h1 class="title">Logging in to Amazon Cognito</h1>
+
+<p>This document describes how to write a simple React UI for logging in
+ to Amazon Cognito using the AWS SDK for JavaScript. We are designing 
+the login form to allow user login, as well as handle user password 
+change scenario when the user is logging in for the first time.</p>
+
+<p>I am approaching this from a node and react beginner point of view, 
+so there will be sections of this document I won’t explain or explain 
+correctly, but I am logging here my best understanding.</p>
+
+<h2 id="setting-up-the-project">Setting up the project</h2>
+
+<p>We’ll run a node server that publishes a React UI, a single page 
+application. First step, we need to create a new node project and add 
+dependencies. Create a new folder, open it in a console and run the 
+following commands:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>npm init
+npm install <span class="nt">--save</span> amazon-cognito-identity-js aws-sdk babel bl body-parser express express-react-views react react-dom
+npm install <span class="nt">--save-dev</span> babel-cli babel-core babel-preset-env babel-preset-es2015 babel-preset-react babel-register
+</code></pre></div></div>
+
+<p>Those are a lot of packages, and I know very little about what they each do. What I do know is that:</p>
+
+<ul>
+  <li>we’ll use <em>amazon-cognito-identity-js</em> to log in to Amazon Cognito</li>
+  <li><em>aws-sdk</em> provides some additional classes we may want to 
+use to interact with Amazon Web Services (in the final project, this 
+dependency is no longer necessary)</li>
+  <li><em>babel</em> is used to convert ES2015 code (ECMAScript) into a version of JavaScript supported by most browsers</li>
+  <li>we use <em>bl</em> to collect the whole response before processing it</li>
+  <li><em>express</em> is the server on which we’ll run our code</li>
+  <li><em>react</em> and <em>react-dom</em> are required to build the React UI</li>
+</ul>
+
+<p>The other dependencies are dev dependencies, which are test 
+dependencies or transpilers (converting code from one format to some 
+other format) and do not need to be packaged in a release. All the dev 
+dependencies used here are <em>babel</em> related and are used to interpret the more modern EC2015 and React’s JSX and convert them to JavaScript.</p>
+
+<h2 id="the-login-scenario">The login scenario</h2>
+
+<p>Logging in to Cognito using the Cognito SDK is pretty simple. The steps are:</p>
+
+<ul>
+  <li>we need to create some JavaScript object to hold the user pool and user details</li>
+  <li>we use the <code class="highlighter-rouge">CognitoUser</code> object to authenticate the user using their password</li>
+  <li>the SDK does all necessary communication in the background and returns with a response</li>
+</ul>
+
+<p>This is where it may get more complicated. If the user account is 
+already enabled and active, and the credentials you used are correct, 
+you will get a successful response containing some tokens that you can 
+use to prove the user is now authenticated. But sometimes you will get a
+ challenge instead of a successful response. This will happen when a 
+user logs in for the first time and they are forced to change their 
+password before proceeding. This scenario is not very well documented, 
+but the <code class="highlighter-rouge">authenticateUser</code> method we are using to login will expect the following callbacks:</p>
+
+<ul>
+  <li><code class="highlighter-rouge">onSuccess</code> - straight-forward, this is where we have our tokens and we can continue to use the app as a logged in user</li>
+  <li><code class="highlighter-rouge">onFailure</code> - no explanations necessary, print the error message somewhere or add additional ways to handle and recover from it</li>
+  <li><code class="highlighter-rouge">newPasswordRequired</code> - this 
+is what we are going to use when we are logging in a user for the first 
+time, it is probably used in other scenarios, like when a password 
+expires</li>
+  <li><code class="highlighter-rouge">mfaRequired</code> - this is for situations when you have multi factor authentication enabled</li>
+  <li><code class="highlighter-rouge">customChallenge</code> - with some Lambdas you can create your own custom challenges for Cognito</li>
+</ul>
+
+<h2 id="the-ui">The UI</h2>
+
+<p>We’re writing the Login form and the whole UI of the app, in a single
+ file (not necessary, not best practice for large apps, but this will do
+ for now). To save you the refactoring trouble later I’ll just ask you 
+to create a <em>views</em> subfolder and an <em>index.jsx</em> file in that subfolder and put all your code there. I will explain why in the server section.</p>
+
+<h3 id="first-look-at-the-application-class">First look at the application class</h3>
+
+<p>We start with dependencies at the top of the file. The imports from <em>aws-sdk</em> are commented out because they are no longer necessary, but may be useful in the future.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="p">{</span>
+    <span class="nx">Config</span><span class="p">,</span>
+    <span class="nx">CognitoIdentityCredentials</span>
+<span class="p">}</span> <span class="k">from</span> <span class="s2">"aws-sdk"</span><span class="p">;</span>
+<span class="k">import</span> <span class="p">{</span>
+    <span class="nx">CognitoUserPool</span><span class="p">,</span>
+    <span class="nx">CognitoUser</span><span class="p">,</span>
+    <span class="nx">CognitoUserAttribute</span><span class="p">,</span>
+    <span class="nx">AuthenticationDetails</span>
+<span class="p">}</span> <span class="k">from</span> <span class="s2">"amazon-cognito-identity-js"</span><span class="p">;</span>
+<span class="k">import</span> <span class="nx">React</span> <span class="k">from</span> <span class="s1">'react'</span><span class="p">;</span>
+<span class="k">import</span> <span class="nx">http</span> <span class="k">from</span> <span class="s1">'http'</span><span class="p">;</span>
+<span class="k">import</span> <span class="nx">bl</span> <span class="k">from</span> <span class="s1">'bl'</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>This is not the old-school <code class="highlighter-rouge">require(...)</code>
+ imports, but we’ll use those as well when we set up the server. We can 
+use ES2015 syntax in this file because the server will compile it to 
+plain JavaScript before sending it to the client.</p>
+
+<p>I will start with a very rudimentary <code class="highlighter-rouge">Application</code> class that I will extend later in the document. The application will currently just contain a login form:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">export</span> <span class="k">default</span> <span class="kd">class</span> <span class="nx">Application</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="kd">constructor</span><span class="p">(</span><span class="nx">props</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">super</span><span class="p">(</span><span class="nx">props</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="nx">render</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">div</span> <span class="nx">className</span><span class="o">=</span><span class="s2">"application"</span><span class="o">&gt;</span>
+                <span class="p">{</span> <span class="k">this</span><span class="p">.</span><span class="nx">renderLoginForm</span><span class="p">()</span> <span class="p">}</span>
+            <span class="o">&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderLoginForm</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span><span class="o">&lt;</span><span class="nx">LoginForm</span> <span class="nx">userPoolId</span><span class="o">=</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">userPoolId</span><span class="p">}</span> <span class="nx">clientId</span><span class="o">=</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">clientId</span><span class="p">}</span><span class="sr">/&gt;</span><span class="err">)
+</span>    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The <em>application</em> consists of a <em>div</em> that contains a <em>LoginForm</em> component. You can see the <em>LoginForm</em> component expects some attributes: the user pool id and the client id.</p>
+
+<h3 id="the-login-component">The login component</h3>
+
+<p>Let’s move on to the login form. This is a large React component with
+ a lot of methods and I will go over each of them in turn, starting with
+ the constructor:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">LoginForm</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="kd">constructor</span><span class="p">(</span><span class="nx">props</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">super</span><span class="p">(</span><span class="nx">props</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">state</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">username</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+            <span class="na">password</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+            <span class="na">isFirstLogin</span><span class="p">:</span> <span class="kc">false</span><span class="p">,</span>
+            <span class="na">newPassword</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+            <span class="na">confirmNewPassword</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
+            <span class="na">passwordsDoNotMatch</span><span class="p">:</span> <span class="kc">false</span><span class="p">,</span>
+            <span class="na">challenge</span><span class="p">:</span> <span class="kc">null</span><span class="p">,</span>
+            <span class="na">cognitoUser</span><span class="p">:</span> <span class="kc">null</span>
+        <span class="p">}</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">login</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">login</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">changeUsername</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">changeUsername</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">changePassword</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">changePassword</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">changeNewPassword</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">changeNewPassword</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">changeConfirmNewPassword</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">changeConfirmNewPassword</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+
+        <span class="k">this</span><span class="p">.</span><span class="nx">newPasswordRequired</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">newPasswordRequired</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">notifySuccessfulLogin</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">notifySuccessfulLogin</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we can see that the state of this class consists of quite a few variables</li>
+  <li>we have state variables that correspond to the form fields: <code class="highlighter-rouge">username</code>, <code class="highlighter-rouge">password</code>, <code class="highlighter-rouge">newPassword</code> and <code class="highlighter-rouge">confirmNewPassword</code></li>
+  <li>we have variables we use to manage the logic of the component: <code class="highlighter-rouge">isFirstLogin</code> and <code class="highlighter-rouge">passwordsDoNotMatch</code></li>
+  <li>and we also have variables used to hold hidden state objects: <code class="highlighter-rouge">challenge</code> and <code class="highlighter-rouge">cognitoUser</code></li>
+  <li>we need to bind some of the class methods to the current class 
+instance, as you see at the end of the constructor; these are methods 
+that are injected in the web UI to handle events or methods that are 
+passed as callbacks; we will need these methods to have a link to the 
+current instance even if they will be invoked from inside different 
+objects</li>
+</ul>
+
+<p>Next we’ll look at the render method. How does the login form look like?</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">LoginForm</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+
+    <span class="c1">// constructor</span>
+
+    <span class="nx">render</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">div</span> <span class="nx">className</span><span class="o">=</span><span class="s2">"loginForm"</span><span class="o">&gt;&lt;</span><span class="nx">table</span><span class="o">&gt;&lt;</span><span class="nx">tbody</span><span class="o">&gt;</span>
+                <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">renderMessageRow</span><span class="p">(</span><span class="s1">'loginForm'</span><span class="p">,</span> <span class="s1">'Login'</span><span class="p">)}</span>
+                <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">renderFormFieldRow</span><span class="p">(</span><span class="s1">'username'</span><span class="p">,</span> <span class="s1">'text'</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">username</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">changeUsername</span><span class="p">)}</span>
+                <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">renderFormFieldRow</span><span class="p">(</span><span class="s1">'password'</span><span class="p">,</span> <span class="s1">'password'</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">password</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">changePassword</span><span class="p">)}</span>
+                <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">renderNewPasswordComponents</span><span class="p">()}</span>
+                <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">renderLoginButtonRow</span><span class="p">()}</span>
+            <span class="o">&lt;</span><span class="sr">/tbody&gt;&lt;/</span><span class="nx">table</span><span class="o">&gt;&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderFormFieldRow</span><span class="p">(</span><span class="nx">label</span><span class="p">,</span> <span class="nx">type</span><span class="p">,</span> <span class="nx">value</span><span class="p">,</span> <span class="nx">onChange</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">tr</span> <span class="nx">key</span><span class="o">=</span><span class="p">{</span><span class="nx">label</span><span class="p">}</span><span class="o">&gt;</span>
+                <span class="o">&lt;</span><span class="nx">td</span><span class="o">&gt;&lt;</span><span class="nx">label</span><span class="o">&gt;</span><span class="p">{</span><span class="nx">label</span><span class="p">}</span><span class="o">&lt;</span><span class="sr">/label&gt;&lt;/</span><span class="nx">td</span><span class="o">&gt;</span>
+                <span class="o">&lt;</span><span class="nx">td</span><span class="o">&gt;&lt;</span><span class="nx">input</span> <span class="nx">type</span><span class="o">=</span><span class="p">{</span><span class="nx">type</span><span class="p">}</span> <span class="nx">value</span><span class="o">=</span><span class="p">{</span><span class="nx">value</span><span class="p">}</span> <span class="nx">onChange</span><span class="o">=</span><span class="p">{</span><span class="nx">onChange</span><span class="p">}</span><span class="sr">/&gt;&lt;/</span><span class="nx">td</span><span class="o">&gt;</span>
+            <span class="o">&lt;</span><span class="sr">/tr</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderLoginButtonRow</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">tr</span><span class="o">&gt;</span>
+                <span class="o">&lt;</span><span class="nx">td</span> <span class="nx">colSpan</span><span class="o">=</span><span class="s2">"2"</span><span class="o">&gt;&lt;</span><span class="nx">input</span> <span class="nx">type</span><span class="o">=</span><span class="s2">"submit"</span> <span class="nx">onClick</span><span class="o">=</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">login</span><span class="p">}</span> <span class="nx">value</span><span class="o">=</span><span class="s2">"login"</span><span class="o">/&gt;&lt;</span><span class="sr">/td</span><span class="err">&gt;
+</span>            <span class="o">&lt;</span><span class="sr">/tr</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderMessageRow</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">message</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">tr</span> <span class="nx">key</span><span class="o">=</span><span class="p">{</span><span class="nx">key</span><span class="p">}</span><span class="o">&gt;</span>
+                <span class="o">&lt;</span><span class="nx">td</span> <span class="nx">colSpan</span><span class="o">=</span><span class="s2">"2"</span><span class="o">&gt;</span><span class="p">{</span><span class="nx">message</span><span class="p">}</span><span class="o">&lt;</span><span class="sr">/td</span><span class="err">&gt;
+</span>            <span class="o">&lt;</span><span class="sr">/tr</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderNewPasswordComponents</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">isFirstLogin</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="nx">renderMessageRow</span><span class="p">(</span><span class="s1">'new password message'</span><span class="p">,</span> <span class="s1">'Because this is the first time you are logging in, you will have to change your password'</span><span class="p">),</span>
+                <span class="nx">renderFormFieldRow</span><span class="p">(</span><span class="s1">'new password'</span><span class="p">,</span> <span class="s1">'password'</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">newPassword</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">changeNewPassword</span><span class="p">),</span>
+                <span class="nx">renderFormFieldRow</span><span class="p">(</span><span class="s1">'confirm new password'</span><span class="p">,</span> <span class="s1">'password'</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">confirmNewPassword</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">changeConfirmNewPassword</span><span class="p">),</span>
+                <span class="nx">renderPasswordsDoNotMatchMessage</span><span class="p">()</span>
+            <span class="p">];</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderPasswordsDoNotMatchMessage</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">passwordsDoNotMatch</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="nx">renderMessageRow</span><span class="p">(</span><span class="s1">'passwordsDoNotMatchMessage'</span><span class="p">,</span> <span class="s1">'the new password and confirm new password fields do not match or are empty'</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>starting with the main <code class="highlighter-rouge">render</code> method, we are delegating most of the form building to other methods</li>
+  <li><code class="highlighter-rouge">renderFormFieldRow</code> is the 
+most used method; it creates a form field and associated label, wrapped 
+in a row, with a value taken from the component and a method reference 
+for handling the input change event</li>
+  <li><code class="highlighter-rouge">renderLoginButtonRow</code> and <code class="highlighter-rouge">renderMessageRow</code> are similar methods, returning table rows that either show the login button or a message</li>
+  <li><code class="highlighter-rouge">renderNewPasswordComponents</code> will only render something when <code class="highlighter-rouge">isFirstLogin</code> flag is set on the component state</li>
+  <li>in the same way <code class="highlighter-rouge">renderPasswordsDoNotMatchMessage</code> will only render a message when the <code class="highlighter-rouge">passwordsDoNotMatch</code> flag is set</li>
+</ul>
+
+<p>Directly related to the render methods are the change handlers for 
+the input components, which only change the component state by using the
+ <code class="highlighter-rouge">setState</code> method:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">LoginForm</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+
+    <span class="c1">// constructor</span>
+
+    <span class="c1">// render methods</span>
+
+    <span class="nx">changeUsername</span><span class="p">(</span><span class="nx">event</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">username</span><span class="p">:</span> <span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">});</span>
+    <span class="p">}</span>
+
+    <span class="nx">changePassword</span><span class="p">(</span><span class="nx">event</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">password</span><span class="p">:</span> <span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">});</span>
+    <span class="p">}</span>
+
+    <span class="nx">changeNewPassword</span><span class="p">(</span><span class="nx">event</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">newPassword</span><span class="p">:</span> <span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">});</span>
+    <span class="p">}</span>
+
+    <span class="nx">changeConfirmNewPassword</span><span class="p">(</span><span class="nx">event</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">confirmNewPassword</span><span class="p">:</span> <span class="nx">event</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">});</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Now we can move on to the <code class="highlighter-rouge">login</code> method:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">LoginForm</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+
+    <span class="c1">// constructor</span>
+
+    <span class="c1">// render methods</span>
+
+    <span class="c1">// change handlers</span>
+
+    <span class="nx">login</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">e</span><span class="p">.</span><span class="nx">preventDefault</span><span class="p">();</span>
+
+        <span class="kd">var</span> <span class="nx">cognitoUser</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">getCognitoUser</span><span class="p">();</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">isFirstLogin</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">verifyNewPassword</span><span class="p">())</span> <span class="p">{</span>
+                <span class="nx">cognitoUser</span><span class="p">.</span><span class="nx">completeNewPasswordChallenge</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">newPassword</span><span class="p">.</span><span class="nx">trim</span><span class="p">(),</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">challenge</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">getCallbacks</span><span class="p">())</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">passwordsDoNotMatch</span><span class="p">:</span> <span class="kc">true</span><span class="p">});</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="nx">cognitoUser</span><span class="p">.</span><span class="nx">authenticateUser</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">getAuthenticationDetails</span><span class="p">(),</span> <span class="k">this</span><span class="p">.</span><span class="nx">getCallbacks</span><span class="p">());</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nx">verifyNewPassword</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">newPassword</span><span class="p">.</span><span class="nx">trim</span><span class="p">().</span><span class="nx">length</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span>
+            <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">newPassword</span><span class="p">.</span><span class="nx">trim</span><span class="p">()</span> <span class="o">===</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">confirmNewPassword</span><span class="p">.</span><span class="nx">trim</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the default form submission event is prevented</li>
+  <li>we create a Cognito user object using a utility method (utility methods added below)</li>
+  <li>we then progress the login based on the state
+    <ul>
+      <li>if this is a first login, we verify the new password and new password confirmation field
+        <ul>
+          <li>if passwords match, we execute the <code class="highlighter-rouge">completeNewPasswordChallenge</code> process</li>
+          <li>if passwords do not match, we change the state and set the <code class="highlighter-rouge">passwordsDoNotMatch</code> flag</li>
+        </ul>
+      </li>
+      <li>if this is not a first login, we initiate the authentication/login process</li>
+    </ul>
+  </li>
+  <li>the <code class="highlighter-rouge">verifyNewPassword</code> method just compares the new password fields and makes sure they match and are not empty</li>
+</ul>
+
+<p>Next we look at the utility methods:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">LoginForm</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+
+    <span class="c1">// constructor</span>
+
+    <span class="c1">// render methods</span>
+
+    <span class="c1">// change handlers</span>
+
+    <span class="c1">// login method</span>
+
+    <span class="nx">getUserPool</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nx">CognitoUserPool</span><span class="p">({</span>
+            <span class="na">UserPoolId</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">userPoolId</span><span class="p">,</span>
+            <span class="na">ClientId</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">clientId</span><span class="p">,</span>
+        <span class="p">});</span>
+    <span class="p">}</span>
+
+    <span class="nx">getCognitoUser</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">cognitoUser</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">cognitoUser</span><span class="p">;</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="kd">var</span> <span class="nx">newCognitoUser</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">CognitoUser</span><span class="p">({</span>
+                <span class="na">Username</span> <span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">username</span><span class="p">.</span><span class="nx">trim</span><span class="p">(),</span>
+                <span class="na">Pool</span> <span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">getUserPool</span><span class="p">()</span>
+            <span class="p">});</span>
+            <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">cognitoUser</span><span class="p">:</span> <span class="nx">newCognitoUser</span><span class="p">});</span>
+            <span class="k">return</span> <span class="nx">newCognitoUser</span><span class="p">;</span>
+        <span class="p">}</span>
+
+    <span class="p">}</span>
+
+    <span class="nx">getAuthenticationDetails</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nx">AuthenticationDetails</span><span class="p">({</span>
+            <span class="na">Username</span> <span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">username</span><span class="p">.</span><span class="nx">trim</span><span class="p">(),</span>
+            <span class="na">Password</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">password</span><span class="p">.</span><span class="nx">trim</span><span class="p">()</span>
+        <span class="p">});</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">getUserPool</code> method will just create a new <code class="highlighter-rouge">CognitoUserPool</code> using the properties used to create the component</li>
+  <li><code class="highlighter-rouge">getCognitoUser</code> will create a
+ new Cognito user object, if one does not already exists; we need to use
+ the Cognito user object that initiated the login process if the process
+ is interrupted by a challenge, like resetting the password</li>
+  <li><code class="highlighter-rouge">getAuthenticationDetails</code> will create an object containing the username and password from the component state</li>
+</ul>
+
+<p>The last part we need to talk about regarding the login component is 
+how do we handle the events from the login process? We use the callbacks
+ below:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">LoginForm</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+
+    <span class="c1">// constructor</span>
+
+    <span class="c1">// render methods</span>
+
+    <span class="c1">// change handlers</span>
+
+    <span class="c1">// login method</span>
+
+    <span class="c1">// utility methods</span>
+
+    <span class="nx">getCallbacks</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="na">onSuccess</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">notifySuccessfulLogin</span><span class="p">,</span>
+            <span class="na">onFailure</span><span class="p">:</span> <span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+                <span class="nx">alert</span><span class="p">(</span><span class="nx">err</span><span class="p">);</span>
+            <span class="p">},</span>
+            <span class="na">newPasswordRequired</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">newPasswordRequired</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nx">newPasswordRequired</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"new password required"</span><span class="p">);</span>
+        <span class="k">delete</span> <span class="nx">result</span><span class="p">.</span><span class="nx">email_verified</span><span class="p">;</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">isFirstLogin</span><span class="p">:</span> <span class="kc">true</span><span class="p">,</span> <span class="na">challenge</span><span class="p">:</span> <span class="nx">result</span><span class="p">});</span>
+    <span class="p">}</span>
+
+    <span class="nx">notifySuccessfulLogin</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">idToken</span><span class="p">.</span><span class="nx">jwtToken</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">loginHandler</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">username</span><span class="p">.</span><span class="nx">trim</span><span class="p">(),</span> <span class="nx">result</span><span class="p">.</span><span class="nx">idToken</span><span class="p">.</span><span class="nx">jwtToken</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li><code class="highlighter-rouge">getCallbacks</code> will return 
+the three callbacks required in our scenario: what happens when a login 
+is successful, what happens when the login fails and what happens when 
+we receive a <code class="highlighter-rouge">newPasswordRequired</code> challenge</li>
+  <li>when we receive a <code class="highlighter-rouge">newPasswordRequired</code> challenge, the <code class="highlighter-rouge">newPasswordRequired</code> method will modify the state of the login component by setting the <code class="highlighter-rouge">isFirstLogin</code> flag to true and adding the challenge object received to the <code class="highlighter-rouge">challenge</code>
+ state variable; next, the re-rendering of the component will show the 
+new password fields and it is up to users to input a new valid password 
+and to the <code class="highlighter-rouge">login</code> method to answer to the challenge when the login button is pressed again</li>
+  <li>the interesting last case we must discuss is the <code class="highlighter-rouge">notifySuccessfulLogin</code> method:
+    <ul>
+      <li>when a successful login occured, we need to notify the parent component somehow</li>
+      <li>we do this through a <code class="highlighter-rouge">loginHandler</code> sent to us when the login component was initialized in the main application component</li>
+      <li>this handler does not appear in the main application code at the start of this page; I will update that code soon enough</li>
+      <li>when we want to notify the parent component, we just invoke the <code class="highlighter-rouge">loginHandler</code> function to which we provide the username and the id token we obtained through the login process</li>
+    </ul>
+  </li>
+</ul>
+
+<p>So, in summary, what this component does is:</p>
+
+<ul>
+  <li>it displays a login form, with a username and password field, through the <em>render</em> methods</li>
+  <li>as users type in the username and password, <em>change handlers</em> will take the type values and save them in the component state</li>
+  <li>when the user click the login button, the <em>login</em> method will start the authentication process</li>
+  <li>the first call of the authentication process will try to obtain the tokens only using the username and password</li>
+  <li>this may fail when the user is logging in for the first time; the login call will return a <em>new password required</em> challenge, and when this happens we manipulate the state of the component to reflect this</li>
+  <li>the <em>render</em> methods are used again to update how the 
+component is displayed based on the new state, and this will mean 
+showing two new fields to input the new password</li>
+  <li>when the user presses the login button again, the authentication process is continued, an answer to the <em>new password required</em> challenge is sent to Cognito</li>
+  <li>if this is successful, we finally obtain the new tokens and can now notify the parent component through the <em>login handler</em> we received at initialization</li>
+</ul>
+
+<h3 id="back-to-the-application-class">Back to the application class</h3>
+
+<p>It’s time to go back to the application class and take a look at the 
+actual implementation, the one that can receive a notification from the 
+login component through a handler and then hide the login form and 
+display a main application screen.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">export</span> <span class="k">default</span> <span class="kd">class</span> <span class="nx">Application</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="kd">constructor</span><span class="p">(</span><span class="nx">props</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">super</span><span class="p">(</span><span class="nx">props</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">state</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">username</span><span class="p">:</span> <span class="kc">null</span><span class="p">,</span>
+            <span class="na">token</span><span class="p">:</span> <span class="kc">null</span>
+        <span class="p">}</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">handleLoggedIn</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">handleLoggedIn</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the new constructor will take set two state variables of the application, the <code class="highlighter-rouge">username</code> and the <code class="highlighter-rouge">token</code> used to make calls to APIs that require authentication</li>
+  <li>we also bind the handler method, <code class="highlighter-rouge">handleLoggedIn</code>,
+ to the current instance of the application; we are doing this because 
+we will send the method to the login component, and the handler method 
+will be called inside the login component, but we want the value of <code class="highlighter-rouge">this</code> inside the handler method to point to the current instance of the application class</li>
+</ul>
+
+<p>The <code class="highlighter-rouge">handleLoggedIn</code> method will accept the <code class="highlighter-rouge">username</code> and <code class="highlighter-rouge">token</code> obtained by the login component and update the state of the application component.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">export</span> <span class="k">default</span> <span class="kd">class</span> <span class="nx">Application</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="c1">// constructor</span>
+
+    <span class="nx">handleLoggedIn</span><span class="p">(</span><span class="nx">username</span><span class="p">,</span> <span class="nx">token</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span>
+            <span class="na">username</span><span class="p">:</span> <span class="nx">username</span><span class="p">,</span>
+            <span class="na">token</span><span class="p">:</span> <span class="nx">token</span>
+        <span class="p">})</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Updating the state of the application component will trigger a render
+ of the component, and the render methods detailed below will change the
+ UI from showing the login form to showing the main screen of the app:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">export</span> <span class="k">default</span> <span class="kd">class</span> <span class="nx">Application</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="c1">// constructor</span>
+
+    <span class="c1">// handler method</span>
+
+    <span class="nx">render</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">div</span> <span class="nx">className</span><span class="o">=</span><span class="s2">"application"</span><span class="o">&gt;</span>
+                <span class="p">{</span> <span class="k">this</span><span class="p">.</span><span class="nx">renderLoginForm</span><span class="p">()</span> <span class="p">}</span>
+                <span class="p">{</span> <span class="k">this</span><span class="p">.</span><span class="nx">renderMainScreen</span><span class="p">()</span> <span class="p">}</span>
+            <span class="o">&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderLoginForm</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">token</span> <span class="o">==</span> <span class="kc">null</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="p">(</span><span class="o">&lt;</span><span class="nx">LoginForm</span> <span class="nx">userPoolId</span><span class="o">=</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">userPoolId</span><span class="p">}</span> <span class="nx">clientId</span><span class="o">=</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">clientId</span><span class="p">}</span> <span class="nx">loginHandler</span><span class="o">=</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">handleLoggedIn</span><span class="p">}</span><span class="sr">/&gt;</span><span class="err">)
+</span>        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderMainScreen</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">token</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span><span class="nx">MAIN</span> <span class="nx">SCREEN</span><span class="o">&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">render</code> method will just delegate to other more specific rendering methods</li>
+  <li>you can see we have changed the <code class="highlighter-rouge">renderLoginForm</code> method to also provide the <code class="highlighter-rouge">loginHandler</code> to the <code class="highlighter-rouge">LoginForm</code> component when we initialize it</li>
+  <li><code class="highlighter-rouge">renderMainScreen</code> is currently just showing a div, we will return to this later</li>
+</ul>
+
+<h2 id="setting-up-the-server">Setting up the server</h2>
+
+<p>Time to set up the main program script, the one that starts 
+everything up and monitors calls from clients. This is the part where we
+ have a lot of third-party libraries that I don’t yet understand, but I 
+will explain things as best I can. Create a <code class="highlighter-rouge">program.js</code> file in the root folder of your project. We’ll start with dependencies:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">express</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'express'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">app</span> <span class="o">=</span> <span class="nx">express</span><span class="p">();</span>
+<span class="kd">var</span> <span class="nx">React</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'react'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">ReactDOMServer</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'react-dom/server'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">DOM</span> <span class="o">=</span> <span class="nx">React</span><span class="p">.</span><span class="nx">DOM</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">body</span> <span class="o">=</span> <span class="nx">DOM</span><span class="p">.</span><span class="nx">body</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">div</span> <span class="o">=</span> <span class="nx">DOM</span><span class="p">.</span><span class="nx">div</span><span class="p">;</span>
+<span class="kd">var</span> <span class="nx">script</span> <span class="o">=</span> <span class="nx">DOM</span><span class="p">.</span><span class="nx">script</span><span class="p">;</span>
+<span class="nx">require</span><span class="p">(</span><span class="s1">'babel-core'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">https</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'https'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">bl</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'bl'</span><span class="p">);</span>
+
+<span class="kd">var</span> <span class="nx">browserify</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'browserify'</span><span class="p">);</span>
+<span class="kd">var</span> <span class="nx">babelify</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s2">"babelify"</span><span class="p">);</span>
+</code></pre></div></div>
+
+<ul>
+  <li>express is the server we are using, we are instantiating it in the <code class="highlighter-rouge">app</code> variable</li>
+  <li><code class="highlighter-rouge">browserify</code> and <code class="highlighter-rouge">babelify</code> are used to convert and bundle our components to a javascript file that can be used to run all the component code on the client</li>
+</ul>
+
+<p>Next, we are configuring the server to listen to port <code class="highlighter-rouge">8080</code> by default, or the first argument we send to the program. We are also setting the view engine of the server to <code class="highlighter-rouge">jsx</code> and pluggin in <code class="highlighter-rouge">express-react-views</code> to handle interpreting the views we are serving. We let the server know to load the views from the <code class="highlighter-rouge">/views</code> folder:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">app</span><span class="p">.</span><span class="kd">set</span><span class="p">(</span><span class="s1">'port'</span><span class="p">,</span> <span class="p">(</span><span class="nx">process</span><span class="p">.</span><span class="nx">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">||</span> <span class="mi">8080</span><span class="p">));</span>
+<span class="nx">app</span><span class="p">.</span><span class="kd">set</span><span class="p">(</span><span class="s1">'view engine'</span><span class="p">,</span> <span class="s1">'jsx'</span><span class="p">);</span>
+<span class="nx">app</span><span class="p">.</span><span class="kd">set</span><span class="p">(</span><span class="s1">'views'</span><span class="p">,</span> <span class="nx">__dirname</span> <span class="o">+</span> <span class="s1">'/views'</span><span class="p">);</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">engine</span><span class="p">(</span><span class="s1">'jsx'</span><span class="p">,</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'express-react-views'</span><span class="p">).</span><span class="nx">createEngine</span><span class="p">({</span><span class="na">transformViews</span><span class="p">:</span> <span class="kc">false</span><span class="p">}));</span>
+
+<span class="nx">require</span><span class="p">(</span><span class="s1">'babel-register'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>We also instantiate our <code class="highlighter-rouge">Application</code> component and we add the initial configuration to the data variable:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">Application</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">'./views/index.jsx'</span><span class="p">).</span><span class="k">default</span><span class="p">;</span>
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">Application</span><span class="p">);</span>
+
+<span class="kd">var</span> <span class="nx">data</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="na">userPoolId</span><span class="p">:</span> <span class="s1">'user pool id'</span><span class="p">,</span>
+    <span class="na">clientId</span><span class="p">:</span> <span class="s1">'client id'</span><span class="p">,</span>
+    <span class="na">notesUrl</span><span class="p">:</span> <span class="s1">'https://amazon-staging-api-url/cognitotest/notes'</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>Now let’s prepare the javascript bundle and make the express server send the bundled file when the <code class="highlighter-rouge">/bundle.js</code> URL is accessed:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">'/bundle.js'</span><span class="p">,</span> <span class="kd">function</span> <span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">res</span><span class="p">.</span><span class="nx">setHeader</span><span class="p">(</span><span class="s1">'content-type'</span><span class="p">,</span> <span class="s1">'application/javascript'</span><span class="p">);</span>
+
+    <span class="nx">browserify</span><span class="p">({</span><span class="na">debug</span><span class="p">:</span> <span class="kc">true</span><span class="p">})</span>
+        <span class="p">.</span><span class="nx">transform</span><span class="p">(</span><span class="nx">babelify</span><span class="p">.</span><span class="nx">configure</span><span class="p">({</span>
+            <span class="na">presets</span><span class="p">:</span> <span class="p">[</span><span class="s2">"react"</span><span class="p">,</span> <span class="s2">"es2015"</span><span class="p">],</span>
+            <span class="na">compact</span><span class="p">:</span> <span class="kc">false</span>
+        <span class="p">}))</span>
+        <span class="p">.</span><span class="nx">require</span><span class="p">(</span><span class="s2">"./app.js"</span><span class="p">,</span> <span class="p">{</span><span class="na">entry</span><span class="p">:</span> <span class="kc">true</span><span class="p">})</span>
+        <span class="p">.</span><span class="nx">bundle</span><span class="p">()</span>
+        <span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s2">"error"</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nx">message</span><span class="p">);</span>
+            <span class="nx">res</span><span class="p">.</span><span class="nx">end</span><span class="p">();</span>
+        <span class="p">})</span>
+        <span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">res</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<ul>
+  <li>we set the express server instantiated in the <code class="highlighter-rouge">app</code> variable to respond to calls to the <code class="highlighter-rouge">/bundle.js</code> URL with a function expecting a request and a response</li>
+  <li>the function will use <em>browserify</em> to transform <em>app.js</em> using the <em>react</em> and <em>es2015</em> presets</li>
+  <li>it will then bundle the result and pipe it to the responde body</li>
+</ul>
+
+<p>So what is the <em>app.js</em> file? You will need to create this file in the root of your project and include the following in it:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nx">React</span> <span class="k">from</span> <span class="s1">'react'</span><span class="p">;</span>
+<span class="k">import</span> <span class="nx">ReactDOM</span> <span class="k">from</span> <span class="s1">'react-dom'</span><span class="p">;</span>
+<span class="k">import</span> <span class="nx">Application</span> <span class="k">from</span> <span class="s1">'./views/index.jsx'</span><span class="p">;</span>
+
+<span class="kd">let</span> <span class="nx">data</span> <span class="o">=</span> <span class="nx">JSON</span><span class="p">.</span><span class="nx">parse</span><span class="p">(</span><span class="nb">document</span><span class="p">.</span><span class="nx">getElementById</span><span class="p">(</span><span class="s1">'initial-data'</span><span class="p">).</span><span class="nx">getAttribute</span><span class="p">(</span><span class="s1">'data-json'</span><span class="p">));</span>
+<span class="nx">ReactDOM</span><span class="p">.</span><span class="nx">render</span><span class="p">(</span><span class="o">&lt;</span><span class="nx">Application</span> <span class="nx">data</span><span class="o">=</span><span class="p">{</span><span class="nx">data</span><span class="p">}</span><span class="sr">/&gt;, document.getElementById</span><span class="se">(</span><span class="sr">"app"</span><span class="se">))</span><span class="err">;
+</span></code></pre></div></div>
+
+<p>So this <em>app.js</em> file is just a file importing all required dependencies to run the UI, then parsing the <code class="highlighter-rouge">intial-data</code> into an object and using that object to instantiate and render an <code class="highlighter-rouge">Application</code> component and add it to the HTML document under the element with id <code class="highlighter-rouge">app</code>.</p>
+
+<p>We are using the generated <em>bundle.js</em> in the main application that is accessed at the root path:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">'/'</span><span class="p">,</span> <span class="kd">function</span> <span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">initialData</span> <span class="o">=</span> <span class="nx">JSON</span><span class="p">.</span><span class="nx">stringify</span><span class="p">(</span><span class="nx">data</span><span class="p">);</span>
+    <span class="kd">var</span> <span class="nx">markup</span> <span class="o">=</span> <span class="nx">ReactDOMServer</span><span class="p">.</span><span class="nx">renderToString</span><span class="p">(</span><span class="nx">React</span><span class="p">.</span><span class="nx">createElement</span><span class="p">(</span><span class="nx">Application</span><span class="p">,</span> <span class="p">{</span><span class="na">data</span><span class="p">:</span> <span class="nx">data</span><span class="p">}));</span>
+
+    <span class="nx">res</span><span class="p">.</span><span class="nx">setHeader</span><span class="p">(</span><span class="s1">'Content-Type'</span><span class="p">,</span> <span class="s1">'text/html'</span><span class="p">);</span>
+
+    <span class="kd">var</span> <span class="nx">html</span> <span class="o">=</span> <span class="nx">ReactDOMServer</span><span class="p">.</span><span class="nx">renderToStaticMarkup</span><span class="p">(</span><span class="nx">body</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span>
+        <span class="nx">div</span><span class="p">({</span><span class="na">id</span><span class="p">:</span> <span class="s1">'app'</span><span class="p">,</span> <span class="na">dangerouslySetInnerHTML</span><span class="p">:</span> <span class="p">{</span><span class="na">__html</span><span class="p">:</span> <span class="nx">markup</span><span class="p">}}),</span>
+        <span class="nx">script</span><span class="p">({</span>
+            <span class="na">id</span><span class="p">:</span> <span class="s1">'initial-data'</span><span class="p">,</span>
+            <span class="na">type</span><span class="p">:</span> <span class="s1">'text/plain'</span><span class="p">,</span>
+            <span class="s1">'data-json'</span><span class="p">:</span> <span class="nx">initialData</span>
+        <span class="p">}),</span>
+        <span class="nx">script</span><span class="p">({</span><span class="na">src</span><span class="p">:</span> <span class="s1">'/bundle.js'</span><span class="p">})</span>
+    <span class="p">));</span>
+
+    <span class="nx">res</span><span class="p">.</span><span class="nx">end</span><span class="p">(</span><span class="nx">html</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">data</code> variable is serialized into the <code class="highlighter-rouge">initial-data</code> variable</li>
+  <li>the root page is a HTML page</li>
+  <li>we are returning a HTML page containing a div element with id <code class="highlighter-rouge">app</code> and two scripts, one that contains the initial data and the second one loading the <em>bundle.js</em> file</li>
+  <li>the HTML is sent to the response</li>
+</ul>
+
+<p>Finally, we make the express server listen on the port we want:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">app</span><span class="p">.</span><span class="nx">listen</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="kd">get</span><span class="p">(</span><span class="s1">'port'</span><span class="p">),</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{})</span>
+</code></pre></div></div>
+
+<p>Now, all you have to do is open a shell in the main folder and run <code class="highlighter-rouge">node program.js</code>, then open a browser and navigate to <code class="highlighter-rouge">localhost:8080</code>.
+ You should have a running application that can handle a login to 
+Cognito scenario. We are done with the login part, but we also want to 
+use the token to access a secured API, which we describe in the next 
+sections.</p>
+
+<h2 id="the-main-app-page">The main app page</h2>
+
+<p>Right now, the main app only shows a simple text. We want our main 
+app to access some secured data using the token we have obtained through
+ the login process. The main screen is a pretty simple component, 
+compared to the login component:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">MainScreen</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="kd">constructor</span><span class="p">(</span><span class="nx">props</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">super</span><span class="p">(</span><span class="nx">props</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">state</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">title</span><span class="p">:</span> <span class="s2">"Your notes"</span><span class="p">,</span>
+            <span class="na">notes</span><span class="p">:</span> <span class="p">[]</span>
+        <span class="p">}</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setNotes</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">setNotes</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">loadNotes</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">loadNotes</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">collectResponse</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">collectResponse</span><span class="p">.</span><span class="nx">bind</span><span class="p">(</span><span class="k">this</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">loadNotes</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the constructor initializes the state to some default values</li>
+  <li>we also bind some methods to the instance and make a call to <code class="highlighter-rouge">loadNotes</code> which will load the data</li>
+</ul>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">MainScreen</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="c1">// constructor</span>
+
+    <span class="nx">render</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span>
+                <span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="nx">Hello</span><span class="p">,</span> <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">username</span><span class="p">},</span> <span class="nx">welcome</span> <span class="nx">to</span> <span class="nx">the</span> <span class="nx">app</span><span class="o">!&lt;</span><span class="sr">/p</span><span class="err">&gt;
+</span>                <span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">renderNotes</span><span class="p">()}</span>
+            <span class="o">&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">renderNotes</span><span class="p">()</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">renderedNotes</span> <span class="o">=</span> <span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">notes</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">note</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="o">&lt;</span><span class="nx">div</span> <span class="nx">key</span><span class="o">=</span><span class="p">{</span><span class="nx">note</span><span class="p">.</span><span class="nx">title</span><span class="p">}</span><span class="o">&gt;</span>
+                    <span class="o">&lt;</span><span class="nx">h2</span><span class="o">&gt;</span><span class="p">{</span><span class="nx">note</span><span class="p">.</span><span class="nx">title</span><span class="p">}</span><span class="o">&lt;</span><span class="sr">/h2</span><span class="err">&gt;
+</span>                    <span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="p">{</span><span class="nx">note</span><span class="p">.</span><span class="nx">contents</span><span class="p">}</span><span class="o">&lt;</span><span class="sr">/p</span><span class="err">&gt;
+</span>                <span class="o">&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>            <span class="p">)</span>
+        <span class="p">})</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span>
+                <span class="o">&lt;</span><span class="nx">h1</span><span class="o">&gt;</span><span class="p">{</span><span class="k">this</span><span class="p">.</span><span class="nx">state</span><span class="p">.</span><span class="nx">title</span><span class="p">}</span><span class="o">&lt;</span><span class="sr">/h1</span><span class="err">&gt;
+</span>                <span class="p">{</span><span class="nx">renderedNotes</span><span class="p">}</span>
+            <span class="o">&lt;</span><span class="sr">/div</span><span class="err">&gt;
+</span>        <span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">render</code> method will display a hello message and delegate to the <code class="highlighter-rouge">renderNotes</code> method</li>
+  <li><code class="highlighter-rouge">renderNotes</code> will map all notes in the state to divs that contain each note’s title and contents</li>
+  <li><code class="highlighter-rouge">renderNotes</code> will also show a title value, and it is dependent on the current state of the component</li>
+</ul>
+
+<p>Lastly, let’s see how we get the notes:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nx">MainScreen</span> <span class="kd">extends</span> <span class="nx">React</span><span class="p">.</span><span class="nx">Component</span> <span class="p">{</span>
+    <span class="c1">// constructor</span>
+
+    <span class="c1">// render methods</span>
+
+    <span class="nx">loadNotes</span><span class="p">()</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">method</span><span class="p">:</span> <span class="s1">'GET'</span><span class="p">,</span>
+            <span class="na">host</span><span class="p">:</span> <span class="s1">'localhost'</span><span class="p">,</span>
+            <span class="na">port</span><span class="p">:</span> <span class="mi">8080</span><span class="p">,</span>
+            <span class="na">path</span><span class="p">:</span> <span class="s1">'/notes'</span><span class="p">,</span>
+            <span class="na">headers</span><span class="p">:</span> <span class="p">{</span><span class="s1">'Authorization'</span><span class="p">:</span> <span class="k">this</span><span class="p">.</span><span class="nx">props</span><span class="p">.</span><span class="nx">token</span><span class="p">}</span>
+        <span class="p">};</span>
+        <span class="kd">var</span> <span class="nx">req</span> <span class="o">=</span> <span class="nx">http</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="k">this</span><span class="p">.</span><span class="nx">setNotes</span><span class="p">);</span>
+        <span class="nx">req</span><span class="p">.</span><span class="nx">end</span><span class="p">();</span>
+    <span class="p">}</span>
+
+    <span class="nx">setNotes</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>    
+        <span class="nx">result</span><span class="p">.</span><span class="nx">setEncoding</span><span class="p">(</span><span class="s1">'utf8'</span><span class="p">);</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">bl</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">collectResponse</span><span class="p">));</span>
+        <span class="nx">result</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="nx">collectResponse</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">toString</span><span class="p">();</span>
+        <span class="kd">var</span> <span class="nx">object</span> <span class="o">=</span> <span class="nx">JSON</span><span class="p">.</span><span class="nx">parse</span><span class="p">(</span><span class="nx">string</span><span class="p">);</span>
+        <span class="k">this</span><span class="p">.</span><span class="nx">setState</span><span class="p">({</span><span class="na">title</span><span class="p">:</span> <span class="nx">object</span><span class="p">.</span><span class="nx">title</span><span class="p">,</span> <span class="na">notes</span><span class="p">:</span> <span class="nx">object</span><span class="p">.</span><span class="nx">notes</span><span class="p">});</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the <code class="highlighter-rouge">loadNotes</code> makes a <em>GET</em> call to an endpoint that expects an <code class="highlighter-rouge">Authorization</code> header</li>
+  <li>when we get a response back, we use the <code class="highlighter-rouge">setNotes</code> method as callback</li>
+  <li>the <code class="highlighter-rouge">setNotes</code> method will use the <em>bl</em> library to read the whole response and save that response to the state of the component within the <code class="highlighter-rouge">collectResponse</code> method</li>
+</ul>
+
+<p>When the state changes, the render methods are called again to update
+ the UI. But there is a small detail in here I need to point out. We are
+ making a <em>GET</em> call to a <em>/notes</em> endpoint on <em>localhost</em>.
+ I did this because the call is made from the client, and the client 
+will complain if we try to access data on some different server, so for 
+this exercise I chose to pull data from an Amazon API through the 
+server. And I’ll show you how I do that in the next and final section.</p>
+
+<h2 id="making-a-call-to-some-service">Making a call to some service</h2>
+
+<p>We need to add a new mapping for our express server in the <em>program.js</em> folder:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">'/bundle.js'</span><span class="p">,</span> <span class="kd">function</span> <span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// handle bundle</span>
+<span class="p">});</span>
+
+<span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">'/notes'</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">request</span><span class="p">,</span> <span class="nx">response</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">authorization</span> <span class="o">=</span> <span class="nx">request</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">authorization</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">authorization</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">options</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="na">method</span><span class="p">:</span> <span class="s1">'GET'</span><span class="p">,</span>
+            <span class="na">host</span><span class="p">:</span> <span class="s1">'amazon-notes-api-url'</span><span class="p">,</span>
+            <span class="na">path</span><span class="p">:</span> <span class="s1">'/staging/notes'</span><span class="p">,</span>
+            <span class="na">headers</span><span class="p">:</span> <span class="p">{</span><span class="s1">'Authorization'</span><span class="p">:</span> <span class="nx">authorization</span><span class="p">}</span>
+        <span class="p">};</span>
+        <span class="kd">var</span> <span class="nx">internalRequest</span> <span class="o">=</span> <span class="nx">https</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">options</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">result</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">result</span><span class="p">.</span><span class="nx">setEncoding</span><span class="p">(</span><span class="s1">'utf8'</span><span class="p">);</span>
+            <span class="nx">result</span><span class="p">.</span><span class="nx">pipe</span><span class="p">(</span><span class="nx">bl</span><span class="p">(</span><span class="nx">onceCollected</span><span class="p">));</span>
+            <span class="nx">result</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+
+            <span class="kd">function</span> <span class="nx">onceCollected</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+                <span class="kd">var</span> <span class="nx">string</span> <span class="o">=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">toString</span><span class="p">();</span>
+                <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">string</span><span class="p">);</span>
+                <span class="nx">response</span><span class="p">.</span><span class="nx">end</span><span class="p">(</span><span class="nx">string</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">});</span>
+        <span class="nx">internalRequest</span><span class="p">.</span><span class="nx">end</span><span class="p">();</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="nx">response</span><span class="p">.</span><span class="nx">end</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">});</span>
+
+<span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">'/'</span><span class="p">,</span> <span class="kd">function</span> <span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// handle root</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<ul>
+  <li>the new mapping is for the <code class="highlighter-rouge">/notes</code> URL</li>
+  <li>we verify and only continue if we have an authorization header</li>
+  <li>we make a get request to the Amazon API with the authorization header</li>
+  <li>the response we receive from Amazon we read and the write to the response we want to return to the client</li>
+</ul>
+
+<p>And now we finally have a working example of logging in with a 
+Cognito identity, obtaining a user identity token and using that token 
+to pull data from a secured Amazon API, all through a React UI. This 
+example ties in with the previous post. Run <code class="highlighter-rouge">node program.js</code> and test it out.</p>
+
+
+
+
+</body></html>

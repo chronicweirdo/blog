@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="After a deeper dive into Akka actors I felt the need to explore some of the limitations of the actor model and what strategies we can use to overcome them. One obvious problem is blocking actors, actors that perform operations that keep a thread occupied for a long time. Another problem that I did not see debated when looking at discussions online, but I did run into when buiding my solution, was memory consumption. If your actors have state, and if an actor needs to save some data into that ...">
+
+    <title>Akka actors orchestration</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2018.05.06 09:00</span>
+    
+        <span>/</span><span class="tag">scala</span>
+    
+        <span>/</span><span class="tag">spring boot</span>
+    
+        <span>/</span><span class="tag">akka</span>
+    
+        <span>/</span><span class="tag">actors</span>
+    
+        <span>/</span><span class="tag">multithreading</span>
+    
+        <span>/</span><span class="tag">big data</span>
+    
+</p>
+<h1 class="title">Akka actors orchestration</h1>
+
+<p>After a deeper dive into Akka actors I felt the need to explore some 
+of the limitations of the actor model and what strategies we can use to 
+overcome them. One obvious problem is blocking actors, actors that 
+perform operations that keep a thread occupied for a long time. Another 
+problem that I did not see debated when looking at discussions online, 
+but I did run into when buiding my solution, was memory consumption. If 
+your actors have state, and if an actor needs to save some data into 
+that state, and if your system works with large amounts of data, you may
+ end up with many actors saving large amounts of data in memory as they 
+prepare to process it. This can result in the JVM crashing because of an
+ out of memory error. This post gives an example of the strategies I 
+used to orchestrate my actors in a way that avoids this problem.</p>
+
+<h2 id="the-failing-setup">The failing setup</h2>
+
+<p>I’ll start with the initial setup where I try to make the example app fail.</p>
+
+<p>We want to simulate the services first, a slow service and a big data service:</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Service</span>
+<span class="k">class</span> <span class="nc">SlowService</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">execute</span><span class="o">()</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="nc">Thread</span><span class="o">.</span><span class="n">sleep</span><span class="o">(</span><span class="mi">10000</span><span class="o">)</span>
+    <span class="s">"result"</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">scala.util.Random</span>
+
+<span class="k">case</span> <span class="k">class</span> <span class="nc">Record</span><span class="o">(</span><span class="n">value</span><span class="k">:</span> <span class="kt">Double</span><span class="o">)</span>
+
+<span class="nd">@Service</span>
+<span class="k">class</span> <span class="nc">BigDataService</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">execute</span> <span class="k">=</span>
+    <span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="mi">1000000</span><span class="o">).</span><span class="n">map</span><span class="o">(</span><span class="n">i</span> <span class="k">=&gt;</span> <span class="nc">Record</span><span class="o">(</span><span class="nc">Random</span><span class="o">.</span><span class="n">nextDouble</span><span class="o">())).</span><span class="n">toList</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The first iteration of the big data service was returning a list of 
+strings, but because of string interning in Java, my goal to fill up too
+ much memory was evading me, so I switched to generating some wrapper 
+objects over randm double values.</p>
+
+<p>Next we’ll start work on our actors. First we want an actor to load all the data for us (an actor that wraps over our service):</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">DataSourceActor</span> <span class="o">{</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">data</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="k">_</span><span class="o">])</span>
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"dataSourceActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">DataSourceActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">bigDataService</span><span class="k">:</span> <span class="kt">BigDataService</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Load</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">bigDataService</span><span class="o">.</span><span class="n">execute</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The next actor is the one doing all the work. This is a stateful 
+actor that, when receiving a process message, it will save the sender of
+ the message in its internal state, then send a message for the data to 
+the data source actor. When receiving the reply with the data, it will 
+process that data with the slow service. If we need to process large 
+amounts of data we can expect to have a large amount of worker actors, 
+each one operating on its own data. Once the operation is done, the 
+initiator will be notified about the result and the worker actor will 
+send itself a <code class="highlighter-rouge">PoisonPill</code> message, which is an instruction telling the actor to shut down.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">WorkerActor</span> <span class="o">{</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="n">success</span><span class="k">:</span> <span class="kt">Boolean</span><span class="o">)</span>
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"workerActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">WorkerActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+  <span class="k">import</span> <span class="nn">WorkerActor._</span>
+
+  <span class="k">val</span> <span class="n">logger</span> <span class="k">=</span> <span class="nc">LoggerFactory</span><span class="o">.</span><span class="n">getLogger</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">])</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"dataSourceActor"</span><span class="o">)</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">dataSourceActor</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">slowService</span><span class="k">:</span> <span class="kt">SlowService</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">var</span> <span class="n">initiator</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="k">_</span>
+  <span class="k">var</span> <span class="n">id</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="k">_</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="o">{</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"starting work for $id"</span><span class="o">)</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">id</span> <span class="k">=</span> <span class="n">id</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">initiator</span> <span class="k">=</span> <span class="n">sender</span><span class="o">()</span>
+      <span class="n">dataSourceActor</span> <span class="o">!</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="o">)</span>
+    <span class="o">}</span>
+    <span class="k">case</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">data</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="o">{</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"received data for $id"</span><span class="o">)</span>
+      <span class="c1">// processing this data somehow
+</span>      <span class="n">slowService</span><span class="o">.</span><span class="n">execute</span><span class="o">()</span>
+      <span class="n">initiator</span> <span class="o">!</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="kc">true</span><span class="o">)</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The last actor we need is the master, the actor that knows about all 
+the data that needs to be processed and creates and manages the worker 
+actors that process part of that data. When receiving a start work 
+message, the master actor will load the list of data items (just their 
+IDs) that need to be processed, create a new worker actor for each data 
+item and send a process message with the item ID to the newly created 
+actors. The master actor also keeps a counter of all running worker 
+actors. When the master receives a process result message, it will know a
+ worker finished its task and will decrease the running workers counter.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">MasterActor</span> <span class="o">{</span>
+  <span class="k">case</span> <span class="k">object</span> <span class="nc">StartWork</span>
+  <span class="k">case</span> <span class="k">object</span> <span class="nc">Check</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">CheckResult</span><span class="o">(</span><span class="nd">@BeanProperty</span> <span class="n">running</span><span class="k">:</span> <span class="kt">Int</span><span class="o">)</span>
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"masterActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">MasterActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">def</span> <span class="n">getWorker</span> <span class="k">=</span> <span class="n">context</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">]))</span>
+
+  <span class="k">var</span> <span class="n">running</span> <span class="k">=</span> <span class="mi">0</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWork</span> <span class="k">=&gt;</span>
+      <span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="mi">100000</span><span class="o">).</span><span class="n">foreach</span><span class="o">(</span><span class="n">id</span> <span class="k">=&gt;</span> <span class="o">{</span>
+        <span class="n">getWorker</span> <span class="o">!</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">.</span><span class="n">toString</span><span class="o">)</span>
+        <span class="n">running</span> <span class="o">+=</span> <span class="mi">1</span>
+      <span class="o">})</span>
+    <span class="k">case</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">running</span> <span class="o">-=</span> <span class="mi">1</span>
+    <span class="k">case</span> <span class="nc">Check</span> <span class="k">=&gt;</span> <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">CheckResult</span><span class="o">(</span><span class="n">running</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The master also accepts a check message and replies with the number 
+of currently running actors. We send this message from our controller as
+ a way to verify the progress of the system. The controller is also 
+responsible with trigerring the start of data processing.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">akka.actor.ActorRef</span>
+<span class="k">import</span> <span class="nn">com.cacoveanu.akkaorchestration.MasterActor.</span><span class="o">{</span><span class="nc">Check</span><span class="o">,</span> <span class="nc">CheckResult</span><span class="o">,</span> <span class="nc">StartWork</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.beans.factory.annotation.</span><span class="o">{</span><span class="nc">Autowired</span><span class="o">,</span> <span class="nc">Qualifier</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Controller</span>
+<span class="k">import</span> <span class="nn">org.springframework.web.bind.annotation.</span><span class="o">{</span><span class="nc">RequestMapping</span><span class="o">,</span> <span class="nc">ResponseBody</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">akka.pattern.ask</span>
+<span class="k">import</span> <span class="nn">akka.util.Timeout</span>
+
+<span class="k">import</span> <span class="nn">scala.beans.BeanProperty</span>
+<span class="k">import</span> <span class="nn">scala.concurrent.Await</span>
+<span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
+
+<span class="nd">@Controller</span>
+<span class="k">class</span> <span class="nc">MonitoringController</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"masterActor"</span><span class="o">)</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">masterActor</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/start"</span><span class="o">))</span>
+  <span class="nd">@ResponseBody</span>
+  <span class="k">def</span> <span class="n">start</span><span class="o">()</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="n">masterActor</span> <span class="o">!</span> <span class="nc">StartWork</span>
+    <span class="s">"started"</span>
+  <span class="o">}</span>
+
+  <span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/check"</span><span class="o">))</span>
+  <span class="nd">@ResponseBody</span>
+  <span class="k">def</span> <span class="n">check</span><span class="o">()</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="k">implicit</span> <span class="k">val</span> <span class="n">timeout</span> <span class="k">=</span> <span class="nc">Timeout</span><span class="o">(</span><span class="mi">1</span> <span class="n">second</span><span class="o">)</span>
+    <span class="k">val</span> <span class="n">future</span> <span class="k">=</span> <span class="n">masterActor</span> <span class="o">?</span> <span class="nc">Check</span>
+    <span class="nc">Await</span><span class="o">.</span><span class="n">result</span><span class="o">(</span><span class="n">future</span><span class="o">,</span> <span class="n">timeout</span><span class="o">.</span><span class="n">duration</span><span class="o">).</span><span class="n">asInstanceOf</span><span class="o">[</span><span class="kt">CheckResult</span><span class="o">]</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>So, how do we test this? We run the project and navigate to <code class="highlighter-rouge">localhost:8080/start</code> in our browser, that should start the actors up. Navigate to <code class="highlighter-rouge">localhost:8080/check</code> to see how many workers are still running.</p>
+
+<p>So… how do we crash this? Well, it’s a bit harder on a system that 
+has a big amount of memory. The best way to go about this is to limit 
+the memory of the JVM by setting the <code class="highlighter-rouge">-Xmx=256M</code> flag when running the app. If you do this, in a little while you should start seeing errors like the following:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Uncaught error from thread [akka-orchestration-system-akka.actor.default-dispatcher-12]: GC overhead limit exceeded, shutting down JVM since 'akka.jvm-exit-on-fatal-error' is enabled for ActorSystem[akka-orchestration-system]
+java.lang.OutOfMemoryError: GC overhead limit exceeded
+	at java.util.Arrays.copyOf(Arrays.java:3332)
+	at java.lang.AbstractStringBuilder.ensureCapacityInternal(AbstractStringBuilder.java:124)
+Uncaught error from thread [akka-orchestration-system-akka.actor.default-dispatcher-11]: GC overhead limit exceeded, shutting down JVM since 'akka.jvm-exit-on-fatal-error' is enabled for ActorSystem[akka-orchestration-system]
+java.lang.OutOfMemoryError: GC overhead limit exceeded
+Uncaught error from thread [akka-orchestration-system-akka.actor.default-dispatcher-4]: GC overhead limit exceeded, shutting down JVM since 'akka.jvm-exit-on-fatal-error' is enabled for ActorSystem[akka-orchestration-system]
+java.lang.OutOfMemoryError: GC overhead limit exceeded
+[ERROR] [SECURITY][05/05/2018 09:51:15.454] [akka-orchestration-system-akka.actor.default-dispatcher-4] [akka.actor.ActorSystemImpl(akka-orchestration-system)] Uncaught error from thread [akka-orchestration-system-akka.actor.default-dispatcher-4]: GC overhead limit exceeded, shutting down JVM since 'akka.jvm-exit-on-fatal-error' is enabled for ActorSystem[akka-orchestration-system]
+java.lang.OutOfMemoryError: GC overhead limit exceeded
+
+
+Process finished with exit code -1
+</code></pre></div></div>
+
+<p>Success! Why be happy about our program crashing? Because now we have
+ detected a limitation in our software, and we get to explore that and 
+see how we can make our software more robust. It’s better to be aware of
+ the limitations of your system than to believe everything is fine and 
+be taken by surprise later.</p>
+
+<h2 id="but-why">But why?</h2>
+
+<p>Okay, okay, but why is this failing, specifically? What is 
+“java.lang.OutOfMemoryError: GC overhead limit exceeded”? This means 
+that the application has run out of free memory and the garbage 
+collector failed to free up more memory. Why is this happening? We have a
+ large number of data items we need to process, and we want to use a 
+stateful actor for each data item. When created, each stateful worker 
+actor takes a small amount of memory, it only needs to store the ID of 
+the data item it wants to process. As worker actors start to get 
+executed, they each send messages to the data source actor to ask for 
+the actual data. Data loading does not take a particularly long time, 
+and the data source actor replies to the worker actors with a message 
+containing the data. This is where the problem lies, but I’ll get back 
+to this point immediately. As the worker actors start receiving the 
+data, they start processing it, but this is a blocking operation! 
+Processing of data takes a bit of time (10 seconds in our example), more
+ that it takes to load the data in the system. The number of parallel 
+processing threads is limited by the constraints of the system. The 
+bottom line is that <code class="highlighter-rouge">LoadResult</code> 
+messages, containing the large amounts of data, start piling up in 
+memory, one in the message queue of each worker actor that did not have a
+ chance to start data processing yet. And this is how we end up running 
+out of memory. Akka is very good at doling out processing time to the 
+actors in its system, but we still need to be smart about how we use the
+ other resources of the system.</p>
+
+<h2 id="dealing-with-blocking-operations">Dealing with blocking operations</h2>
+
+<p>Akka’s documentation warns about the dangers of executing blocking 
+operations inside actors, while also recognising that there are 
+situations when this may be necessary. Their recommendation is to use a 
+different dispatcher to run the actors that do the blocking operations. 
+What this means is that we use a different thread pool for the blocking 
+actors. If all threads in the blocking pool are busy computing results, 
+or waiting for external resource responses, our system still has the 
+default thread pool to run all the other actors, so the other operations
+ are not blocked.</p>
+
+<p>In our case, the worker actors are the ones executing the blocking 
+operations. Now, I don’t know if you’ve noticed, but navigating to the <code class="highlighter-rouge">/check</code> endpoint in our browser works just fine before we start the processing (using the <code class="highlighter-rouge">/start</code>
+ endpoint). However, if you try to check the progress of your system 
+after starting to process the data, the operation will time out. This is
+ because there are too many blocking operations (from the worker actors)
+ taking up the available threads and the master actor, running on the 
+same thread pool, does not get a chance to reply to the <code class="highlighter-rouge">Check</code> message in time (in the 1 second threshold we defined).</p>
+
+<p>Let’s go ahead and fix that by moving the worker actors on a 
+different thread pool. To do this, we need to configure the new 
+dispatcher (and I am doing this directly in the code when creating the 
+actor system, but you can also do this in a configuration file).</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Bean</span>
+  <span class="k">def</span> <span class="n">createSystem</span><span class="o">(</span><span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span><span class="o">)</span><span class="k">:</span> <span class="kt">ActorSystem</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">val</span> <span class="n">customConf</span> <span class="k">=</span> <span class="nc">ConfigFactory</span><span class="o">.</span><span class="n">parseString</span><span class="o">(</span>
+      <span class="s">"""
+        high-load-dispatcher {
+          type = Dispatcher
+          executor = "thread-pool-executor"
+          thread-pool-executor {
+            fixed-pool-size = 4
+          }
+          throughput = 1
+        }
+      """</span><span class="o">)</span>
+
+    <span class="nc">ActorSystem</span><span class="o">(</span><span class="s">"akka-orchestration-system"</span><span class="o">,</span> <span class="nc">ConfigFactory</span><span class="o">.</span><span class="n">load</span><span class="o">(</span><span class="n">customConf</span><span class="o">))</span>
+  <span class="o">}</span>
+</code></pre></div></div>
+
+<p>And the next step is to make sure our worker actors use the new dispatcher when we create them inside the master actor.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="n">getWorker</span> <span class="k">=</span> <span class="n">context</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">])</span>
+    <span class="o">.</span><span class="n">withDispatcher</span><span class="o">(</span><span class="s">"high-load-dispatcher"</span><span class="o">))</span>
+</code></pre></div></div>
+
+<p>If we now start everything up, we will be able to use the <code class="highlighter-rouge">/check</code>
+ endpoint to see the progress of our computation. We’ve solved our 
+starvation problem, but this still doesn’t solve the memory problem.</p>
+
+<p><strong>Note:</strong> The <code class="highlighter-rouge">Check</code>
+ message will still timeout if you make the call right after starting 
+the computation process. This is because creating one hundred thousand 
+new actors to process the data is also a somewhat blocking operation, so
+ the master actor is busy doing that and can’t reply to the <code class="highlighter-rouge">Check</code>
+ message right away. We can optimize this by outsourcing the creation 
+process to some other actor, or running that code on a worker thread, if
+ you really want to involve worker threads too.</p>
+
+<p>Let’s explore this <em>side tangent</em> for a moment. We need to pay
+ attention if we want to use a worker thread to wrap the code that 
+creates the workers, as seen below.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">var</span> <span class="n">running</span> <span class="k">=</span> <span class="mi">0</span>
+
+<span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWork</span> <span class="k">=&gt;</span>
+        <span class="nc">Executors</span><span class="o">.</span><span class="n">newFixedThreadPool</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="n">execute</span><span class="o">(()</span> <span class="k">=&gt;</span> <span class="o">{</span>
+        <span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="mi">100000</span><span class="o">).</span><span class="n">foreach</span><span class="o">(</span><span class="n">id</span> <span class="k">=&gt;</span> <span class="o">{</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"creating worker actor $id"</span><span class="o">)</span>
+            <span class="n">getWorker</span> <span class="o">!</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">.</span><span class="n">toString</span><span class="o">)</span>
+            <span class="n">running</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="o">})</span>
+        <span class="o">});</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"done start work"</span><span class="o">)</span>
+    <span class="k">case</span> <span class="nc">Check</span> <span class="k">=&gt;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"checking running tasks"</span><span class="o">)</span>
+        <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">CheckResult</span><span class="o">(</span><span class="n">running</span><span class="o">)</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>But there’s a big problem with the above code! You have a variable, <code class="highlighter-rouge">running</code>,
+ that could be simultaneously accessed by two threads, the executor 
+thread and the thread running the master actor when the master actor 
+receives a <code class="highlighter-rouge">Check</code> message. Access 
+to that variable should be thread safe, maybe we make it atomic, but now
+ we’re just going down a path we were trying to solve when we chose the 
+actor model to handle our multi-threaded code.</p>
+
+<p>We could just update the <code class="highlighter-rouge">running</code> variable on the worker thread, which works, but it’s not accurate because the <code class="highlighter-rouge">Check</code> message will report 100000 workers were started when they haven’t been actually all started yet.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWork</span> <span class="k">=&gt;</span>
+      <span class="k">val</span> <span class="n">total</span> <span class="k">=</span> <span class="mi">100000</span>
+      <span class="nc">Executors</span><span class="o">.</span><span class="n">newFixedThreadPool</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="n">execute</span><span class="o">(()</span> <span class="k">=&gt;</span> <span class="o">{</span>
+        <span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="n">total</span><span class="o">).</span><span class="n">foreach</span><span class="o">(</span><span class="n">id</span> <span class="k">=&gt;</span> <span class="o">{</span>
+          <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"creating worker actor $id"</span><span class="o">)</span>
+          <span class="n">getWorker</span> <span class="o">!</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">.</span><span class="n">toString</span><span class="o">)</span>
+        <span class="o">})</span>
+      <span class="o">});</span>
+      <span class="n">running</span> <span class="o">+=</span> <span class="n">total</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"done start work"</span><span class="o">)</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Let’s rely on the actor model for this multi-threadded scenario, as 
+we do with the rest of the code, to keep our application consistent. For
+ this we need a new actor to start all the workers:</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Component</span><span class="o">(</span><span class="s">"workerStarterActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">WorkerStarterActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">def</span> <span class="n">getWorker</span> <span class="k">=</span> <span class="n">context</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">])</span>
+    <span class="o">.</span><span class="n">withDispatcher</span><span class="o">(</span><span class="s">"high-load-dispatcher"</span><span class="o">))</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWorkers</span><span class="o">(</span><span class="n">ids</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="k">for</span> <span class="o">(</span><span class="n">id</span> <span class="k">&lt;-</span> <span class="n">ids</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">getWorker</span> <span class="o">!</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">.</span><span class="n">toString</span><span class="o">,</span> <span class="n">sender</span><span class="o">())</span>
+        <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">StartedWorker</span><span class="o">(</span><span class="n">id</span><span class="o">)</span>
+      <span class="o">}</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The actor starts all workerts, sends updates to the master (the 
+master started it so it is the sender), and at the end kills itself. The
+ master only has to create this new actor and send it a message to start
+ the worker creation process. The master can also listen to <code class="highlighter-rouge">StartedWorker</code> messages to update its <code class="highlighter-rouge">running</code> variable.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWork</span> <span class="k">=&gt;</span>
+      <span class="n">getWorkerStarter</span> <span class="o">!</span> <span class="nc">StartWorkers</span><span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="mi">100000</span><span class="o">)</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"done start work"</span><span class="o">)</span>
+
+    <span class="k">case</span> <span class="nc">StartedWorker</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">running</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+</code></pre></div></div>
+
+<p>Another small change is in the worker actor itself, where we now must
+ route results to a listener instead of the sender of the message.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">WorkerActor</span> <span class="o">{</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="k">:</span> <span class="kt">String</span><span class="o">,</span> <span class="n">listener</span><span class="k">:</span> <span class="kt">ActorRef</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="n">success</span><span class="k">:</span> <span class="kt">Boolean</span><span class="o">)</span>
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"workerActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">WorkerActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+  <span class="k">import</span> <span class="nn">WorkerActor._</span>
+
+  <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">,</span> <span class="n">listener</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="o">{</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"starting work for $id (${context.dispatcher})"</span><span class="o">)</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">id</span> <span class="k">=</span> <span class="n">id</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">initiator</span> <span class="k">=</span> <span class="n">listener</span>
+      <span class="n">dataSourceActor</span> <span class="o">!</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="o">)</span>
+    <span class="o">}</span>
+    <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>This will work much better. You may still get an ocasional timeout when workers are starting up, because a lot of <code class="highlighter-rouge">StartedWorker</code> messages are enqueued in the master’s mailbox and the master desn’t get to process the <code class="highlighter-rouge">Check</code> message in time for the 1 second timeout we set in the controller. But overall, the design is much better now.</p>
+
+<h2 id="solving-the-memory-problem---limitationorchestration">Solving the memory problem - limitation/orchestration</h2>
+
+<p>Now’s the time to solve the actual problem we had when we started 
+this whole simulation: not enough memory for the data we need to 
+process. The issue is we don’t have enough processing power to examine 
+the data at the same rate at which we are able to load the data in 
+memory. To resolve this issue, we need to just load the data we can 
+process at a time in memory. We have two ways of doing this: <em>synchronous data load and process</em> or <em>creating and starting a limited number of worker actors at a time</em>.</p>
+
+<p>For the synchronous data load solution, we need to ask for the data, 
+wait for the data and process the data as part of a single unit of work.
+ This prevents our system from stockpiling large amounts of data it 
+cannot process in actor mailboxes. The data is loaded, processed, 
+abandoned and memory can then be released by the garbage collector. This
+ is how the new process message handler looks like, one large block of 
+code:</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">,</span> <span class="n">listener</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"starting synchronous work for $id (${context.dispatcher})"</span><span class="o">)</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">id</span> <span class="k">=</span> <span class="n">id</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">initiator</span> <span class="k">=</span> <span class="n">listener</span>
+      <span class="k">implicit</span> <span class="k">val</span> <span class="n">timeout</span> <span class="k">=</span> <span class="nc">Timeout</span><span class="o">(</span><span class="mi">30</span> <span class="n">second</span><span class="o">)</span>
+      <span class="k">val</span> <span class="n">future</span> <span class="k">=</span> <span class="n">dataSourceActor</span> <span class="o">?</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="o">)</span>
+      <span class="k">val</span> <span class="n">result</span> <span class="k">=</span> <span class="nc">Await</span><span class="o">.</span><span class="n">result</span><span class="o">(</span><span class="n">future</span><span class="o">,</span> <span class="n">timeout</span><span class="o">.</span><span class="n">duration</span><span class="o">).</span><span class="n">asInstanceOf</span><span class="o">[</span><span class="kt">LoadResult</span><span class="o">]</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"received synchronous data for $id of size ${result.data.size}"</span><span class="o">)</span>
+      <span class="c1">// processing this data somehow
+</span>      <span class="n">slowService</span><span class="o">.</span><span class="n">execute</span><span class="o">()</span>
+      <span class="n">initiator</span> <span class="o">!</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="kc">true</span><span class="o">)</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+</code></pre></div></div>
+
+<p>One potential problem with this approach is that the worker will ask 
+for the data and wait for a predefined time for the result. It’s us who 
+define the amount of time our worker should wait for that result, so we 
+need to have some idea of what would be a reasonable time in which to 
+expect a result. For the whole waiting time, the thread that is running 
+the current worker actor is blocked. If we decide to wait for the data 
+for an infinite amount of time, and the data source actor fails to 
+deliver that data, we will end up with a number of blocked threads, 
+maybe all of them, and our application is in dead water.</p>
+
+<p>The other approach is to limit the number of workers we start. We 
+choose a maximum number of concurrently running worker actors and our 
+master actor will manage (or <em>orchestrate</em>, if you will) the 
+creation of workers in such a manner that at most that maximum number of
+ worker actors exist at any given moment.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Component</span><span class="o">(</span><span class="s">"masterActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">MasterActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="k">val</span> <span class="n">logger</span> <span class="k">=</span> <span class="nc">LoggerFactory</span><span class="o">.</span><span class="n">getLogger</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">MasterActor</span><span class="o">])</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">def</span> <span class="n">getWorker</span> <span class="k">=</span> <span class="n">context</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">])</span>
+    <span class="o">.</span><span class="n">withDispatcher</span><span class="o">(</span><span class="s">"high-load-dispatcher"</span><span class="o">))</span>
+
+  <span class="k">var</span> <span class="n">running</span> <span class="k">=</span> <span class="mi">0</span>
+
+  <span class="k">val</span> <span class="n">messages</span> <span class="k">=</span> <span class="n">mutable</span><span class="o">.</span><span class="nc">Queue</span><span class="o">.</span><span class="n">empty</span><span class="o">[</span><span class="kt">Process</span><span class="o">]</span>
+
+  <span class="k">val</span> <span class="n">maximumConcurrentWorkers</span> <span class="k">=</span> <span class="nc">Runtime</span><span class="o">.</span><span class="n">getRuntime</span><span class="o">.</span><span class="n">availableProcessors</span><span class="o">()</span> <span class="o">/</span> <span class="mi">2</span>
+
+  <span class="k">def</span> <span class="n">execute</span><span class="o">()</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="k">while</span> <span class="o">(</span><span class="n">running</span> <span class="o">&lt;</span> <span class="n">maximumConcurrentWorkers</span> <span class="o">&amp;&amp;</span> <span class="n">messages</span><span class="o">.</span><span class="n">nonEmpty</span><span class="o">)</span> <span class="o">{</span>
+      <span class="n">getWorker</span> <span class="o">!</span> <span class="n">messages</span><span class="o">.</span><span class="n">dequeue</span><span class="o">()</span>
+      <span class="n">running</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWork</span> <span class="k">=&gt;</span>
+      <span class="k">for</span> <span class="o">(</span><span class="n">id</span> <span class="k">&lt;-</span> <span class="mi">1</span> <span class="n">to</span> <span class="mi">100000</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">messages</span><span class="o">.</span><span class="n">enqueue</span><span class="o">(</span><span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">.</span><span class="n">toString</span><span class="o">))</span>
+      <span class="o">}</span>
+      <span class="n">execute</span><span class="o">()</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"done start work"</span><span class="o">)</span>
+    <span class="k">case</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"finished work"</span><span class="o">)</span>
+      <span class="n">running</span> <span class="o">-=</span> <span class="mi">1</span>
+      <span class="n">execute</span><span class="o">()</span>
+    <span class="k">case</span> <span class="nc">Check</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"checking running tasks"</span><span class="o">)</span>
+      <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">CheckResult</span><span class="o">(</span><span class="n">running</span><span class="o">,</span> <span class="n">messages</span><span class="o">.</span><span class="n">size</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>The new master actor will enqueue all <code class="highlighter-rouge">Process</code> messages when <code class="highlighter-rouge">StartWork</code>
+ is received, and then starts a few worker actors to process the first 
+few messaged, up to the maximum number of concurrent workers allowed. 
+Every time a <code class="highlighter-rouge">ProcessResult</code> is received, the master tries to start a new worker, if there are messages in the queue.</p>
+
+<p>One advantage with this approach is that we don’t need to change the 
+worker actors at all. Another is that we can keep the worker operating 
+in an asynchronous way. The worker will first request data from the data
+ source. While waiting to receive the data, the worker is not blocking a
+ thread. Once the worker receives the data it can start processing. 
+Since we are strictly controlling the number of worker actors that are 
+started concurrently, we are controlling the amount of data that is 
+loaded in memory. This is a more robust and more reponsive design of our
+ system, but is our work done?</p>
+
+<h2 id="fault-tolerance">Fault tolerance</h2>
+
+<p>Well, no. We’ll make a small change to our data source to illustrate 
+what can happen if our sytem is not designed to handle failures 
+correctly.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Service</span>
+<span class="k">class</span> <span class="nc">BigDataService</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">execute</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="k">_</span><span class="o">]</span> <span class="k">=</span>
+    <span class="k">if</span> <span class="o">(</span><span class="nc">Random</span><span class="o">.</span><span class="n">nextBoolean</span><span class="o">())</span>
+      <span class="k">return</span> <span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="mi">1000000</span><span class="o">).</span><span class="n">map</span><span class="o">(</span><span class="n">i</span> <span class="k">=&gt;</span> <span class="nc">Record</span><span class="o">(</span><span class="nc">Random</span><span class="o">.</span><span class="n">nextDouble</span><span class="o">())).</span><span class="n">toList</span>
+    <span class="k">else</span>
+      <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="o">(</span><span class="s">"data access failure"</span><span class="o">)</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Component</span><span class="o">(</span><span class="s">"dataSourceActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">DataSourceActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="k">val</span> <span class="n">logger</span> <span class="k">=</span> <span class="nc">LoggerFactory</span><span class="o">.</span><span class="n">getLogger</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">DataSourceActor</span><span class="o">])</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">preRestart</span><span class="o">(</span><span class="n">reason</span><span class="k">:</span> <span class="kt">Throwable</span><span class="o">,</span> <span class="n">message</span><span class="k">:</span> <span class="kt">Option</span><span class="o">[</span><span class="kt">Any</span><span class="o">])</span><span class="k">:</span> <span class="kt">Unit</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">warn</span><span class="o">(</span><span class="n">s</span><span class="s">"restarting data source actor because: ${reason.getMessage}"</span><span class="o">)</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">bigDataService</span><span class="k">:</span> <span class="kt">BigDataService</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Load</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">bigDataService</span><span class="o">.</span><span class="n">execute</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>If, by any chance, we get an error trying to retrieve the data, our system will get blocked very quickly. On error in the <code class="highlighter-rouge">BigDataService</code>, the wrapping data source actor will crash and be restarted. But! the <code class="highlighter-rouge">LoadResult</code>
+ message never gets sent back to the worker actor, so we’ll end up with 
+worker actors waiting indefinitely for some reply, and blocking our 
+limited number of concurrent running workers.</p>
+
+<p>The first clear approach to handle this situation would be to correctly handle exceptions in our data source actor.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">DataSourceActor</span> <span class="o">{</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">data</span><span class="k">:</span> <span class="kt">Option</span><span class="o">[</span><span class="kt">List</span><span class="o">[</span><span class="k">_</span><span class="o">]])</span>
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"dataSourceActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">DataSourceActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+
+  <span class="k">def</span> <span class="n">getData</span> <span class="k">=</span>
+    <span class="k">try</span> <span class="o">{</span>
+      <span class="nc">Some</span><span class="o">(</span><span class="n">bigDataService</span><span class="o">.</span><span class="n">execute</span><span class="o">)</span>
+    <span class="o">}</span> <span class="k">catch</span> <span class="o">{</span>
+      <span class="k">case</span> <span class="k">_:</span> <span class="kt">Throwable</span> <span class="o">=&gt;</span> <span class="nc">None</span>
+    <span class="o">}</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Load</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">sender</span><span class="o">()</span> <span class="o">!</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">getData</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Component</span><span class="o">(</span><span class="s">"workerActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">WorkerActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+  <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"starting work for $id (${context.dispatcher})"</span><span class="o">)</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">id</span> <span class="k">=</span> <span class="n">id</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">initiator</span> <span class="k">=</span> <span class="n">sender</span><span class="o">()</span>
+      <span class="n">dataSourceActor</span> <span class="o">!</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="o">)</span>
+
+    <span class="k">case</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="nc">None</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"no data for $id"</span><span class="o">)</span>
+      <span class="n">initiator</span> <span class="o">!</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="kc">false</span><span class="o">)</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+
+    <span class="k">case</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="nc">Some</span><span class="o">(</span><span class="n">data</span><span class="o">))</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"received data for $id"</span><span class="o">)</span>
+      <span class="c1">// processing this data somehow
+</span>      <span class="n">slowService</span><span class="o">.</span><span class="n">execute</span><span class="o">()</span>
+      <span class="n">initiator</span> <span class="o">!</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="kc">true</span><span class="o">)</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>To handle data retrieval failures correctly, the data source actor will catch the exception and return the result as an <code class="highlighter-rouge">Option</code>: a <code class="highlighter-rouge">None</code> if data retrieval failed and a <code class="highlighter-rouge">Some</code>
+ if data was successfully loaded. The worker actor also handles the two 
+different cases, so if data retrieval fails, the worker will gracefully 
+end and notify the master that it finished. This is probably the best 
+approach to solve failures like these, by anticipating them. But this 
+presuposes that we are aware of all possible failures. What if we are 
+not? How can we prevent our system from completely locking down?</p>
+
+<p>We could use a timeout, just as we would with a future, but do this 
+at a different level, using a scheduled message. In the worker actor, 
+when requesting the data we also schedule a new message, <code class="highlighter-rouge">Timeout</code>,
+ to be sent to itself after a period of time. If the data is not 
+received on time by the worker, because the data source actor crashed, 
+the worker actor will receive the timeout message and end gracefully, 
+notifying the master.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">WorkerActor</span> <span class="o">{</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="n">success</span><span class="k">:</span> <span class="kt">Boolean</span><span class="o">)</span>
+  <span class="k">case</span> <span class="k">object</span> <span class="nc">Timeout</span>
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"workerActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">WorkerActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+  <span class="k">import</span> <span class="nn">WorkerActor._</span>
+  <span class="k">import</span> <span class="nn">context._</span>
+
+  <span class="k">val</span> <span class="n">logger</span> <span class="k">=</span> <span class="nc">LoggerFactory</span><span class="o">.</span><span class="n">getLogger</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">])</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"dataSourceActor"</span><span class="o">)</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">dataSourceActor</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="nd">@Autowired</span>
+  <span class="nd">@BeanProperty</span>
+  <span class="k">val</span> <span class="n">slowService</span><span class="k">:</span> <span class="kt">SlowService</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">var</span> <span class="n">initiator</span><span class="k">:</span> <span class="kt">ActorRef</span> <span class="o">=</span> <span class="k">_</span>
+  <span class="k">var</span> <span class="n">id</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="k">_</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"starting work for $id (${context.dispatcher})"</span><span class="o">)</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">id</span> <span class="k">=</span> <span class="n">id</span>
+      <span class="k">this</span><span class="o">.</span><span class="n">initiator</span> <span class="k">=</span> <span class="n">sender</span><span class="o">()</span>
+      <span class="n">dataSourceActor</span> <span class="o">!</span> <span class="nc">Load</span><span class="o">(</span><span class="n">id</span><span class="o">)</span>
+      <span class="n">context</span><span class="o">.</span><span class="n">system</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">scheduleOnce</span><span class="o">(</span><span class="mi">30</span> <span class="n">seconds</span><span class="o">,</span> <span class="n">self</span><span class="o">,</span> <span class="nc">Timeout</span><span class="o">)</span>
+
+    <span class="k">case</span> <span class="nc">LoadResult</span><span class="o">(</span><span class="n">data</span><span class="o">)</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="n">s</span><span class="s">"received data for $id"</span><span class="o">)</span>
+      <span class="c1">// processing this data somehow
+</span>      <span class="n">slowService</span><span class="o">.</span><span class="n">execute</span><span class="o">()</span>
+      <span class="n">initiator</span> <span class="o">!</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="kc">true</span><span class="o">)</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+
+    <span class="k">case</span> <span class="nc">Timeout</span> <span class="k">=&gt;</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"waiting for data timed out, stopping worker"</span><span class="o">)</span>
+      <span class="n">initiator</span> <span class="o">!</span> <span class="nc">ProcessResult</span><span class="o">(</span><span class="kc">false</span><span class="o">)</span>
+      <span class="n">self</span> <span class="o">!</span> <span class="nc">PoisonPill</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>What if the worker actor crashes anyway? We can use a similar 
+strategy, based on scheduled messages, with the master actor. We can 
+decide if the master is stuck by looking at whether the master is making
+ any progress. If it is not, we can crash the master to force it to 
+restart and at least we can try and start the work process again.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">object</span> <span class="nc">MasterActor</span> <span class="o">{</span>
+
+  <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+
+  <span class="k">case</span> <span class="k">class</span> <span class="nc">SanityCheck</span><span class="o">(</span><span class="n">lastProgress</span><span class="k">:</span> <span class="kt">CheckResult</span><span class="o">)</span>
+
+<span class="o">}</span>
+
+<span class="nd">@Component</span><span class="o">(</span><span class="s">"masterActorPrototype"</span><span class="o">)</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">MasterActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+  <span class="k">import</span> <span class="nn">context._</span>
+
+  <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">StartWork</span> <span class="k">=&gt;</span>
+      <span class="n">context</span><span class="o">.</span><span class="n">system</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">scheduleOnce</span><span class="o">(</span><span class="mi">2</span> <span class="n">minutes</span><span class="o">,</span> <span class="n">self</span><span class="o">,</span> <span class="nc">SanityCheck</span><span class="o">(</span><span class="nc">CheckResult</span><span class="o">(</span><span class="n">running</span><span class="o">,</span> <span class="n">messages</span><span class="o">.</span><span class="n">size</span><span class="o">)))</span>
+      <span class="k">for</span> <span class="o">(</span><span class="n">id</span> <span class="k">&lt;-</span> <span class="mi">1</span> <span class="n">to</span> <span class="mi">100000</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">messages</span><span class="o">.</span><span class="n">enqueue</span><span class="o">(</span><span class="nc">Process</span><span class="o">(</span><span class="n">id</span><span class="o">.</span><span class="n">toString</span><span class="o">))</span>
+      <span class="o">}</span>
+      <span class="n">execute</span><span class="o">()</span>
+      <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="o">(</span><span class="s">"done start work"</span><span class="o">)</span>
+
+    <span class="o">[</span><span class="kt">...</span><span class="o">]</span>
+
+    <span class="k">case</span> <span class="nc">SanityCheck</span><span class="o">(</span><span class="nc">CheckResult</span><span class="o">(</span><span class="n">lastRunning</span><span class="o">,</span> <span class="n">lastEnqueued</span><span class="o">))</span> <span class="k">=&gt;</span>
+      <span class="k">if</span> <span class="o">(</span><span class="n">lastRunning</span> <span class="o">==</span> <span class="n">running</span> <span class="o">&amp;&amp;</span> <span class="n">lastEnqueued</span> <span class="o">==</span> <span class="n">messages</span><span class="o">.</span><span class="n">size</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warn</span><span class="o">(</span><span class="s">"no progress being made"</span><span class="o">)</span>
+        <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="o">(</span><span class="s">"no progress being made"</span><span class="o">)</span>
+      <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">system</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">scheduleOnce</span><span class="o">(</span><span class="mi">2</span> <span class="n">minutes</span><span class="o">,</span> <span class="n">self</span><span class="o">,</span> <span class="nc">SanityCheck</span><span class="o">(</span><span class="nc">CheckResult</span><span class="o">(</span><span class="n">running</span><span class="o">,</span> <span class="n">messages</span><span class="o">.</span><span class="n">size</span><span class="o">)))</span>
+      <span class="o">}</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>To simulate this, we’ll crash the slow service randomly.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Service</span>
+<span class="k">class</span> <span class="nc">SlowService</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">execute</span><span class="o">()</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="nc">Random</span><span class="o">.</span><span class="n">nextBoolean</span><span class="o">())</span> <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="o">(</span><span class="s">"processing exception"</span><span class="o">)</span>
+    <span class="nc">Thread</span><span class="o">.</span><span class="n">sleep</span><span class="o">(</span><span class="mi">10000</span><span class="o">)</span>
+    <span class="s">"result"</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Or we could implement a more graceful way for the master actor to reset its state: empty the queue, send <code class="highlighter-rouge">PoisonPill</code> message to all its child actors. Different approaches can be explored to discover what works best for your system.</p>
+
+<p><strong>The thing to note about all these orchestration strategies</strong>
+ is that they are based on asynchronous messages, which makes them a 
+good candidate as fault and resource management strategies in an actor 
+system.</p>
+
+<h2 id="resources">Resources</h2>
+
+<ul>
+  <li><a href="https://github.com/chronicweirdo/akka-orchestration">GitHub sources for this project</a></li>
+  <li><a href="https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/memleaks002.html">GC overhead limit exceeded</a></li>
+  <li><a href="https://doc.akka.io/docs/akka/current/dispatchers.html">Akka blocking operations</a></li>
+</ul>
+
+<h2 id="bonus-round">Bonus round</h2>
+
+<p>The previous post describes how you can use Spring injection with your actors. The <em>producer</em>
+ object in that example is using a Spring component name to find the 
+actor prototype to instantiate in the actor system. For this project I 
+used a new producer that finds actors by their class:</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">SpringActorClassProducer</span><span class="o">(</span><span class="k">private</span> <span class="k">val</span> <span class="n">applicationContext</span><span class="k">:</span> <span class="kt">ApplicationContext</span><span class="o">,</span>
+                               <span class="k">private</span> <span class="k">val</span> <span class="n">cls</span><span class="k">:</span> <span class="kt">Class</span><span class="o">[</span><span class="k">_</span> <span class="k">&lt;:</span> <span class="kt">Actor</span><span class="o">])</span> <span class="k">extends</span> <span class="nc">IndirectActorProducer</span> <span class="o">{</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">produce</span><span class="o">()</span><span class="k">:</span> <span class="kt">Actor</span> <span class="o">=</span> <span class="n">applicationContext</span><span class="o">.</span><span class="n">getBean</span><span class="o">(</span><span class="n">cls</span><span class="o">)</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">actorClass</span><span class="k">:</span> <span class="kt">Class</span><span class="o">[</span><span class="k">_</span> <span class="k">&lt;:</span> <span class="kt">Actor</span><span class="o">]</span> <span class="k">=</span> <span class="n">classOf</span><span class="o">[</span><span class="kt">Actor</span><span class="o">]</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>This lets me use the actor class when creating an actor, and the 
+advantage of that is I can rely on the IDE autocomplete feature to find 
+the class for me. No more at risk of typos causing runtime errors.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="n">getWorker</span> <span class="k">=</span> <span class="n">context</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">WorkerActor</span><span class="o">]))</span>
+</code></pre></div></div>
+
+
+
+
+</body></html>

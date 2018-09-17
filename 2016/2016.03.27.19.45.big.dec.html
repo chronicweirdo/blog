@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="What is 63.81 plus 2.48 plus 3.31? In Java? 69.6? Could be. Could also be 69.600000000000002309263891220325604081153869628906250.">
+
+    <title>Big Dec</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2016.03.27 19:45</span>
+    
+        <span>/</span><span class="tag">java</span>
+    
+        <span>/</span><span class="tag">fixed precision</span>
+    
+        <span>/</span><span class="tag">data types</span>
+    
+</p>
+<h1 class="title">Big Dec</h1>
+
+<p>What is 63.81 plus 2.48 plus 3.31? In Java? 69.6? Could be. Could 
+also be 69.600000000000002309263891220325604081153869628906250.</p>
+
+<!--more-->
+
+<p>This is a very basic lesson in programming, but it may be one you 
+missed. I first remember noticing this while building one of my first 
+software systems. Half-way through development, we noticed our 
+aggregated financial data did not look well. We were having <em>waaay</em>
+ more decimals in our sums than was logically possible. This was 
+happening because we were using the wrong data type to store financial 
+numbers. A rookie mistake, but my excuse was that I was a rookie. A few 
+refactorings later, everything was good.</p>
+
+<p>The way numbers work in a programming language depends on the way 
+they are represented in memory. You need to choose your data type 
+wisely. Doubles are great for making complex floating point operations, 
+as long as you understand that the result you obtain may not be 100% 
+accurate. They are versatile enough for most applications, for example 
+computing the position of an object in a gaming physics system. You just
+ need an accurate enough value to use and position an object on the 
+screen until the position for the next frame is computed. A small 
+difference from the actual result will not be observable. But there are 
+applications where the slightest difference can be a big problem. Let’s 
+go with financial data. Taking our leading example, summing up some 
+costs, you want your client to pay the actual sum of 69.6, instead of 
+69.60000000000001, the sum you obtain by using doubles.</p>
+
+<p>Run the following test:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">testDoubleSum</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"double sum"</span><span class="o">);</span>
+    <span class="n">Double</span> <span class="n">a</span> <span class="o">=</span> <span class="mf">63.81</span><span class="o">;</span>
+    <span class="n">Double</span> <span class="n">b</span> <span class="o">=</span> <span class="mf">2.48</span><span class="o">;</span>
+    <span class="n">Double</span> <span class="n">c</span> <span class="o">=</span> <span class="mf">3.31</span><span class="o">;</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span> <span class="o">+</span> <span class="n">c</span><span class="o">);</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>and you will see get the following result printed to output:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>double sum
+69.60000000000001
+</code></pre></div></div>
+
+<p>Not what we want. Like I said, this is a beginner’s mistake, but I 
+still see this pop up in software I am working on, which made me realize
+ people are not that aware of this problem. What do you, as a 
+programmer, do to fix this? Find the fixed-precision data type in you 
+programming language and use that. For Java, that is BigDecimal. Take a 
+look:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">testBigDecimalSum</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"big decimal (from double) sum"</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">a</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="mf">63.81</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">b</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="mf">2.48</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">c</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="mf">3.31</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">a</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">b</span><span class="o">).</span><span class="na">add</span><span class="o">(</span><span class="n">c</span><span class="o">));</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>big decimal (from double) sum
+69.600000000000002309263891220325604081153869628906250
+</code></pre></div></div>
+
+<p><em>Oh, wait!…</em> How did this help? What happened? Well, when we 
+are creating the BigDecimal objects, we are still using float numbers to
+ initialize them, and some of the numbers we use don’t look good in 
+float. Run the following code to see what I mean:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">testBigDecimalFromFloat</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">BigDecimal</span> <span class="n">a</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="mf">63.81</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"a: "</span> <span class="o">+</span> <span class="n">a</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">b</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="mf">2.48</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"b: "</span> <span class="o">+</span> <span class="n">b</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">c</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="mf">3.31</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"c: "</span> <span class="o">+</span> <span class="n">c</span><span class="o">);</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>a: 63.81000000000000227373675443232059478759765625
+b: 2.479999999999999982236431605997495353221893310546875
+c: 3.310000000000000053290705182007513940334320068359375
+</code></pre></div></div>
+
+<p>So how do we do this right? We use string! BigDecimal knows how to 
+initialize from strings and that is the recommended constructor to use 
+when working with fractional values:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">testBigDecimalFromStringSum</span><span class="o">()</span> <span class="o">{</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"big decimal (from string) sum"</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">a</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="s">"63.81"</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">b</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="s">"2.48"</span><span class="o">);</span>
+    <span class="n">BigDecimal</span> <span class="n">c</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BigDecimal</span><span class="o">(</span><span class="s">"3.31"</span><span class="o">);</span>
+    <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">a</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">b</span><span class="o">).</span><span class="na">add</span><span class="o">(</span><span class="n">c</span><span class="o">));</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>big decimal (from string) sum
+69.60
+</code></pre></div></div>
+
+<p>This is the result we are looking for! So remember, when precision is important, use a fixed-precision data type.</p>
+</body></html>

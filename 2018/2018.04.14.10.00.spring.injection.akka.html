@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="The actor paradigm is useful in building and scaling a highly-parallelized application, but it makes sense to move the actual code that does the heavy computation outside the actors, in some auxiliary services. In addition, actors need to get access to outside resources, like database connections and API connections. You could just provide all those services and connections to each actor type when creating it. Or you could use some framework that provides dependency injection, like Spring, to...">
+
+    <title>Spring injection with Akka actors, the Scala version</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2018.04.14 10:00</span>
+    
+        <span>/</span><span class="tag">scala</span>
+    
+        <span>/</span><span class="tag">spring boot</span>
+    
+        <span>/</span><span class="tag">akka</span>
+    
+        <span>/</span><span class="tag">dependency injection</span>
+    
+</p>
+<h1 class="title">Spring injection with Akka actors, the Scala version</h1>
+
+<p>The actor paradigm is useful in building and scaling a 
+highly-parallelized application, but it makes sense to move the actual 
+code that does the heavy computation outside the actors, in some 
+auxiliary services. In addition, actors need to get access to outside 
+resources, like database connections and API connections. You could just
+ provide all those services and connections to each actor type when 
+creating it. Or you could use some framework that provides dependency 
+injection, like Spring, to just declare what your actor dependencies are
+ and stop worrying about propagating them down the actor hierarchy 
+through the <code class="highlighter-rouge">props</code> factory.</p>
+
+<h2 id="injecting-dependencies-into-an-actor">Injecting dependencies into an actor</h2>
+
+<p>To be able to inject Spring dependencies into our actors we’ll have 
+Akka use a special “producer” when creating them. This producer will 
+load the new actors out of the Spring context.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">akka.actor.</span><span class="o">{</span><span class="nc">Actor</span><span class="o">,</span> <span class="nc">IndirectActorProducer</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.context.ApplicationContext</span>
+
+<span class="k">class</span> <span class="nc">SpringActorProducer</span><span class="o">(</span><span class="k">private</span> <span class="k">val</span> <span class="n">applicationContext</span><span class="k">:</span> <span class="kt">ApplicationContext</span><span class="o">,</span>
+                          <span class="k">private</span> <span class="k">val</span> <span class="n">actorBeanName</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span> <span class="k">extends</span> <span class="nc">IndirectActorProducer</span> <span class="o">{</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">produce</span><span class="o">()</span><span class="k">:</span> <span class="kt">Actor</span> <span class="o">=</span> <span class="n">applicationContext</span><span class="o">.</span><span class="n">getBean</span><span class="o">(</span><span class="n">actorBeanName</span><span class="o">).</span><span class="n">asInstanceOf</span><span class="o">[</span><span class="kt">Actor</span><span class="o">]</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">actorClass</span><span class="k">:</span> <span class="kt">Class</span><span class="o">[</span><span class="k">_</span> <span class="k">&lt;:</span> <span class="kt">Actor</span><span class="o">]</span> <span class="k">=</span> <span class="n">classOf</span><span class="o">[</span><span class="kt">Actor</span><span class="o">]</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>A new producer will be used for each new actor type we add to the 
+system. We use a spring extension class to call the props factory and 
+create a new actor in the actor system, but we provide our actor 
+producer to the props factory. This way, the props factory will call the
+ <code class="highlighter-rouge">produce</code> method in our producer when it wants to create a new actor, and the <code class="highlighter-rouge">produce</code> method will grab the actor from the Spring context, which means that dependencies inside the actor will be autowired.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">akka.actor.</span><span class="o">{</span><span class="nc">Extension</span><span class="o">,</span> <span class="nc">Props</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span>
+<span class="k">import</span> <span class="nn">org.springframework.context.ApplicationContext</span>
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Component</span>
+
+<span class="k">import</span> <span class="nn">scala.beans.BeanProperty</span>
+
+<span class="nd">@Component</span>
+<span class="k">class</span> <span class="nc">SpringExtension</span> <span class="k">extends</span> <span class="nc">Extension</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span> <span class="nd">@BeanProperty</span> <span class="k">val</span> <span class="n">applicationContext</span><span class="k">:</span> <span class="kt">ApplicationContext</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">def</span> <span class="n">props</span><span class="o">(</span><span class="n">actorBeanName</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span><span class="k">:</span> <span class="kt">Props</span> <span class="o">=</span>
+    <span class="nc">Props</span><span class="o">.</span><span class="n">create</span><span class="o">(</span><span class="n">classOf</span><span class="o">[</span><span class="kt">SpringActorProducer</span><span class="o">],</span> <span class="n">applicationContext</span><span class="o">,</span> <span class="n">actorBeanName</span><span class="o">)</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We’ll need a test service in our Spring context.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Component</span>
+
+<span class="nd">@Component</span>
+<span class="k">class</span> <span class="nc">TestService</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">testItWorks</span><span class="o">(</span><span class="n">message</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span> <span class="k">=</span> <span class="n">println</span><span class="o">(</span><span class="n">message</span><span class="o">)</span>
+
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>And a test actor that uses the service. What’s important in the actor
+ definition is that it gets inserted in the Spring context as a <code class="highlighter-rouge">@Component</code> and it gets scoped as <code class="highlighter-rouge">@Scope("prototype")</code>. The <code class="highlighter-rouge">protorype</code> means that everytime the producer will ask the spring context for a <code class="highlighter-rouge">TestInjectionActor</code>, Spring will create a new instance of that class and inject dependencies on it.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">com.cacoveanu.scalademo</span>
+
+<span class="k">import</span> <span class="nn">akka.actor.Actor</span>
+<span class="k">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span>
+<span class="k">import</span> <span class="nn">org.springframework.context.annotation.</span><span class="o">{</span><span class="nc">Bean</span><span class="o">,</span> <span class="nc">Scope</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">org.springframework.stereotype.Component</span>
+
+<span class="k">import</span> <span class="nn">scala.beans.BeanProperty</span>
+
+<span class="k">case</span> <span class="k">class</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="k">val</span> <span class="n">message</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+
+<span class="nd">@Component</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">TestInjectionActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span> <span class="nd">@BeanProperty</span> <span class="k">val</span> <span class="n">testService</span><span class="k">:</span> <span class="kt">TestService</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="n">message</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">testService</span><span class="o">.</span><span class="n">testItWorks</span><span class="o">(</span><span class="n">message</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Next we need to initalize the system and the actor in our Spring configuration.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Configuration</span>
+<span class="k">class</span> <span class="nc">AkkaSystem</span> <span class="o">{</span>
+  <span class="nd">@Bean</span>
+  <span class="k">def</span> <span class="n">createSystem</span><span class="o">(</span><span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span><span class="o">)</span> <span class="k">:</span> <span class="kt">ActorSystem</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="nc">ActorSystem</span><span class="o">(</span><span class="s">"helloAkka"</span><span class="o">)</span>
+  <span class="o">}</span>
+
+  <span class="nd">@Bean</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"injectionActor"</span><span class="o">))</span>
+  <span class="k">def</span> <span class="n">createInjectionActor</span><span class="o">(</span><span class="n">system</span><span class="k">:</span> <span class="kt">ActorSystem</span><span class="o">,</span> <span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span><span class="o">)</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="n">system</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="s">"testInjectionActor"</span><span class="o">),</span> <span class="s">"injectionActor"</span><span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>We also need a reference to the actor in our Spring context so we can
+ inject it into our controller and pass messages to the actor on certain
+ requests.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Controller</span>
+<span class="k">class</span> <span class="nc">TestController</span> <span class="nd">@Autowired</span><span class="o">()</span> <span class="o">(</span>
+    <span class="nd">@Qualifier</span><span class="o">(</span><span class="s">"injectionActor"</span><span class="o">)</span> <span class="k">private</span> <span class="k">val</span> <span class="n">injectionActor</span><span class="k">:</span> <span class="kt">ActorRef</span>
+    <span class="o">)</span> <span class="o">{</span>
+
+  <span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/injection"</span><span class="o">))</span>
+  <span class="nd">@ResponseBody</span>
+  <span class="k">def</span> <span class="n">testInjection</span><span class="o">()</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="n">injectionActor</span> <span class="o">!</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="s">"injection works!"</span><span class="o">)</span>
+    <span class="s">"verified injection"</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Start your app and go to localhost <code class="highlighter-rouge">/injection</code> to test this out, you should see the <code class="highlighter-rouge">injection works!</code> message in your console. Well, there you go!</p>
+
+<h2 id="injecting-in-the-actor-hierarchy">Injecting in the actor hierarchy</h2>
+
+<p>If you want to keep injecting your services in child actors (actors 
+created by your actors), all you need to do is keep using the <code class="highlighter-rouge">SpringExtension</code>
+ when you create them. We’ll adapt our actor to accept a second message 
+type and create a new injection actor when it receives that message.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">case</span> <span class="k">class</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="k">val</span> <span class="n">message</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+<span class="k">case</span> <span class="k">class</span> <span class="nc">VerifyInjectionWorksInDepth</span><span class="o">(</span><span class="k">val</span> <span class="n">message</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+
+<span class="nd">@Component</span>
+<span class="nd">@Scope</span><span class="o">(</span><span class="s">"prototype"</span><span class="o">)</span>
+<span class="k">class</span> <span class="nc">TestInjectionActor</span> <span class="k">extends</span> <span class="nc">Actor</span> <span class="o">{</span>
+
+  <span class="nd">@Autowired</span> <span class="nd">@BeanProperty</span> <span class="k">val</span> <span class="n">testService</span><span class="k">:</span> <span class="kt">TestService</span> <span class="o">=</span> <span class="kc">null</span>
+  <span class="nd">@Autowired</span> <span class="nd">@BeanProperty</span> <span class="k">val</span> <span class="n">springExtension</span><span class="k">:</span> <span class="kt">SpringExtension</span> <span class="o">=</span> <span class="kc">null</span>
+
+  <span class="k">override</span> <span class="k">def</span> <span class="n">receive</span><span class="k">:</span> <span class="kt">Receive</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="n">message</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">testService</span><span class="o">.</span><span class="n">testItWorks</span><span class="o">(</span><span class="n">message</span> <span class="o">+</span> <span class="s">" "</span> <span class="o">+</span> <span class="k">this</span><span class="o">.</span><span class="n">toString</span><span class="o">)</span>
+    <span class="k">case</span> <span class="nc">VerifyInjectionWorksInDepth</span><span class="o">(</span><span class="n">message</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="o">{</span>
+      <span class="n">context</span><span class="o">.</span><span class="n">actorOf</span><span class="o">(</span><span class="n">springExtension</span><span class="o">.</span><span class="n">props</span><span class="o">(</span><span class="s">"testInjectionActor"</span><span class="o">))</span> <span class="o">!</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="n">message</span><span class="o">)</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Next we’ll have our controller send both messages to the actor.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@RequestMapping</span><span class="o">(</span><span class="nc">Array</span><span class="o">(</span><span class="s">"/injection"</span><span class="o">))</span>
+<span class="nd">@ResponseBody</span>
+<span class="k">def</span> <span class="n">testInjection</span><span class="o">()</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="o">{</span>
+  <span class="n">injectionActor</span> <span class="o">!</span> <span class="nc">VerifyInjectionWorks</span><span class="o">(</span><span class="s">"injection works!"</span><span class="o">)</span>
+  <span class="n">injectionActor</span> <span class="o">!</span> <span class="nc">VerifyInjectionWorksInDepth</span><span class="o">(</span><span class="s">"injection works in depth!"</span><span class="o">)</span>
+  <span class="s">"verified injection"</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>If you start the app and call the <code class="highlighter-rouge">/injection</code> endpoint twice you should see the following in the console:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>injection works! com.cacoveanu.scalademo.TestInjectionActor@7165bf7f
+injection works in depth! com.cacoveanu.scalademo.TestInjectionActor@7fa25f23
+injection works! com.cacoveanu.scalademo.TestInjectionActor@7165bf7f
+injection works in depth! com.cacoveanu.scalademo.TestInjectionActor@648fb385
+</code></pre></div></div>
+
+<p>Why twice? If you look at the actor names you’ll see that the base 
+actor and the child actor have different IDs; also the child actor 
+changes between calls because it is created by the base actor. And, of 
+course, what we were interested in in the first place, the injection 
+works for actors in the hierarchy as well if we use the spring 
+extension.</p>
+
+<p>With injection, your actor code should become cleaner and a lot more 
+manageable. You can write the heavy processing code in services that you
+ inject in the actors, and let the actors code focus on how the 
+parallelization of your application is organized.</p>
+
+<h2 id="sources">Sources</h2>
+
+<ul>
+  <li><a href="http://kimrudolph.de/blog/spring-boot-meets-akka">Spring Boot meets Akka</a></li>
+</ul>
+
+
+
+
+</body></html>

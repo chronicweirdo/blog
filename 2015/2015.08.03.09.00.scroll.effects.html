@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="The only thing to understand when implementing scroll effects is to realize that you just need to make an element size and position a function of the document scroll value. If you really stop and consider it, all html elements positions are already functions of document scroll value. As the scroll increases, each element top position decreases proportionally. Of course, you don't have to do anything for your web page to behave this way, browsers are implementing this behavior by default. But ...">
+
+    <title>JavaScript scroll effects</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.08.03 09:00</span>
+    
+        <span>/</span><span class="tag">javascript</span>
+    
+        <span>/</span><span class="tag">ui</span>
+    
+        <span>/</span><span class="tag">design</span>
+    
+</p>
+<h1 class="title">JavaScript scroll effects</h1>
+
+<h2 id="the-idea">The idea</h2>
+
+<p>The only thing to understand when implementing scroll effects is to 
+realize that you just need to make an element size and position a 
+function of the document scroll value. If you really stop and consider 
+it, all html elements positions are already functions of document scroll
+ value. As the scroll increases, each element top position decreases 
+proportionally. Of course, you don’t have to do anything for your web 
+page to behave this way, browsers are implementing this behavior by 
+default. But when you want to implement your own scroll effect, know 
+that you are just changing this positioning function a little. This is 
+what we’ll do now.</p>
+
+<!--more-->
+
+<p>The effect I’ll try to implement is to split the html document into <em>pages</em>.
+ When the document is scrolled, each page in turn will slide up. Imagine
+ you are reading a bunch of physical pages with a fixed gaze. As you 
+read each page, you are moving it up until you reach its end and discard
+ it. This reveals the next page which was lying under the first one. 
+This is how your site will look once this effect is implemented.</p>
+
+<h2 id="document-structure">Document structure</h2>
+
+<p>We won’t need a complex document structure, we just need a way to define the <em>pages</em> we’ll have in the document and separate them from the rest of the document. A document with three pages will look like this:</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;body&gt;</span>
+    <span class="nt">&lt;div</span> <span class="na">style=</span><span class="s">"background-color: beige"</span> <span class="na">class=</span><span class="s">"page"</span><span class="nt">&gt;</span>
+        <span class="nt">&lt;h2&gt;</span>The first page<span class="nt">&lt;/h2&gt;</span>
+        <span class="nt">&lt;p&gt;</span>Lorem ipsum dolor sit...<span class="nt">&lt;/p&gt;</span>
+        <span class="nt">&lt;p&gt;</span>In vitae suscipit nisl...<span class="nt">&lt;/p&gt;</span>
+    <span class="nt">&lt;/div&gt;</span>
+    <span class="nt">&lt;div</span> <span class="na">style=</span><span class="s">"background-color: burlywood"</span> <span class="na">class=</span><span class="s">"page"</span><span class="nt">&gt;</span>
+        <span class="nt">&lt;h2&gt;</span>The second page<span class="nt">&lt;/h2&gt;</span>
+        <span class="nt">&lt;p&gt;</span>Lorem ipsum dolor sit amet...<span class="nt">&lt;/p&gt;</span>
+    <span class="nt">&lt;/div&gt;</span>
+    <span class="nt">&lt;div</span> <span class="na">style=</span><span class="s">"background-color: cornflowerblue"</span> <span class="na">class=</span><span class="s">"page"</span><span class="nt">&gt;</span>
+       <span class="nt">&lt;h2&gt;</span>The third page<span class="nt">&lt;/h2&gt;</span>
+       <span class="nt">&lt;p&gt;</span>Lorem ipsum dolor sit...<span class="nt">&lt;/p&gt;</span>
+    <span class="nt">&lt;/div&gt;</span>
+    <span class="nt">&lt;p&gt;</span>Lorem ipsum dolor sit...<span class="nt">&lt;/p&gt;</span>
+</code></pre></div></div>
+
+<p>This is an abreviated version of the document I used for testing. <a href="scroll_effects/javascript_scroll_effects.html">Download the full document here</a>.
+ You’ll see there that I have included a lot of paragraphs. I wanted to 
+test that the effect is functioning properly even when pages are too 
+long to fit on screen. We want each page to slide up as we scroll down, 
+until we reach its end, while at the same time for all pages below to 
+remain fixed in their original position.</p>
+
+<h2 id="birds-eye-view-of-the-script">Bird’s-eye view of the script</h2>
+
+<p>When implementing this, we have two things to take care of:</p>
+
+<ol>
+  <li>Initialize the elements: set up the size of the elements based on 
+the size of the window. This function needs to run when the page loads 
+and every time the window size changes.</li>
+  <li>The scroll function: called on every scroll event, is responsible 
+with bringing each element of the page to the correct state 
+(position/size) for the current scroll value.</li>
+</ol>
+
+<p>I’ll just go ahead and show you the document ready function which takes care of linking these two actions to page events:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">$</span><span class="p">(</span><span class="nb">document</span><span class="p">).</span><span class="nx">ready</span><span class="p">(</span><span class="kd">function</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nx">initDocument</span><span class="p">();</span>
+    <span class="nx">$</span><span class="p">(</span><span class="nb">window</span><span class="p">).</span><span class="nx">resize</span><span class="p">(</span><span class="nx">initDocument</span><span class="p">);</span>
+    <span class="nx">$</span><span class="p">(</span><span class="nb">window</span><span class="p">).</span><span class="nx">scroll</span><span class="p">(</span><span class="nx">scrollFunction</span><span class="p">);</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<p>Once the document finished loading we run the initialization 
+function. We will do this every time the window is resized. We also 
+apply the scroll function on each scroll event.</p>
+
+<h2 id="initializing-the-document">Initializing the document</h2>
+
+<p>When we initialize the document, we’ll be applying styles on the <em>page</em>
+ elements that will change their size and positioning. We’re switching 
+all elements to fixed positioning and placing them at the top of the 
+page. If a <em>page</em> element is not high enough to cover a whole 
+window, we’ll make it high enough. If it is high enough, we won’t change
+ its height, and this means we can have <em>pages</em> longer than a window height. This is fine, we don’t want to limit <em>page</em> height and we can design the scroll function to work well with longer pages. (We could also not limit the minimum <em>page</em> height and allow <em>pages</em> that are smaller that the window, but in that case the effect will not be as clean since we might end up with long <em>pages</em> sticking out form below.)</p>
+
+<p>Another thing we do in the initializing function is to compute the sum of the heights of all <em>pages</em>.
+ We need this to decide how high the document should be. We still want 
+our document to be as high as the sum of heights of the elements inside 
+it because their position is a function of the scroll value. In other 
+words, we need the scroll value to go high enough to allow us to scroll 
+each element of the document at the same pace they would be scrolled 
+with the default, browser-implemented scroll function. When we set fixed
+ positioning on the <em>page</em> elements, we are taking them out of the normal document flow and that means the document height will not include the <em>page</em> elements heights. To fix this, we’ll set the body element top padding to be as large as the sum of <em>page</em> elements heights. This ensures that once we have scrolled over all <em>pages</em>, the rest of the document will flow in view and scroll normally.</p>
+
+<p>We also need to set the z-index of the <em>page</em> elements to make
+ sure they are overlapping each other in the correct order, the order of
+ their appearance in the document (first page is the top page).</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">initDocument</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">windowHeight</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nx">documentElement</span><span class="p">.</span><span class="nx">clientHeight</span><span class="p">;</span>
+    <span class="kd">var</span> <span class="nx">windowWidth</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nx">documentElement</span><span class="p">.</span><span class="nx">clientWidth</span><span class="p">;</span>
+
+    <span class="kd">var</span> <span class="nx">height</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="nx">$</span><span class="p">(</span><span class="s2">".page"</span><span class="p">).</span><span class="nx">each</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">index</span><span class="p">,</span> <span class="nx">element</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"position"</span><span class="p">,</span> <span class="s2">"fixed"</span><span class="p">);</span>
+        <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"display"</span><span class="p">,</span> <span class="s2">"block"</span><span class="p">);</span>
+        <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"top"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+
+        <span class="kd">var</span> <span class="nx">elementHeight</span> <span class="o">=</span> <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">height</span><span class="p">();</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nx">elementHeight</span> <span class="o">&lt;</span> <span class="nx">windowHeight</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kd">var</span> <span class="nx">verticalPadding</span> <span class="o">=</span> <span class="p">(</span><span class="nx">windowHeight</span> <span class="o">-</span> <span class="nx">elementHeight</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">;</span>
+            <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"padding-top"</span><span class="p">,</span> <span class="nx">verticalPadding</span> <span class="o">+</span> <span class="s2">"px"</span><span class="p">);</span>
+            <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"padding-bottom"</span><span class="p">,</span> <span class="nx">verticalPadding</span> <span class="o">+</span> <span class="s2">"px"</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"z-index"</span><span class="p">,</span> <span class="o">-</span><span class="nx">index</span><span class="p">);</span>
+
+        <span class="nx">height</span> <span class="o">=</span> <span class="nx">height</span> <span class="o">+</span> <span class="nx">getHeight</span><span class="p">(</span><span class="nx">element</span><span class="p">);</span>
+    <span class="p">});</span>
+    <span class="nx">$</span><span class="p">(</span><span class="s2">"body"</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"padding-top"</span><span class="p">,</span> <span class="nx">height</span> <span class="o">+</span> <span class="s2">"px"</span><span class="p">);</span>
+
+    <span class="nx">scrollFunction</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>This can be improved, we don’t need to reapply all the styles on 
+every window resize, only values that are affected by the window size. 
+It should be a simple refactoring, be sure to clean this up if you’ll 
+use it in a live project.</p>
+
+<h2 id="the-scroll-function">The scroll function</h2>
+
+<p>A surprisingly short function, considering that it is solely responsible for making the <em>page</em> slide effect work.</p>
+
+<p>This function defines the top value of each <em>page</em> as a function of document scroll value. We go over each <em>page</em> and decide what its top value should be. If the scroll value is larger then the sum heights of previous <em>pages</em> it means we are scrolling the current <em>page</em>, so we’ll update the <em>page</em> top value to how much we have scrolled since the start of the <em>page</em>. If we are not scrolling the current <em>page</em> (which means we are scrolling some <em>page</em> above it) we’ll keep the <em>page</em> top value to 0. That way the <em>page</em> is sill aligned at the top of the window.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">scrollFunction</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">height</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="nx">$</span><span class="p">(</span><span class="s2">".page"</span><span class="p">).</span><span class="nx">each</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">index</span><span class="p">,</span> <span class="nx">element</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">scroll</span> <span class="o">=</span> <span class="nx">$</span><span class="p">(</span><span class="nb">document</span><span class="p">).</span><span class="nx">scrollTop</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nx">scroll</span> <span class="o">&gt;</span> <span class="nx">height</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"top"</span><span class="p">,</span> <span class="p">(</span><span class="nx">height</span> <span class="o">-</span> <span class="nx">scroll</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"px"</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"top"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="nx">height</span> <span class="o">=</span> <span class="nx">height</span> <span class="o">+</span> <span class="nx">getHeight</span><span class="p">(</span><span class="nx">element</span><span class="p">);</span>
+    <span class="p">});</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>There is an additional function, getHeight, which is also used in the
+ initialization function. The getHeight function will get the height of a
+ <em>page</em>, taking into consideration the padding values of the element.</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">function</span> <span class="nx">getHeight</span><span class="p">(</span><span class="nx">element</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">height</span><span class="p">()</span>
+            <span class="o">+</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"padding-top"</span><span class="p">).</span><span class="nx">replace</span><span class="p">(</span><span class="s2">"px"</span><span class="p">,</span> <span class="s2">""</span><span class="p">))</span>
+            <span class="o">+</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">$</span><span class="p">(</span><span class="nx">element</span><span class="p">).</span><span class="nx">css</span><span class="p">(</span><span class="s2">"padding-bottom"</span><span class="p">).</span><span class="nx">replace</span><span class="p">(</span><span class="s2">"px"</span><span class="p">,</span> <span class="s2">""</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="the-result">The result</h2>
+
+<p>Here’s a short video of how the effect looks like in the end:</p>
+
+<p class="video">
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/4_ZxThmpGnU" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+</p>
+
+<p><a href="scroll_effects/javascript_scroll_effects.html">You can download the whole scroll effects file here</a>. Use it wisely.</p>
+
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A very short piece of code today, as I get ready for some vacation time. How do you hide a file from Java? Is it even possible? Sometimes it is.Starting with Java 7 we have the NIO (New IO) library which brings some new capabilities when accessing files, one of them being marking a file as hidden. On Linux and Unix-based systems linke OS X, hiding files is simple. Just prepend a “.” to the file name. On, Windows, on the other hand, you have to access file attributes and mark files as hidden. ...">
+
+    <title>How to hide a file using reflection</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="light.css">
+</head>
+<body>
+  <p class="header">
+    <a class="home" href="../index.html">home</a>
+    <span>/</span>
+    <span class="date">2015.08.17 15:15</span>
+    
+        <span>/</span><span class="tag">java nio</span>
+    
+        <span>/</span><span class="tag">java reflection</span>
+    
+</p>
+<h1 class="title">How to hide a file using reflection</h1>
+
+<p>A very short piece of code today, as I get ready for some vacation 
+time. How do you hide a file from Java? Is it even possible? Sometimes 
+it is.</p>
+
+<p>Starting with Java 7 we have the NIO (New IO) library which brings 
+some new capabilities when accessing files, one of them being marking a 
+file as hidden. On Linux and Unix-based systems linke OS X, hiding files
+ is simple. Just prepend a “.” to the file name. On, Windows, on the 
+other hand, you have to access file attributes and mark files as hidden.
+ This is an OS-specific operation and older Java versions did not 
+provide any way of manipulating file attributes other than running 
+native code. But now, with the NIO library, we can. We can, as long as 
+the code runs on a Java 7 JVM.</p>
+
+<p>The following code will verify if we are on a Windows machine and 
+then check what Java version is currently running. If all is well, we 
+use reflection to load the NIO classes and manipulate the file 
+attributes. We use reflection because we want our code to run on older 
+versions of Java as well as new ones. If the code runs on a Java 6 or 
+lower version, the file will not be hidden.</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">private</span> <span class="kt">void</span> <span class="nf">hideFile</span><span class="o">(</span><span class="n">File</span> <span class="n">cookieFile</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">System</span><span class="o">.</span><span class="na">getProperty</span><span class="o">(</span><span class="s">"os.name"</span><span class="o">).</span><span class="na">contains</span><span class="o">(</span><span class="s">"Windows"</span><span class="o">)</span> <span class="o">&amp;&amp;</span>
+            <span class="o">(</span><span class="n">System</span><span class="o">.</span><span class="na">getProperty</span><span class="o">(</span><span class="s">"java.version"</span><span class="o">).</span><span class="na">startsWith</span><span class="o">(</span><span class="s">"1.7"</span><span class="o">)</span>
+                    <span class="o">||</span> <span class="n">System</span><span class="o">.</span><span class="na">getProperty</span><span class="o">(</span><span class="s">"java.version"</span><span class="o">).</span><span class="na">startsWith</span><span class="o">(</span><span class="s">"1.8"</span><span class="o">)))</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="c1">// File has a new method that can return the NIO Path object</span>
+            <span class="n">Method</span> <span class="n">m</span> <span class="o">=</span> <span class="n">File</span><span class="o">.</span><span class="na">class</span><span class="o">.</span><span class="na">getMethod</span><span class="o">(</span><span class="s">"toPath"</span><span class="o">);</span>
+            <span class="n">Object</span> <span class="n">path</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="na">invoke</span><span class="o">(</span><span class="n">cookieFile</span><span class="o">);</span>
+            <span class="n">Class</span> <span class="n">filesClass</span> <span class="o">=</span> <span class="n">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="s">"java.nio.file.Files"</span><span class="o">);</span>
+            <span class="c1">// The method we will use from the Files class has variable</span>
+            <span class="c1">// arguments; which means we will have to send it an array</span>
+            <span class="c1">// of LinkOption objects; we are not using LinkOption, so this</span>
+            <span class="c1">// array will be empty.</span>
+            <span class="n">Object</span> <span class="n">linkOptionArray</span> <span class="o">=</span> <span class="n">Array</span><span class="o">.</span><span class="na">newInstance</span><span class="o">(</span>
+                    <span class="n">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="s">"java.nio.file.LinkOption"</span><span class="o">),</span> <span class="mi">0</span><span class="o">);</span>
+            <span class="n">Method</span> <span class="n">setAttribute</span> <span class="o">=</span> <span class="n">filesClass</span><span class="o">.</span><span class="na">getMethod</span><span class="o">(</span><span class="s">"setAttribute"</span><span class="o">,</span>
+                    <span class="n">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="s">"java.nio.file.Path"</span><span class="o">),</span> <span class="n">String</span><span class="o">.</span><span class="na">class</span><span class="o">,</span>
+                    <span class="n">Object</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">linkOptionArray</span><span class="o">.</span><span class="na">getClass</span><span class="o">());</span>
+            <span class="n">setAttribute</span><span class="o">.</span><span class="na">invoke</span><span class="o">(</span><span class="kc">null</span><span class="o">,</span> <span class="n">path</span><span class="o">,</span> <span class="s">"dos:hidden"</span><span class="o">,</span> <span class="kc">true</span><span class="o">,</span> <span class="n">linkOptionArray</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">NoSuchMethodException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="na">warn</span><span class="o">(</span><span class="s">"Unable to hide the file!"</span><span class="o">,</span> <span class="n">e</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">InvocationTargetException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="na">warn</span><span class="o">(</span><span class="s">"Unable to hide the file!"</span><span class="o">,</span> <span class="n">e</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">IllegalAccessException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="na">warn</span><span class="o">(</span><span class="s">"Unable to hide the file!"</span><span class="o">,</span> <span class="n">e</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">ClassNotFoundException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">log</span><span class="o">.</span><span class="na">warn</span><span class="o">(</span><span class="s">"Unable to hide the file!"</span><span class="o">,</span> <span class="n">e</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+</body></html>
