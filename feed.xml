@@ -4,8 +4,8 @@
     <channel>
         <title>silviu's blog</title>
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
-        <link>blog.cacoveanu.com/</link>
-        <atom:link href="blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
+        <link>https://blog.cacoveanu.com/</link>
+        <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
         <pubDate>Tue, 2 Oct 2018 19:10:00 +0300</pubDate>
         <generator>cacoveanu</generator>
         <item>
