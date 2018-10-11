@@ -8,6 +8,18 @@
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
         <pubDate>Tue, 2 Oct 2018 19:10:00 +0300</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Distributed Akka Deployment</title>
+            <description>How to make a project scale seamlessly across machines, and share work, with Akka Cluster.</description>
+            <pubDate>Thu, 11 Oct 2018 21:30:00 +0300</pubDate>
+            <link>https://blog.cacoveanu.com/2018b/2018.10.11.distributed_akka.html</link>
+            <category>scala</category>
+            <category>akka</category>
+            <category>cluster</category>
+            <category>spring</category>
+        </item>
+
         <item>
             <title>Spark Foreach Mongo Upsert Writer</title>
             <description>Building several iterations of a generic upsert writer from a Spark stream to MongoDB.</description>
