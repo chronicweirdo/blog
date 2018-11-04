@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>Tue, 2 Oct 2018 19:10:00 +0300</pubDate>
+        <pubDate>Sun, 4 Nov 2018 10:30:00 +0200</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Wakey Wakey, PC</title>
+            <description>For those lazy Sunday mornings, when getting our of bed to wake up your media server seems excessive, but your laptop is within reach and writing a small program to send a Wake-On-LAN signal sounds so reasonable; it is in recognition of those mornings that I've put together this instructional page.</description>
+            <pubDate>Sun, 4 Nov 2018 10:30:00 +0200</pubDate>
+            <link>https://blog.cacoveanu.com/2018b/2018.11.04.wakey_wakey_pc.html</link>
+            <category>wake on lan</category>
+            <category>powershell</category>
+            <category>java</category>
+            <category>python</category>
+        </item>
 
         <item>
             <title>Distributed Akka Deployment</title>

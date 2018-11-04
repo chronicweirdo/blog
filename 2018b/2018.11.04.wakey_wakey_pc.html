@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="For those lazy Sunday mornings, when getting our of bed to wake up your media server seems excessive, but your laptop is within reach and writing a small program to send a Wake-On-LAN signal sounds so reasonable; it is in recognition of those mornings that I've put together this instructional page.">
+
+    <title>Wakey Wakey, PC</title>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+
+    <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+    <link id="theme" rel="stylesheet" type="text/css" href="atelier-forest-light.css">
+</head>
+<body>
+		<p class="header">
+				<a class="home" href="../index.html">home</a>
+				<span>/</span>
+				<span class="date">2018.11.04 10:30</span>
+				<span>/</span><span class="tag">wake on lan</span>
+				<span>/</span><span class="tag">powershell</span>
+				<span>/</span><span class="tag">java</span>
+				<span>/</span><span class="tag">python</span>
+			</p>
+<h1 id="wakey-wakey-pc">Wakey Wakey, PC</h1>
+<p>For those lazy Sunday mornings, when getting our of bed to wake up your media server seems excessive, but your laptop is within reach and writing a small program to send a Wake-On-LAN signal sounds so reasonable; it is in recognition of those mornings that I've put together this instructional page.</p>
+<h2 id="power-shell-commands">Power Shell Commands</h2>
+<p>The resource I started off explains <a href="https://www.pdq.com/blog/wake-on-lan-wol-magic-packet-powershell/">how to create and send a magic packet using powershell</a>. That page contains all the information you need to create a magic packet that will wake your computer. I am adding the code below, in case that site goes down.</p>
+<pre class="hljs"><code><div>$Mac = &quot;12:34:56:78:9A:BC&quot;
+$MacByteArray = $Mac -split &quot;[:-]&quot; | ForEach-Object { [Byte] &quot;0x$_&quot;}
+[Byte[]] $MagicPacket = (,0xFF * 6) + ($MacByteArray  * 16)
+$UdpClient = New-Object System.Net.Sockets.UdpClient
+$UdpClient.Connect(([System.Net.IPAddress]::Broadcast),7)
+$UdpClient.Send($MagicPacket,$MagicPacket.Length)
+$UdpClient.Close()
+</div></code></pre>
+<p>To summarize, if you want to wake your computer over the local network, you need to:</p>
+<ul>
+<li>create a magic packet, which starts with 6 bytes of value <code>255</code>, followed by 16 repetitions of the bytes that form the MAC address you want to send this packet to</li>
+<li>send the magic packet to the broadcast address of your LAN</li>
+</ul>
+<h2 id="java-program">Java Program</h2>
+<p>First implementation will be in Java. We'll be using some utility functions for arrays and collections, and the <code>java.net</code> package:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">import</span> java.net.*;
+<span class="hljs-keyword">import</span> java.util.Arrays;
+<span class="hljs-keyword">import</span> java.util.Collections;
+
+<span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Wol</span> </span>{
+</div></code></pre>
+<p>Next, we need a simple method to create the magic packet, based on the physical MAC address we want to wake. One strange limitation of Java is that the <code>byte</code> primitive type is always signed, which means we can't actually store the value <code>0xFF</code> into it (compilation error). That value is considered too large to be stored into a byte, and the Java compilar will consider the <code>0xFF</code> literal an integer, so we always need to cast that literal to a <code>byte</code> primitive. The rest of the method is pretty straight-forward: 6 bytes of value <code>255</code>, followed by 16 repetitions of the MAC address.</p>
+<pre class="hljs"><code><div>    <span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">byte</span>[] createMagicPacket(String physicalAddress) {
+        <span class="hljs-keyword">byte</span>[] mac = macBytes(physicalAddress);
+
+        <span class="hljs-keyword">byte</span>[] packet = <span class="hljs-keyword">new</span> <span class="hljs-keyword">byte</span>[<span class="hljs-number">6</span> + <span class="hljs-number">16</span>*<span class="hljs-number">6</span>];
+        <span class="hljs-keyword">for</span> (<span class="hljs-keyword">int</span> i = <span class="hljs-number">0</span>; i &lt; <span class="hljs-number">6</span>; i++) {
+            packet[i] = (<span class="hljs-keyword">byte</span>) <span class="hljs-number">0xFF</span>;
+        }
+        <span class="hljs-keyword">for</span> (<span class="hljs-keyword">int</span> i = <span class="hljs-number">0</span>; i &lt; <span class="hljs-number">16</span>; i++) {
+            System.arraycopy(mac, <span class="hljs-number">0</span>, packet, (i + <span class="hljs-number">1</span>) * <span class="hljs-number">6</span> + <span class="hljs-number">0</span>, <span class="hljs-number">6</span>);
+        }
+        <span class="hljs-keyword">return</span> packet;
+    }
+</div></code></pre>
+<p>Once we have the magic packet, we need to obtain the broadcast address for our LAN. The way I did this was to list all network interfaces, and find the one which has an address corresponding to the localhost address. Then I can get the broadcast address from that interface. Just in case this does not work, I've created a method to return the fallback address <code>255.255.255.255</code>.</p>
+<pre class="hljs"><code><div>    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> InetAddress <span class="hljs-title">getBroadcastAddress</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">try</span> {
+            InetAddress localHost = Inet4Address.getLocalHost();
+            <span class="hljs-keyword">return</span> Collections.list(NetworkInterface.getNetworkInterfaces()).stream()
+                    .flatMap(i -&gt; i.getInterfaceAddresses().stream())
+                    .filter(a -&gt; Arrays.toString(a.getAddress().getAddress()).equals(Arrays.toString(localHost.getAddress())))
+                    .map(a -&gt; a.getBroadcast())
+                    .findFirst().orElse(getFallbackBroadcastAddress());
+        } <span class="hljs-keyword">catch</span> (Throwable t) {
+            <span class="hljs-keyword">return</span> getFallbackBroadcastAddress();
+        }
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> InetAddress <span class="hljs-title">getFallbackBroadcastAddress</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">try</span> {
+            <span class="hljs-keyword">return</span> InetAddress.getByAddress(<span class="hljs-keyword">new</span> <span class="hljs-keyword">byte</span>[]{<span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>, <span class="hljs-number">0xF</span>});
+        } <span class="hljs-keyword">catch</span> (UnknownHostException e) {
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+        }
+    }
+</div></code></pre>
+<p>Now that we have gathered all the information we required, we can send the magick packet on its merry way. We create a datagram socket, on port <code>7</code>. This depends on the settings on your network card, usually network cards are listening to ports <code>0</code>, <code>7</code> or <code>9</code>. Often you can even configure those ports. My card works just great with the magic number <code>7</code>, so that's what I use here. We also need to configure our socket to broadcast, just a flag, then create and send the packet to the LAN broadcast address.</p>
+<pre class="hljs"><code><div>    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">void</span> <span class="hljs-title">sendBroadcast</span><span class="hljs-params">(InetAddress address, <span class="hljs-keyword">byte</span>[] magicPacket)</span> </span>{
+        <span class="hljs-keyword">try</span> {
+            <span class="hljs-keyword">int</span> port = <span class="hljs-number">7</span>;
+            DatagramSocket socket = <span class="hljs-keyword">new</span> DatagramSocket(port);
+
+            DatagramPacket packet = <span class="hljs-keyword">new</span> DatagramPacket(magicPacket, magicPacket.length, address, port);
+            socket.setBroadcast(<span class="hljs-keyword">true</span>);
+
+            socket.send(packet);
+        } <span class="hljs-keyword">catch</span> (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+</div></code></pre>
+<p>As a bonus, I've also added two methods, one to print a byte array as hexadecimal values, another to parse a string representing the MAC address into a byte array.</p>
+<pre class="hljs"><code><div>    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">void</span> <span class="hljs-title">printHexa</span><span class="hljs-params">(<span class="hljs-keyword">byte</span>[] arr)</span> </span>{
+        <span class="hljs-keyword">for</span> (<span class="hljs-keyword">int</span> i = <span class="hljs-number">0</span>; i &lt; arr.length; i++) {
+            System.out.printf(<span class="hljs-string">"%02X "</span>, arr[i]);
+        }
+        System.out.println();
+    }
+
+    <span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">byte</span>[] macBytes(String mac) {
+        String[] tokens = mac.split(<span class="hljs-string">"[.:-]"</span>);
+        <span class="hljs-keyword">if</span> (tokens.length == <span class="hljs-number">6</span>) {
+            <span class="hljs-keyword">byte</span>[] result = <span class="hljs-keyword">new</span> <span class="hljs-keyword">byte</span>[<span class="hljs-number">6</span>];
+            <span class="hljs-keyword">for</span> (<span class="hljs-keyword">int</span> i = <span class="hljs-number">0</span>; i &lt; <span class="hljs-number">6</span>; i++) {
+                result[i] = (<span class="hljs-keyword">byte</span>) (Integer.parseInt(tokens[i],<span class="hljs-number">16</span>) &amp; <span class="hljs-number">0xff</span>);
+            }
+            <span class="hljs-keyword">return</span> result;
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+        }
+    }
+</div></code></pre>
+<p>And the <code>main</code> method, putting it all together and firing up our program:</p>
+<pre class="hljs"><code><div>    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">void</span> <span class="hljs-title">main</span><span class="hljs-params">(String[] args)</span> </span>{
+        String mac = <span class="hljs-string">"12-34-56-78-9A-BC"</span>;
+
+        <span class="hljs-keyword">byte</span>[] magicPacket = createMagicPacket(mac);
+        printHexa(magicPacket);
+
+        InetAddress broadcastAddress = getBroadcastAddress();
+        System.out.println(broadcastAddress);
+
+        sendBroadcast(broadcastAddress, magicPacket);
+    }
+}
+</div></code></pre>
+<h1 id="python-program">Python program</h1>
+<p>Now, we've got all this in place and working in Java, but maybe you don't want to fire up a JVM every time you're too lazy to get off the couch to wake your media server from sleep. You're too lazy to even start a JVM, so a Python utility may be a better solution for you. Jocularly enough, the Python program really is a lot less verbose than the Java counterpart.</p>
+<p>The tool will use some basic python packages, but nothing that needs to be grabbed through pip:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">import</span> sys
+<span class="hljs-keyword">import</span> socket
+<span class="hljs-keyword">import</span> ipaddress
+</div></code></pre>
+<p>Same steps here as for the Java program, first we build our magic packet as an array of bytes. The parsing of the MAC string is included in this method, and concatenating the MAC address bytes is a lot easier here, just using the <code>+=</code> operator. There's also no nonsense need for casts to byte.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">create_magic_packet</span><span class="hljs-params">(mac)</span>:</span>
+    mac_string = <span class="hljs-string">''</span>.join(mac.split(<span class="hljs-string">'-'</span>))
+    mac_bytes = bytes.fromhex(mac_string)
+
+    magic_packet = [<span class="hljs-number">0xff</span>, <span class="hljs-number">0xff</span>, <span class="hljs-number">0xff</span>, <span class="hljs-number">0xff</span>, <span class="hljs-number">0xff</span>, <span class="hljs-number">0xff</span>]
+    <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> range(<span class="hljs-number">16</span>):
+        magic_packet += mac_bytes
+    
+    <span class="hljs-keyword">return</span> magic_packet
+</div></code></pre>
+<p>Obtaining the broadcast address, without additional dependencies, seems a little harder. I've looked at several methods and the one below worked for me, but results may vary. The focus here is to find the local network card that is actually used to connect to the interned. We do that by opening a connection the Google's recursive name server, then we query the socket to obtain our local IP address. Once we have that we can create an IP interface object and get the broadcast address out of that. The only problem is that we also need to know what the network mask is, and I did not find a way to get that, so now I'm making assumptions that it's <code>/24</code>. <code>255.255.255.255</code> is still used as the fallback address.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">get_broadcast_address</span><span class="hljs-params">()</span>:</span>
+    <span class="hljs-keyword">try</span>:
+        network_mask_length = <span class="hljs-number">24</span>
+    
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((<span class="hljs-string">"8.8.8.8"</span>, <span class="hljs-number">80</span>))
+        current_ip = s.getsockname()[<span class="hljs-number">0</span>]
+        s.close()
+
+        <span class="hljs-keyword">return</span> str(ipaddress\
+            .ip_interface(current_ip + <span class="hljs-string">"/"</span> + str(network_mask_length))\
+            .network\
+            .broadcast_address)
+    <span class="hljs-keyword">except</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-string">'255.255.255.255'</span>
+</div></code></pre>
+<p>We send the magic packet to the broadcast address by opening a socket and configuring it to work in broadcast mode.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">send_broadcast</span><span class="hljs-params">(packet, address)</span>:</span>
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, <span class="hljs-number">1</span>)
+    s.sendto(bytes(packet), (address, <span class="hljs-number">7</span>))
+</div></code></pre>
+<p>And the code that puts all this together; this program expects the MAC address as the first argument:</p>
+<pre class="hljs"><code><div>magic_packet = create_magic_packet(sys.argv[<span class="hljs-number">1</span>])
+print(magic_packet)
+broadcast_address = get_broadcast_address()
+print(broadcast_address)
+send_broadcast(magic_packet, broadcast_address)
+</div></code></pre>
+<p>An interesting next step would be to make this a Python package that can be installed through pip. Maybe even add in a small database, so the tool can remember the MAC addresses you used in the past and allow you to resend the wake signal to them.</p>
+
+</body>
+</html>
