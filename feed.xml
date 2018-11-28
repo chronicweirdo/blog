@@ -6,8 +6,20 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>Sun, 4 Nov 2018 10:30:00 +0200</pubDate>
+        <pubDate>2018-11-28T18:40:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Asymmetric JWT</title>
+            <description>Authentication service implemented with JWT token signed with asymmetric key.</description>
+            <pubDate>2018-11-28T18:40:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2018b/2018.11.28.asymmetric_jwt.html</link>
+            <category>java</category>
+            <category>c#</category>
+            <category>jwt</category>
+            <category>microservices</category>
+            <category>authentication</category>
+        </item>
 
         <item>
             <title>Wakey Wakey, PC</title>
