@@ -11,7 +11,7 @@
 <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
 
 <link id="theme" rel="stylesheet" type="text/css" href="main.css">
-<link id="theme" rel="stylesheet" type="text/css" href="code.css">
+<link id="theme" rel="stylesheet" type="text/css" href="code2.css">
 </head>
 <body>
 <p class="header">
@@ -27,11 +27,11 @@
 <h1 id="asymmetric-jwt">Asymmetric JWT</h1>
 <h2 id="deployment-scenarios">Deployment Scenarios</h2>
 <p>The following setup is particularly well suited for a microservices environment, where you have one or more authentication services servicing a suite of various microservices. The scenario is that users (or your UI application) log in with the authentication service and obtain a token. From this moment on, users will need to include that token in requests made to all other services in the system to confirm their identity. But this means that the other services in your system need to be able to verify that the provided token is valid and the details contained in it are correct. There are several scenarios to ensure this.</p>
-<p><img src="jwt1.png" alt="tightly coupled authorization service setup"></p>
+<p><img src="jwt1.svg" alt="tightly coupled authorization service setup"></p>
 <p>The first approach is to have other services collaborate with the authentication service for each token they see. They send a request with the token to the authentication service, the authentication service verifies the token signature and replies with confirmation if the toke is valid. If you have a combined authentication/authorization service, this response can also provide the permissions associated with this token. The advantage to this approach is that you have a single service that has the signing key, kept secret. But a big disadvantage is the continuous traffic that is necessary in your system. For every request made to one of the services in your system, that service needs to send a request to the authentication service and wait for the reply before it can do its work. Your authentication service is a single point of failure, and if it were that the service is going offline for a while, all the system will be blocked.</p>
-<p><img src="jwt2.png" alt="shared secret key loosely coupled authorization service setup"></p>
+<p><img src="jwt2.svg" alt="shared secret key loosely coupled authorization service setup"></p>
 <p>An improvement on the previous approach is to give all your services the functionality to verify the token signature themselves. When a service receives the token it can verify the token signature using the secret key and if the token is proper, the service can continue with its work. If you have a shared authentication/authorization service, a JWT token can contain any details you need in the payload, so your authentication/authorization service can include the permissions of the authenticated users when creating the token. A big advantage is there is no more need of tight coupling between the authentication service and all your other services. If you need to take your authentication service offline for a little while, the authenticated users can still use the rest of the services. But a big problem here is that you need to share the secret key. Every service on the system needs a copy of the key, if every service is deployed on a separate machine you need a copy of that key on every machine, you need to protect access to the whole production environment. If one service on your system is compromised, the whole system is compromised, the attacker can use the shared secret to generate their own tokens and imperonate anyone they want in your system. There is a better way.</p>
-<p><img src="jwt3.png" alt="asymmetric key loosely coupled authorization service setup"></p>
+<p><img src="jwt3.svg" alt="asymmetric key loosely coupled authorization service setup"></p>
 <p>The third proposed solution combines the advantages of both previous solutions. This approach uses an asymmetric key. The authentication service uses the private key to sign the token, but the signature can be verified with the public key. All other services in the system need a copy of the public key, but this copy does not need to be protected. The only thing the public key can be used for is to verify token signatures. The public key can't be used to sign a token and impersonate another user in the system. The only sensitive machine in your system is the authorization service, which has the private key.</p>
 <h2 id="implementation">Implementation</h2>
 <h3 id="generating-the-keys">Generating the Keys</h3>
