@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+<svg width="160mm" height="130mm" version="1.1" viewBox="0 0 160 130" xmlns="http://www.w3.org/2000/svg" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <defs>
+  <marker id="marker10554" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker10355" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker8269" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker11879-4" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker4892-1" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker11985-9" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker12091-4" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+ </defs>
+ <metadata>
+  <rdf:RDF>
+   <cc:Work rdf:about="">
+    <dc:format>image/svg+xml</dc:format>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:title/>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <g transform="translate(519.69 -109.8)" opacity=".99">
+  <rect x="-519.69" y="109.8" width="160" height="130" fill="#fff"/>
+  <g transform="translate(-171.05 -23.52)">
+   <g transform="translate(2.0789 127.19)">
+    <rect x="-331.86" y="47.347" width="30.994" height="24.946"/>
+    <text x="-325.38535" y="64.949684" fill="#000000" font-family="sans-serif" font-size="14.111px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-325.38535" y="64.949684" fill="#ffffff" stroke-width=".26458">AS</tspan></text>
+   </g>
+   <g transform="translate(-7.6195 132.48)">
+    <circle cx="-261.02" cy="110.69" r="11.5"/>
+    <text x="-266.185" y="115.70895" fill="#000000" font-family="sans-serif" font-size="14.111px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-266.185" y="115.70895" fill="#ffffff" stroke-width=".26458">U</tspan></text>
+   </g>
+   <path d="m-317.43 175.1c-10.183-12.496 16.341-11.694 4.9137 0" fill="none" marker-end="url(#marker8269)" stroke="#000" stroke-width=".26458px"/>
+   <g transform="translate(-33.64 7.5595)">
+    <rect x="-287.26" y="145.05" width="13.229" height="6.0476" fill="#fff" stroke="#000" stroke-dasharray="0.79499996, 0.26499999" stroke-width=".265"/>
+    <text x="-286.09659" y="149.29262" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-286.09659" y="149.29262" stroke-width=".26458">secret</tspan></text>
+   </g>
+   <text x="-323.44858" y="163.95238" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-323.44858" y="163.95238" stroke-width=".26458">sign token</tspan></text>
+   <g transform="translate(49.338 127.19)">
+    <rect x="-287.83" y="47.347" width="30.994" height="24.946"/>
+    <text x="-281.3511" y="64.949684" fill="#000000" font-family="sans-serif" font-size="14.111px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-281.3511" y="64.949684" fill="#ffffff" stroke-width=".26458">S1</tspan></text>
+   </g>
+   <path d="m-226.14 175.1c-10.183-12.496 16.341-11.694 4.9137 0" fill="none" marker-end="url(#marker10355)" stroke="#000" stroke-width=".26458px"/>
+   <g transform="translate(57.654 7.5595)">
+    <rect x="-287.26" y="145.05" width="13.229" height="6.0476" fill="#fff" stroke="#000" stroke-dasharray="0.79499996, 0.26499999" stroke-width=".265"/>
+    <text x="-286.09659" y="149.29262" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-286.09659" y="149.29262" stroke-width=".26458">secret</tspan></text>
+   </g>
+   <text x="-222.89343" y="164.28999" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-222.89343" y="164.28999" stroke-width=".26458" text-align="center" text-anchor="middle">validate token</tspan></text>
+   <path d="m-304.84 155.26 72.76 0.37799" fill="none" marker-end="url(#marker10554)" stroke="#000" stroke-dasharray="0.79374995, 0.26458332" stroke-width=".26458"/>
+   <text x="-274.13788" y="154.04938" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-274.13788" y="154.04938" stroke-width=".26458">shared</tspan></text>
+   <path d="m-222.99 143.48a25 25 0 0 0 -25 25v15a25 25 0 0 0 25 25 25 25 0 0 0 25 -25v-15a25 25 0 0 0 -25 -25z" fill="none" stroke="#000" stroke-dasharray="8.99999999, 2.99999998" stroke-width="3"/>
+   <path d="m-314.29 143.48a25 25 0 0 0 -25 25v15a25 25 0 0 0 25 25 25 25 0 0 0 25 -25v-15a25 25 0 0 0 -25 -25z" fill="none" stroke="#000" stroke-dasharray="8.99999999, 2.99999998" stroke-width="3"/>
+   <g transform="translate(2.8755 127.16)" opacity=".99">
+    <g fill="none" stroke="#000">
+     <path d="m-281.03 115.57-43.278-43.278" marker-end="url(#marker11879-4)" stroke-width=".265"/>
+     <path d="m-314.85 72.104 35.152 37.231" marker-end="url(#marker4892-1)" stroke-width=".26458px"/>
+     <path d="m-263.83 108.2 28.348-36.097" marker-end="url(#marker11985-9)" stroke-width=".265"/>
+     <path d="m-220.17 71.915-40.254 40.065" marker-end="url(#marker12091-4)" stroke-width=".26458px"/>
+    </g>
+    <g fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px">
+     <text transform="rotate(45.116)" x="-154.55542" y="284.60931" style="line-height:1.25" xml:space="preserve"><tspan x="-154.55542" y="284.60931" font-size="3.5278px" stroke-width=".26458">authenticate</tspan></text>
+     <text transform="rotate(45.358)" x="-150.68344" y="273.60516" style="line-height:1.25" xml:space="preserve"><tspan x="-150.68344" y="273.60516" stroke-width=".26458">obtain token</tspan></text>
+     <text transform="rotate(-51.874)" x="-228.70474" y="-146.45053" text-anchor="middle" style="line-height:1.25" xml:space="preserve"><tspan x="-228.70474" y="-146.45053" text-align="center">load data</tspan><tspan x="-228.70474" y="-142.0408" text-align="center">(provide token)</tspan></text>
+     <text transform="rotate(-46.369)" x="-246.71577" y="-107.03136" style="line-height:1.25" xml:space="preserve"><tspan x="-246.71577" y="-107.03136" stroke-width=".26458">receive data</tspan></text>
+    </g>
+   </g>
+  </g>
+ </g>
+</svg>

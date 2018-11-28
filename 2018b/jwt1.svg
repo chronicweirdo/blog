@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+<svg width="160mm" height="110mm" version="1.1" viewBox="0 0 160 110" xmlns="http://www.w3.org/2000/svg" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <defs>
+  <marker id="marker12091" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker11985" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker11879" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker7317" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker6879" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+  <marker id="marker4892" overflow="visible" orient="auto">
+   <path transform="matrix(-.8 0 0 -.8 -10 0)" d="m0 0 5-5-17.5 5 17.5 5z" fill-rule="evenodd" stroke="#000" stroke-width="1pt"/>
+  </marker>
+ </defs>
+ <metadata>
+  <rdf:RDF>
+   <cc:Work rdf:about="">
+    <dc:format>image/svg+xml</dc:format>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:title/>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <g transform="translate(380.07 66.003)" opacity=".99">
+  <g transform="translate(3.5277 -43.509)">
+   <rect x="-383.59" y="-22.494" width="160" height="110" fill="#fff"/>
+   <g transform="translate(-32.874 -48.643)">
+    <g transform="translate(47.26 3.8147e-6)">
+     <rect x="-287.83" y="47.347" width="30.994" height="24.946"/>
+     <text x="-281.3511" y="64.949684" fill="#000000" font-family="sans-serif" font-size="14.111px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-281.3511" y="64.949684" fill="#ffffff" stroke-width=".26458">S1</tspan></text>
+    </g>
+    <g>
+     <rect x="-331.86" y="47.347" width="30.994" height="24.946"/>
+     <text x="-325.38535" y="64.949684" fill="#000000" font-family="sans-serif" font-size="14.111px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-325.38535" y="64.949684" fill="#ffffff" stroke-width=".26458">AS</tspan></text>
+    </g>
+    <g transform="translate(-9.6983 5.2917)">
+     <circle cx="-261.02" cy="110.69" r="11.5"/>
+     <text x="-266.185" y="115.70895" fill="#000000" font-family="sans-serif" font-size="14.111px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-266.185" y="115.70895" fill="#ffffff" stroke-width=".26458">U</tspan></text>
+    </g>
+    <path d="m-239.45 53.205-62.177-0.18899" fill="none" marker-end="url(#marker6879)" stroke="#000" stroke-width=".265"/>
+    <path d="m-301.62 59.442 61.988 0.56696" fill="none" marker-end="url(#marker7317)" stroke="#000" stroke-width=".26458px"/>
+    <g fill="none" stroke="#000">
+     <path d="m-281.03 115.57-43.278-43.278" marker-end="url(#marker11879)" stroke-width=".265"/>
+     <path d="m-314.85 72.104 35.152 37.231" marker-end="url(#marker4892)" stroke-width=".26458px"/>
+     <path d="m-263.83 108.2 28.348-36.097" marker-end="url(#marker11985)" stroke-width=".265"/>
+     <path d="m-220.17 71.915-40.254 40.065" marker-end="url(#marker12091)" stroke-width=".26458px"/>
+    </g>
+    <g fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px">
+     <text transform="rotate(45.116)" x="-154.55542" y="284.60931" style="line-height:1.25" xml:space="preserve"><tspan x="-154.55542" y="284.60931" font-size="3.5278px" stroke-width=".26458">authenticate</tspan></text>
+     <text transform="rotate(45.358)" x="-150.68344" y="273.60516" style="line-height:1.25" xml:space="preserve"><tspan x="-150.68344" y="273.60516" stroke-width=".26458">obtain token</tspan></text>
+     <text transform="rotate(-51.874)" x="-228.70474" y="-146.45053" text-anchor="middle" style="line-height:1.25" xml:space="preserve"><tspan x="-228.70474" y="-146.45053" text-align="center">load data</tspan><tspan x="-228.70474" y="-142.0408" text-align="center">(provide token)</tspan></text>
+     <text transform="rotate(-46.369)" x="-246.71577" y="-107.03136" style="line-height:1.25" xml:space="preserve"><tspan x="-246.71577" y="-107.03136" stroke-width=".26458">receive data</tspan></text>
+    </g>
+    <text x="-283.27505" y="51.629993" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-283.27505" y="51.629993" stroke-width=".26458">validate token</tspan></text>
+    <text x="-270.39282" y="63.994461" fill="#000000" font-family="sans-serif" font-size="3.5278px" letter-spacing="0px" stroke-width=".26458" text-anchor="middle" word-spacing="0px" style="line-height:1.25" xml:space="preserve"><tspan x="-270.39282" y="63.994461" text-align="center">token valid,</tspan><tspan x="-270.39282" y="68.404182" text-align="center">obtain permissions</tspan></text>
+    <circle cx="-225.07" cy="59.82" r="23.5" fill="none" stroke="#000" stroke-dasharray="9.0000001, 3.00000004" stroke-width="3"/>
+    <circle cx="-316.37" cy="59.82" r="23.5" fill="none" stroke="#000" stroke-dasharray="9.0000001, 3.00000004" stroke-width="3"/>
+   </g>
+  </g>
+ </g>
+</svg>
