@@ -14,7 +14,7 @@
    viewBox="0 0 210 297"
    version="1.1"
    id="svg8"
-   inkscape:version="0.92.2 (5c3e80d, 2017-08-06)"
+   inkscape:version="0.92.1 r15371"
    sodipodi:docname="jwt.svg">
   <defs
      id="defs2">
@@ -349,15 +349,15 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.49497475"
-     inkscape:cx="-1174.1955"
-     inkscape:cy="93.946115"
+     inkscape:zoom="0.678125"
+     inkscape:cx="-1084.0893"
+     inkscape:cy="7.172237"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
      showgrid="false"
-     inkscape:window-width="1920"
-     inkscape:window-height="1018"
-     inkscape:window-x="1912"
+     inkscape:window-width="1280"
+     inkscape:window-height="657"
+     inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1" />
   <metadata
@@ -368,7 +368,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -384,8 +384,8 @@
        height="140"
        x="-345.99445"
        y="266.66757"
-       inkscape:export-xdpi="90"
-       inkscape:export-ydpi="90" />
+       inkscape:export-xdpi="119.92429"
+       inkscape:export-ydpi="119.92429" />
     <rect
        y="109.80425"
        x="-519.69275"
@@ -393,8 +393,8 @@
        width="160"
        id="rect13091"
        style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.00000024;stroke-miterlimit:4;stroke-dasharray:8.99999993, 2.99999998;stroke-dashoffset:0;stroke-opacity:1"
-       inkscape:export-xdpi="90"
-       inkscape:export-ydpi="90" />
+       inkscape:export-xdpi="119.96616"
+       inkscape:export-ydpi="119.96616" />
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3;stroke-miterlimit:4;stroke-dasharray:8.99999986, 2.99999995;stroke-dashoffset:0;stroke-opacity:1"
        id="rect12950"
@@ -402,8 +402,8 @@
        height="110"
        x="-383.59329"
        y="-22.494251"
-       inkscape:export-xdpi="90"
-       inkscape:export-ydpi="90" />
+       inkscape:export-xdpi="120.07272"
+       inkscape:export-ydpi="120.07272" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.52777767px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
