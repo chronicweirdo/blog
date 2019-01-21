@@ -80,7 +80,6 @@ dependencies {
 }</code></pre>
     <p>When we start the Spring Application, we also create the actor system and the master actor through the Spring
         configuration:</p>
-    <div class="sourceCode" id="cb2">
         <pre class="sourceCode scala"><code class="sourceCode scala"><a class="sourceLine" id="cb2-1" data-line-number="1"><span class="kw">package</span> com.<span class="fu">cacoveanu</span>.<span class="fu">akka</span>.<span class="fu">distributed</span></a>
 <a class="sourceLine" id="cb2-2" data-line-number="2"></a>
 <a class="sourceLine" id="cb2-3" data-line-number="3"><span class="kw">import</span> org.<span class="fu">springframework</span>.<span class="fu">boot</span>.<span class="fu">SpringApplication</span></a>
@@ -111,7 +110,6 @@ dependencies {
 <a class="sourceLine" id="cb2-28" data-line-number="28">  }</a>
 <a class="sourceLine" id="cb2-29" data-line-number="29"></a>
 <a class="sourceLine" id="cb2-30" data-line-number="30">}</a></code></pre>
-    </div>
     <p>In our master actor we use timers to introduce a pause between processing batches. As soon as the processing is
         done with one batch, we schedule the start of the next batch. Batches of data that need to be processed are
         created randomly. At first, we will only create one worker actor that our master communicates with. We also
