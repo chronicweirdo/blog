@@ -3,7 +3,8 @@
 /* Original Base16 color scheme by Chris Kempson (https://github.com/chriskempson/base16) */
 
 pre {
-  padding: 1em;
+  padding: 10px;
+  max-width: 1280px;
   white-space: pre-wrap;
   white-space: -moz-pre-wrap;
   white-space: -pre-wrap;
@@ -60,7 +61,7 @@ pre {
   overflow-x: auto;
   background: #fff;
   color: #1a1a1a;
-  padding: 0.5em;
+  /*padding: 0.5em;*/
   border: 0.1em solid #1a1a1a;
 }
 
