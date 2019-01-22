@@ -1,5 +1,5 @@
 body {
-    font-size: 1.5em;
+    font-size: 1.3em;
     margin-top: 15px;
     margin-bottom: 0;
     margin-left: 15px;
@@ -14,19 +14,9 @@ body {
 body>* {
     line-height: 1.3em;
     margin: 0 auto 15px auto;
-    max-width: 1300px;
+    max-width: 1000px;
 }
 
 p.header {
     font-family: monospace
-}
-
-p.header span, p.header a {
-    display: inline-block;
-    text-transform: lowercase;
-    padding: .2em .5em
-}
-
-p.header a:first-child {
-    padding: .2em .5em .2em 0;
 }
