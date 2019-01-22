@@ -25,13 +25,3 @@ img {
 p.header {
     font-family: monospace
 }
-
-p.header span, p.header a {
-    display: inline-block;
-    text-transform: lowercase;
-    padding: .2em .5em
-}
-
-p.header a:first-child {
-    padding: .2em .5em .2em 0;
-}
