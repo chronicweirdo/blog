@@ -16,16 +16,7 @@
 </head>
 
 <body>
-    <p class="header">
-        <a class="home" href="../index.html">home</a>
-        <span>/</span>
-        <span class="date">2018.10.02 19:00</span>
-        <span>/</span><span class="tag">scala</span>
-        <span>/</span><span class="tag">apache spark</span>
-        <span>/</span><span class="tag">mongo db</span>
-        <span>/</span><span class="tag">apache kafka</span>
-        <span>/</span><span class="tag">big data</span>
-    </p>
+    <p class="header"><a class="home" href="../index.html">home</a> / 2018.10.02 19:00 / scala / apache spark / mongo db / apache kafka / big data</p>
     <h1 id="spark-foreach-mongo-upsert-writer">Spark Foreach Mongo Upsert Writer</h1>
     <h2 id="introduction">Introduction</h2>
     <p>We need a way to write or update results in the Mongo DB after obtaining those results through Spark Structured Stream processing. We need a sollution that can be easily adapted for each Spark job we wish to run, which means our sollution should be able to save any case class we define as the result (and preferably it should also be able to save deep case classes).</p>
