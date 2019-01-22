@@ -14,16 +14,7 @@
 <link id="theme" rel="stylesheet" type="text/css" href="code2.css">
 </head>
 <body>
-<p class="header">
-<a class="home" href="../index.html">home</a>
-<span>/</span>
-<span class="date">2018.10.18 18:40</span>
-<span>/</span><span class="tag">java</span>
-<span>/</span><span class="tag">c#</span>
-<span>/</span><span class="tag">jwt</span>
-<span>/</span><span class="tag">microservices</span>
-<span>/</span><span class="tag">authentication</span>
-</p>
+<p class="header"><a class="home" href="../index.html">home</a> / 2018.10.18 18:40 / java / c# / jwt / microservices / authentication</p>
 <h1 id="asymmetric-jwt">Asymmetric JWT</h1>
 <h2 id="deployment-scenarios">Deployment Scenarios</h2>
 <p>The following setup is particularly well suited for a microservices environment, where you have one or more authentication services servicing a suite of various microservices. The scenario is that users (or your UI application) log in with the authentication service and obtain a token. From this moment on, users will need to include that token in requests made to all other services in the system to confirm their identity. But this means that the other services in your system need to be able to verify that the provided token is valid and the details contained in it are correct. There are several scenarios to ensure this.</p>
