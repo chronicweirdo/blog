@@ -1,0 +1,74 @@
+/* Modified hljs theme */
+/* Based on "Base16 Atelier Forest Light - Theme" by Bram de Haan (http://atelierbram.github.io/syntax-highlighting/atelier-schemes/forest) */
+/* Original Base16 color scheme by Chris Kempson (https://github.com/chriskempson/base16) */
+
+pre {
+  padding: 10px;
+  max-width: 980px;
+  white-space: pre-wrap;
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #766e6b;
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-attribute,
+.hljs-tag,
+.hljs-name,
+.hljs-regexp,
+.hljs-link,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: #f22c40;
+}
+
+.hljs-number,
+.hljs-meta,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params {
+  color: #df5320;
+}
+
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet {
+  color: #12bc61;
+}
+
+.hljs-title,
+.hljs-section {
+  color: #c0f;
+}
+
+.hljs-keyword,
+.hljs-selector-tag {
+  color: #1e98e9;
+}
+
+.hljs {
+  display: block;
+  overflow-x: auto;
+  background: #fff;
+  color: #1a1a1a;
+  /*padding: 0.5em;*/
+  border: 0.1em solid #1a1a1a;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}
