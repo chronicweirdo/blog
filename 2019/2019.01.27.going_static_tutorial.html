@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Going Static Tutorial</title>
+		<meta name="description" content="I walk you through the steps of setting up a static blog on GitHub.">
+		<meta name="keywords" content="blog, web design, github, visual studio code">
+		<link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+		<link id="theme" rel="stylesheet" type="text/css" href="main.css">
+		<link id="theme" rel="stylesheet" type="text/css" href="code.css">
+	</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2019.01.27 11:20 / blog / web design / github / visual studio code</p>
+<h1 id="going-static-tutorial">Going Static Tutorial</h1>
+<p>I've given you the what and why in my <a href="2019.01.24.going_static.html">previous post</a>, and in this post I'll go over the how. How do you publish a static website for free today? This is were I give you a step-by-step account of the methods and tools I use.</p>
+<p>It is not the objective of this tutorial to teach you HTML or CSS, which you should have some knowledge of before you can write your own site. They are very simple, easy to learn, and I would dare opinionate every person using the internet should understand them.</p>
+<h1 id="git">Git</h1>
+<p><a href="https://git-scm.com/">Git</a> is a version control system. This kind of system is used by developers to keep a history of the code files they edit. Git works with <em>repositories</em>, a repository being a folder filled with files and other subfolders. Everything in that folder will be version controlled. What this means is that after you make some changes to some of the files in your repository, you can <em>commit</em> them, creating a record of the state of your folder at the time you created the commit. As the project evolves, you keep making changes to your files and commiting them. This will create a history of your files in Git's database. If you want, you can easily return to the state of the folder from three/five/twenty commits ago. If you made a wrong change, you can <em>revert</em> it, which means returning to the previous commit.</p>
+<p>Git is also distributed, which means that the history of your project can be held in multiple places. If you create an account on <a href="https://github.com/">GitHub</a> (or <a href="https://bitbucket.org/">Bitbucket</a>, or <a href="https://about.gitlab.com/">GitLab</a>, or many others) you can upload your project history there. You, and other people, can then work on your project on multiple computers, at the same time, and synchronize your histories when necessary. You move your latest changes from your local history to the history on the <em>remote</em> repository by <em>pushing</em>. And if you want to bring changes that are on the remote repository but you don't have in your local repository, you need to <em>pull</em> them.</p>
+<p>Version control systems have a lot of functionality that is very useful when developing a software project, but in the context of a blog, all you have to think about is making some changes to your blog, commiting them and then pushing them to GitHub, which will publish those changes on your website and make them visible to your readers.</p>
+<h2 id="install-git-on-your-machine">Install Git on Your Machine</h2>
+<p>Installing Git on your machine will be easy, just download the kit from <a href="https://git-scm.com/">their website</a> (available for Linux, Mac and Windows) and go through the wizard. Keep the defaults.</p>
+<h2 id="create-a-github-account">Create a GitHub Account</h2>
+<p>Now you need to create an account on GitHub. We are using GitHub because they offer the GitHub Pages functionality, which lets people view your repository as a website. Go to <a href="https://github.com/">their website</a> and create an account.</p>
+<p><img src="going_static_create_git_account.png" alt="Create account"></p>
+<p>I've ran into some trouble loading the captcha on Firefox, probably caused by extensions too agressive towards scripts and ads, so you may have to try a few browsers to complete the registration process.</p>
+<p><img src="going_static_create_git_solve_captcha.png" alt="Solve the captcha"></p>
+<p>Select the free plan and you can skip the other questions, you don't really need an organization or to provide information about your programming expertise.</p>
+<p><img src="going_static_create_git_plan.png" alt="Choose your plan and skip the questions"></p>
+<p>Don't forget to confirm your email address, and you are done, you now have an account on GitHub and can create your website.</p>
+<p><img src="going_static_create_git_email.png" alt="Confirm your email"></p>
+<h2 id="create-a-repository">Create a Repository</h2>
+<p>On the GitHub website you have a &quot;+&quot; simbol in the top right corner of the page. Click that, and click new repository.</p>
+<p><img src="going_static_create_repo.png" alt="Create new repository"></p>
+<p>Give it a name and leave it public. Your repository needs to be public to create a website that is accessible to people on the internet. Select the option to initialize the repository with a readme.</p>
+<p><img src="going_static_name_repo.png" alt="Name your repository"></p>
+<h2 id="make-it-a-web-page">Make it a Web Page</h2>
+<p><a href="https://pages.github.com/">GitHub Pages</a> has a very clear, simple tutorial on how to create a web page from your git repository. We will use the &quot;Project site&quot; option (because this lets you run multiple websites from your GitHub account).</p>
+<p><img src="going_static_pages_type.png" alt="Choose the type of GitHub Pages website"></p>
+<p>I will also go with the &quot;Start from scratch&quot; option. They guide you through creating an index file on your master branch and commiting it.</p>
+<p><img src="going_static_pages_scratch.png" alt="Start from scratch"></p>
+<p><img src="going_static_pages_create_file.png" alt="Create an index file"></p>
+<p><img src="going_static_pages_index.png" alt="Write your index page"></p>
+<p><img src="going_static_pages_commit.png" alt="Commit your index"></p>
+<p>Then you need to configure your repository, by going into the &quot;Settings&quot; tab and under the &quot;GitHub Pages&quot; section select &quot;master branch&quot; as your &quot;Source&quot;. Click &quot;Save&quot;.</p>
+<p><img src="going_static_repo_settings.png" alt="Go to repository settings"></p>
+<p><img src="going_static_pages_source.png" alt="Select the source branch for GitHub Pages"></p>
+<p>That's all you need to do to have a free static website, that you can already see by navigating to a web address consisting of your username plus <code>.github.io/</code> plus your repository name: <code>https://trswebtest.github.io/goingstatic/</code>.</p>
+<p><img src="going_static_pages_done.png" alt="Open your page in the browser">
+<img src="going_static_pages_url.png" alt="You new website"></p>
+<p>This was all you needed to have your website up, but I will also go over the tools I use to make maintaining a static website more manageable.</p>
+<h2 id="install-visual-studio-code">Install Visual Studio Code</h2>
+<p><a href="https://code.visualstudio.com/">Visual Studio Code</a> is a cross-platform source code editor that I am currently using to handle the entire process of editing and publishing my site. It gives you functionality to write your website in Markdown format, convert the Markdown to HTML, edit your HTML and CSS files to customize your site, and commit and push data to GIT. All you need besides Visual Studio Code is a browser. (If you're a <em>technincal</em>, you can of course adapt this pipeline to your preferred editor)</p>
+<h2 id="create-your-local-website-editing-environment">Create Your Local Website Editing Environment</h2>
+<p>Open a Visual Studio Code window and select &quot;Open folder...&quot;, choose some folder on disk where you want your website(s) to reside.</p>
+<p><img src="going_static_vsc_new_window.png" alt="New Visual Studio Code window"></p>
+<p>Then, in the Visual Studio Code menu (you may have to press the <code>Alt</code> key for the menu to be visible) choose &quot;Terminal&quot; and click &quot;New Terminal&quot;.</p>
+<p><img src="going_static_vsc_new_terminal.png" alt="Open new terminal window"></p>
+<p>You will now have a terminal window in your VS Code workspace.</p>
+<p><img src="going_static_vsc_terminal.png" alt="The terminal window"></p>
+<p>Now you need the address of your repository from GitHub. Go to your GitHub repository page and click on the &quot;Clone or download&quot; green button and copy that HTTP address to clipboard.</p>
+<p><img src="going_static_vsc_repo_url.png" alt="You repository address"></p>
+<p>Now go back to the terminal in Visual Studio Code and write <code>git clone</code> followed by that address. Press <code>Enter</code> and your repository will get <em>cloned</em> on your computer.</p>
+<p><img src="going_static_vsc_clone.png" alt="Clone your repository locally"></p>
+<p>Once this is done, select &quot;Open folder...&quot; again and there navigate to the newly created folder containing your repository. Open that folder in Visual Studio Code.</p>
+<p><img src="going_static_vsc_your_local_repo.png" alt="Your website repository opened in Visual Studio Code"></p>
+<p>Now let's make some changes to the site. You can close the &quot;Welcome&quot; page and open your main page, &quot;index.html&quot;. Add something to that page and save it.</p>
+<p><img src="going_static_vsc_new_content.png" alt="New content on your website"></p>
+<p>Now your site is updated, but this update is only on your computer. We want to <em>commit</em> this change to the git history (save it to git) and then <em>push</em> the changes to the remote repository. Only once the changes are in the remote repository will the page on the web get updated.</p>
+<p>In the side bar, select the source control screen (which should have a small notification that you have one change). Here, under &quot;CHANGES&quot; you can see all the files that are changed but not yet commited. If you don't see any changed files, you may need to click the refresh button at the top.</p>
+<p><img src="going_static_vsc_source_control_screen.png" alt="The source control screen in Visual Studio Code"></p>
+<p>There is a text box at the top where you must enter a commit message (it is required). Write some message there about the change you have made and click the &quot;tick&quot; to <em>commit</em> the change.</p>
+<p><img src="going_static_vsc_commit_message.png" alt="Write a commit message"></p>
+<p>Now, to <em>push</em> your change to the remote repository, select the three dots button and in the expanded menu select the &quot;Push&quot; action.</p>
+<p><img src="going_static_vsc_push_action.png" alt="Push your changes to the remote"></p>
+<p>You will be asked to provide your GitHub username and password.</p>
+<p><img src="going_static_vsc_push_user.png" alt="Enter your username">
+<img src="going_static_vsc_push_pass.png" alt="Enter your password"></p>
+<p>After this, the push operation is done, so you can now navigate to your website and view the change.</p>
+<p><img src="going_static_vsc_your_website.png" alt="Your updated website"></p>
+<p>This will be your work process to publish your website. You will work locally, adding pages, editing blog posts. You can open your local html files in your browser to see how they look. Once your are satisfied with your website, you can use Visual Studio Code to <em>commit</em> and <em>push</em> your changes. After a minute or two after you push your changes, your website will also be updated online.</p>
+<p>https://code.visualstudio.com/Docs/editor/versioncontrol
+https://alvinalexander.com/git/git-show-change-username-email-address</p>
+<h2 id="index-redirection-change-home-page-over-time">Index Redirection (Change home page over time)</h2>
+<p>One little trick I want to show you here is how you can use your index page to redirect to any other page on your website. I use this approach on my image blog, where I have a main page for each year. The specific case I wante to solve is that the &quot;home page&quot; of my website in 2018 was <code>2018.html</code>, and in 2019 it changed to <code>2019.html</code>. I want to redirect people to the current home page when they come to my website with the simplest configuration possible. I use the following <code>index.html</code> to do this:</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">html</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">head</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">http-equiv</span>=<span class="hljs-string">"refresh"</span> <span class="hljs-attr">content</span>=<span class="hljs-string">"0; url=2019/2019.html"</span> /&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">head</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">html</span>&gt;</span>
+</div></code></pre>
+<h2 id="error-pages">Error Pages</h2>
+<p>One good practice when putting up your site is to create a custom error page that gets displayed when someone tries to navigate to a non-existing page on your website. With a static website, where there are no input forms, requesting a non-existent resource is the only error situation you can trigger. If you don't include a custom error page, a default GitHub Pages error page is displayed.</p>
+<p><img src="going_static_error_default.png" alt="The default error page"></p>
+<p>You can improve this by providing a custom error page that points your visitors back to the root of your site. To do this we will follow the <a href="https://help.github.com/articles/creating-a-custom-404-page-for-your-github-pages-site/">instructions from GitHub</a>. You need to create a file in the root folder of the site named <code>404.html</code>, and add a link to your index page:</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">p</span>&gt;</span>Nope, no such thing on this here site. Allow me to point you back to where you need to be, the <span class="hljs-tag">&lt;<span class="hljs-name">a</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"index.html"</span>&gt;</span>home page<span class="hljs-tag">&lt;/<span class="hljs-name">a</span>&gt;</span>.<span class="hljs-tag">&lt;/<span class="hljs-name">p</span>&gt;</span>
+</div></code></pre>
+<p>If you now navigate where you don't need to be, you'll see the updated page.</p>
+<p><img src="going_static_error_custom.png" alt="The custom error page"></p>
+<p>One not here: you will need to be careful what home adress you point to in your error page. The above example will fail if you try to navigate to a &quot;deep&quot; address, like <code>https://trswebtest.github.io/goingstatic/details/more</code>. If you click the link to the home page, you will be redirected to <code>https://trswebtest.github.io/goingstatic/details/index.html</code>, which is a non-existent page itself. The correct index page location is <code>https://trswebtest.github.io/goingstatic/index.html</code>, so you may want to redirect to that address. It's simpler if you configure your website to use your custom domain. In that case, you can just use <code>/</code> as the root address you link to from the error page and everything will work beautifully.</p>
+<h2 id="custom-domain-and-securing-with-https">Custom Domain And Securing With HTTPS</h2>
+<p>If you own a custom domain, you can set it up with GitHub pages. Follow the <a href="https://help.github.com/articles/using-a-custom-domain-with-github-pages/">steps on their website</a> to set things up, and be patient.</p>
+<p>Securing your webpage with HTTPS is also quite easy, and free, so follow the <a href="https://help.github.com/articles/securing-your-github-pages-site-with-https/">GitHub Pages documentation</a> on how to do this.</p>
+<h2 id="contact-email">Contact Email</h2>
+<p>You may want to give people a way to get in touch with you. You can publish your email address on your contact page, but you can be sure it will be scraped and full of spam in no time. With a dynamic website you could have a contact form that hides your email. With a static website, that is not an option.</p>
+<p>To protect my real email from this kind of situation, but also give people a way to contact me, I use a randomized email alias. I use an email service that gives me the option of creating aliases. Publish one of these aliases on my website. In the future, when that alias will end up in too many spam databases, I can delete it and replace it with a new one. This strategy has served me well until now.</p>
+<h2 id="markdown-and-html-advanced-topic">Markdown and HTML (advanced topic)</h2>
+<p>This tutorial shows you how to host a static collection of HTML files on GitHub, but if you use this to blog you won't want to write your content directly in HTML. That would surely be cumbersome. What I do is write my content in <a href="https://daringfireball.net/projects/markdown/">Markdown</a> format. Markdown is a markup language that has simple rules and is easily converted to HTML. Since a markdown file is just a text file written in a particular way, you can work on your writing on any platform easily, without having to install anything. You can just focus on the content and, when everything is ready to be published, convert your new post to HTML, style it and push it to your website. You can quickly learn all about how to use Markdown from their <a href="https://daringfireball.net/projects/markdown/syntax">website</a>, it is not the objective of this post to explain it.</p>
+<p>What I want to give you more details on is how to easily use Markdown in Visual Studio Code to create you HTML pages. What I do is write the new page in Markdown and then use a Visual Studio Code plugin to convert that Markdown to HTML. That plugin is called <a href="https://marketplace.visualstudio.com/items?itemName=yzane.markdown-pdf">Markdown PDF</a>. You can easily install it in Visual Studio Code from teh plugins view.</p>
+<p><img src="going_static_md_plugins.png" alt="A post written in markdown and the plugins view in Visual Studio Code"></p>
+<p>Once you have the plugin installed, you can open your Markdown file and convert it to HTML (the plugin provides this functionality as well, not just PDF conversion). You need to press <code>Ctrl + Shift + P</code> (or <code>Command + Shift + P</code>) and choose the &quot;Markdown PDF: Export (html)&quot; option.</p>
+<p><img src="going_static_md_export.png" alt="Exporting the Markdown file to HTML"></p>
+<p>This will create a new HTML file alongside your original Markdown file. The extension took care of all the formatting for you, and even added some styles to your page. I usually delete those and replace them with links to CSS files that style my whole blog.</p>
+<p><img src="going_static_md_html.png" alt="The exported HTML file"></p>
+<p>I would also delete the original Markdown file before pushing my changes, or keep my Markdown files in some separate folder outside the website folder. Everything you push to your public website will be accessible, even if you don't link to it, so if you also keep the Markdown files there they will be accessible.</p>
+<p><img src="going_static_md_online.png" alt="The new post published online"></p>
+<p>There are other tools that can make this conversion. I've also successfully used <a href="https://pandoc.org/">Pandoc</a>, a universal document converter, to create HTML files from Markdown. You can configure it to prepend and append custom text/files to your document when it makes the conversion, so it's easy to add a custom <code>&lt;head&gt;</code> section to your document, with your own styles.</p>
+<p>It's also worth mentioning that <a href="https://jekyllrb.com/">Jekyll</a>, which you <a href="https://help.github.com/articles/using-jekyll-as-a-static-site-generator-with-github-pages/">can configure your GitHub Pages website to run on</a>, can also convert your Markdown files to HTML. Jekyll is a reliable tool that I have used for several years.</p>
+<h2 id="code-to-html-advanced-topic">Code to HTML (advanced topic)</h2>
+<p>Another important topic for me was displaying styled code in my HTML pages. This is done for you if you follow the scenario in the previous section for converting your Markdown to HTML. Depending on the approach you use, changing the style of the generated code sections will be different. The Markdown PDF plugin uses <a href="https://highlightjs.org/static/demo/">highlight.js</a> to style code, so you can download and try out some templates from there. Pandoc uses the [skylighting] library to style the code and you can check <a href="https://pandoc.org/MANUAL.html#syntax-highlighting">the Pandoc documentation</a> on how to change the styles of your code. Jekyll uses <a href="http://pygments.org/">Pygments</a> or <a href="https://kramdown.gettalong.org/syntax_highlighter/rouge.html">Rouge</a>, and they also <a href="https://jekyllrb.com/docs/liquid/tags/#stylesheets-for-syntax-highlighting">document</a> how to change those styles.</p>
+<h2 id="atom-feed-advanced-topic">Atom Feed (advanced topic)</h2>
+<p>Another feature you should consider is to provide a way for your readers to get notified of new content on your site. You may publish links to your new articles on social media, but I would encourage you to also consider adding a feed to your website. I use <a href="https://en.wikipedia.org/wiki/Atom_(Web_standard)">Atom</a>, which is an XML standard for web feeds. If you provide an Atom file on your website that you update with links to new posts, people can use a feed reader to subscribe to updates from your website. It's all very old-school, but reliable and gives people that avoid social networks a way to keep up to date with your website.</p>
+<p>I usually just maintain the Atom file by hand, and I only keep about ten link in it (this means I delete the oldest link when I add a new link).</p>
+<p>To add an Atom file to your website, create a <code>feed.xml</code> file in the root of your website. The file should have the following format:</p>
+<pre class="hljs"><code><div><span class="php"><span class="hljs-meta">&lt;?</span>xml version=<span class="hljs-string">"1.0"</span> encoding=<span class="hljs-string">"UTF-8"</span><span class="hljs-meta">?&gt;</span></span>
+<span class="hljs-tag">&lt;<span class="hljs-name">rss</span> <span class="hljs-attr">version</span>=<span class="hljs-string">"2.0"</span>
+    <span class="hljs-attr">xmlns:atom</span>=<span class="hljs-string">"http://www.w3.org/2005/Atom"</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">channel</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">title</span>&gt;</span>your blog title<span class="hljs-tag">&lt;/<span class="hljs-name">title</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">description</span>&gt;</span>a short description of your blog<span class="hljs-tag">&lt;/<span class="hljs-name">description</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">link</span>&gt;</span>https://trswebtest.github.io/goingstatic/<span class="hljs-tag">&lt;/<span class="hljs-name">link</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">atom:link</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"https://trswebtest.github.io/goingstatic/feed.xml"</span> <span class="hljs-attr">rel</span>=<span class="hljs-string">"self"</span> <span class="hljs-attr">type</span>=<span class="hljs-string">"application/rss+xml"</span>/&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">pubDate</span>&gt;</span>2019-01-26T16:00:00+00:00<span class="hljs-tag">&lt;/<span class="hljs-name">pubDate</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">generator</span>&gt;</span>the author name<span class="hljs-tag">&lt;/<span class="hljs-name">generator</span>&gt;</span>
+
+        <span class="hljs-tag">&lt;<span class="hljs-name">item</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">title</span>&gt;</span>the post title<span class="hljs-tag">&lt;/<span class="hljs-name">title</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">description</span>&gt;</span>a description of your post<span class="hljs-tag">&lt;/<span class="hljs-name">description</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">pubDate</span>&gt;</span>2019-01-26T16:00:00+00:00<span class="hljs-tag">&lt;/<span class="hljs-name">pubDate</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">link</span>&gt;</span>https://trswebtest.github.io/goingstatic/2019/post_url.html<span class="hljs-tag">&lt;/<span class="hljs-name">link</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">category</span>&gt;</span>tag1<span class="hljs-tag">&lt;/<span class="hljs-name">category</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">category</span>&gt;</span>tag2<span class="hljs-tag">&lt;/<span class="hljs-name">category</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">item</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">channel</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">rss</span>&gt;</span>
+</div></code></pre>
+<p>The feed can have multiple channels and each channel can have more items. When I publish a new post, I add a new item with the correct name and description, and an absolute link to the post.</p>
+<p>You can then add a link to <code>/feed.xml</code> on your home page, and browsers should know what to do when people click that link, if they have a feed reader configured.</p>
+
+</body>
+</html>

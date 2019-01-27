@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2019-01-24T15:15:00+02:00</pubDate>
+        <pubDate>2019-01-27T11:20:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Going Static Tutorial</title>
+            <description>I walk you through the steps of setting up a static blog on GitHub.</description>
+            <pubDate>2019-01-27T11:20:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2019/2019.01.27.going_static_tutorial.html</link>
+            <category>blog</category>
+            <category>web design</category>
+            <category>github</category>
+            <category>visual studio code</category>
+        </item>
 
         <item>
             <title>Going Static</title>
