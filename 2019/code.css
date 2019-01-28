@@ -61,8 +61,7 @@ pre {
   overflow-x: auto;
   background: #fff;
   color: #1a1a1a;
-  /*padding: 0.5em;*/
-  border: 0.1em solid #1a1a1a;
+  border: 0.1rem solid #1a1a1a;
 }
 
 .hljs-emphasis {
