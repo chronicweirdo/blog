@@ -279,13 +279,10 @@ object ImageTest extends App {
 And then an update, to also print out the image tiles, each in a folder for its own cluster:
 
 ``` scala
-package com.bosch.conan.spark.apps
-
 import java.awt.image.BufferedImage
 import java.io.File
 import java.sql.Timestamp
 
-import com.bosch.conan.spark.apps.ArrayToImageWriter.getIndex
 import javax.imageio.ImageIO
 import org.apache.spark.ml.classification.LogisticRegression
 import org.apache.spark.ml.clustering.KMeans
@@ -297,11 +294,11 @@ import org.apache.spark.sql.types._
 
 import scala.util.Random
 
-object MLTest3 {
+object MLTest {
 
   private val WINDOW = 5 * 60 * 1000
 
-  private def getOrElse(name: String, default: String)(implicit argmap: Map[String, String], detailedLogs: Boolean = true)= {
+  private def getOrElse(name: String, default: String)(implicit argmap: Map[String, String], detailedLogs: Boolean = true) = {
     val result = argmap.getOrElse(name, default)
     if (detailedLogs) println(s"$name: $result")
     result
@@ -310,6 +307,7 @@ object MLTest3 {
   def getLabel() = if (Random.nextBoolean()) 1.0 else 0.0
 
   def main(args: Array[String]): Unit = {
+    implicit val detailedLogs = true
     implicit val argmap: Map[String, String] = args
       .map(a => a.split("="))
       .filter(a => a(0).nonEmpty && a(1).nonEmpty)
@@ -320,7 +318,7 @@ object MLTest3 {
     val runLocal = getOrElse("local", "false").toBoolean
     val hdfsHost = getOrElse("hdfs_host", "127.0.0.1")
     val hdfsPort = getOrElse("hdfs_port", "9000")
-    val hdfsSource = getOrElse("hdfs_source", "/pjcon/analysisParquet")
+    val hdfsSource = getOrElse("hdfs_source", "/user/data")
 
     implicit val spark: SparkSession = (if (runLocal) SparkSession.builder.master("local[*]") else SparkSession.builder())
         .appName(applicationName)
@@ -338,11 +336,11 @@ object MLTest3 {
       .load(s"hdfs://$hdfsHost:$hdfsPort$hdfsSource")
 
     val gps = segments.select(
-      col("MEASUREMENT_UUID").as("id"),
-      col("Sample_Time").as("time"),
+      col("drive_id").as("id"),
+      col("timestamp").as("time"),
       array(
-        col("GPS_Latitude").cast(FloatType),
-        col("GPS_Longitude").cast(FloatType)
+        col("latitude").cast(FloatType),
+        col("longitude").cast(FloatType)
       ).as("gps")
     )
 
