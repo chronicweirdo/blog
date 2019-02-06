@@ -278,6 +278,12 @@ object ImageTest extends App {
 
 And then an update, to also print out the image tiles, each in a folder for its own cluster:
 
+---
+
+This post is not an end-to-end lesson, but a small and incomplete part of a larger exploration. It shows an example of loading GPS data (latitude and longitude) recorded by some device (phone, car, bike) from Hadoop into a Spark job. This data is processed and vectors are extracted from the GPS data and prepared for a clustering algorithm. A simple clustering algorithm, provided by the machine learning arm of Spark, is applied. The data is then split into its respective clusters and exported as images, to offer us a way to visually inspect the clusters.
+
+The objective here is to get more acquianted with Spark and (Spark) MLlib and build the tools necessary to both work with GPS data and create a visual display of the results. The key aspects of getting valuable results from machine learning, preparing the input features and finding the appropriate algorithm to build your model, are not part of this exercise, so the easiest approach was chosed in both of those cases. The purpose of this post is to be a record of a functional pipeline that can be used in further experimenting.
+
 ``` scala
 import java.awt.image.BufferedImage
 import java.io.File
@@ -336,7 +342,7 @@ object MLTest {
       .load(s"hdfs://$hdfsHost:$hdfsPort$hdfsSource")
 
     val gps = segments.select(
-      col("drive_id").as("id"),
+      col("trackId").as("id"),
       col("timestamp").as("time"),
       array(
         col("latitude").cast(FloatType),
