@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A Spark MLlib Test Setup</title>
+  <meta name="description" content="I am creating a short clustering test pipeline for GPS data, from loading the data from HDFS, through preparing the feature vectors and ending with the visualization of the data.">
+  <meta name="keywords" content="apache spark, mllib, scala, clustering">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+
+<body>
+  <p class="header"><a class="home" href="../index.html">home</a> / 2019.02.08 19:20 / apache spark / mllib / scala / clustering</p>
+  <h1 id="a-spark-mllib-test-setup">A Spark MLlib Test Setup</h1>
+  <p>This post is not an end-to-end lesson, but a small and incomplete part of a larger exploration. It shows an
+    example of loading GPS data (latitude and longitude) recorded by some device (phone, car, bike) from Hadoop into a
+    Spark job. This data is processed and vectors are extracted from the GPS data and prepared for a clustering
+    algorithm. A simple clustering algorithm, provided by the machine learning arm of Spark, is applied. The data is
+    then split into its respective clusters and exported as images, to offer us a way to visually inspect the clusters.</p>
+  <p>The objective here is to get more acquianted with Spark and (Spark) MLlib and build the tools necessary to both
+    work with GPS data and create a visual display of the results. The key aspects of getting valuable results from
+    machine learning, preparing the input features and finding the appropriate algorithm to build your model, are not
+    part of this exercise, so the easiest approach was chosed in both of those cases. The purpose of this post is to be
+    a record of a functional pipeline that can be used in further experimenting.</p>
+  <h2 id="dependencies">Dependencies</h2>
+  <p>The following are the dependencies for the project, as defined in the <code>build.sbt</code> file:</p>
+  <pre class="hljs"><code><div><span class="hljs-type">ThisBuild</span> / scalaVersion := <span class="hljs-string">"2.11.12"</span>
+
+<span class="hljs-keyword">val</span> spark = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-core"</span> % <span class="hljs-string">"2.4.0"</span> % <span class="hljs-string">"provided"</span>
+<span class="hljs-keyword">val</span> sparkSql = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-sql"</span> % <span class="hljs-string">"2.4.0"</span> % <span class="hljs-string">"provided"</span>
+
+<span class="hljs-keyword">val</span> sparkMl = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-mllib"</span> % <span class="hljs-string">"2.4.0"</span>
+<span class="hljs-keyword">val</span> netlibJava = <span class="hljs-string">"com.github.fommil.netlib"</span> % <span class="hljs-string">"all"</span> % <span class="hljs-string">"1.1.2"</span>
+
+<span class="hljs-keyword">lazy</span> <span class="hljs-keyword">val</span> mltest = (project in file(<span class="hljs-string">"."</span>))
+  .settings(
+    name := <span class="hljs-string">"ML Test"</span>,
+    libraryDependencies ++= <span class="hljs-type">Seq</span>(
+      sparkSql,
+      sparkMl,
+      netlibJava
+    )
+  )
+
+<span class="hljs-keyword">val</span> meta = <span class="hljs-string">""</span><span class="hljs-string">"META.INF(.)*"</span><span class="hljs-string">""</span>.r
+assemblyMergeStrategy in assembly := {
+  <span class="hljs-keyword">case</span> <span class="hljs-type">PathList</span>(<span class="hljs-string">"javax"</span>, <span class="hljs-string">"servlet"</span>, xs @ _*) =&gt; <span class="hljs-type">MergeStrategy</span>.first
+  <span class="hljs-keyword">case</span> <span class="hljs-type">PathList</span>(ps @ _*) <span class="hljs-keyword">if</span> ps.last endsWith <span class="hljs-string">".html"</span> =&gt; <span class="hljs-type">MergeStrategy</span>.first
+  <span class="hljs-keyword">case</span> n <span class="hljs-keyword">if</span> n.startsWith(<span class="hljs-string">"reference.conf"</span>) =&gt; <span class="hljs-type">MergeStrategy</span>.concat
+  <span class="hljs-keyword">case</span> n <span class="hljs-keyword">if</span> n.endsWith(<span class="hljs-string">".conf"</span>) =&gt; <span class="hljs-type">MergeStrategy</span>.concat
+  <span class="hljs-keyword">case</span> meta(_) =&gt; <span class="hljs-type">MergeStrategy</span>.discard
+  <span class="hljs-keyword">case</span> x =&gt; <span class="hljs-type">MergeStrategy</span>.first
+}
+</div></code></pre>
+  <p>I also have a <code>project</code> folder that contains the folowing files:</p>
+  <ul>
+    <li><code>build.properties</code></li>
+  </ul>
+  <pre class="hljs"><code><div>sbt.version=1.2.3
+</div></code></pre>
+  <ul>
+    <li><code>plugins.sbt</code></li>
+  </ul>
+  <pre class="hljs"><code><div>addSbtPlugin(<span class="hljs-string">"com.eed3si9n"</span> % <span class="hljs-string">"sbt-assembly"</span> % <span class="hljs-string">"0.14.8"</span>)
+</div></code></pre>
+  <p>Running <code>sbt</code> assembly should prepare a jar that can be submitted to your Spark cluster.</p>
+  <h2 id="clustering-test">Clustering Test</h2>
+  <p>Everything is written as simple as possible, in a file called <code>MLTest.scala</code>. The first thing we do is
+    configure our imports.</p>
+  <pre class="hljs"><code><div><span class="hljs-keyword">import</span> java.awt.image.<span class="hljs-type">BufferedImage</span>
+<span class="hljs-keyword">import</span> java.io.<span class="hljs-type">File</span>
+<span class="hljs-keyword">import</span> java.sql.<span class="hljs-type">Timestamp</span>
+
+<span class="hljs-keyword">import</span> javax.imageio.<span class="hljs-type">ImageIO</span>
+<span class="hljs-keyword">import</span> org.apache.spark.ml.classification.<span class="hljs-type">LogisticRegression</span>
+<span class="hljs-keyword">import</span> org.apache.spark.ml.clustering.<span class="hljs-type">KMeans</span>
+<span class="hljs-keyword">import</span> org.apache.spark.ml.evaluation.<span class="hljs-type">ClusteringEvaluator</span>
+<span class="hljs-keyword">import</span> org.apache.spark.ml.linalg.{<span class="hljs-type">Vector</span>, <span class="hljs-type">Vectors</span>}
+<span class="hljs-keyword">import</span> org.apache.spark.sql._
+<span class="hljs-keyword">import</span> org.apache.spark.sql.functions._
+<span class="hljs-keyword">import</span> org.apache.spark.sql.types._
+
+<span class="hljs-keyword">import</span> scala.util.<span class="hljs-type">Random</span>
+</div></code></pre>
+  <p>We then have some utility code, used to extract the program arguments from a map or use a default.</p>
+  <pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">MLTest</span> </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-keyword">val</span> <span class="hljs-type">WINDOW</span> = <span class="hljs-number">5</span> * <span class="hljs-number">60</span> * <span class="hljs-number">1000</span>
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(name: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">String</span>)(<span class="hljs-keyword">implicit</span> argmap: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>], detailedLogs: <span class="hljs-type">Boolean</span> = <span class="hljs-literal">true</span>) = {
+    <span class="hljs-keyword">val</span> result = argmap.getOrElse(name, <span class="hljs-keyword">default</span>)
+    <span class="hljs-keyword">if</span> (detailedLogs) println(<span class="hljs-string">s"<span class="hljs-subst">$name</span>: <span class="hljs-subst">$result</span>"</span>)
+    result
+  }
+</div></code></pre>
+  <p>The first thing we do in the program is read the input arguments. We need to have the details of the HDFS system
+    where our data is on. We also have a flag named <code>local</code> that we can set to true to run the spark program
+    on our computer, instead of a Spark cloud.</p>
+  <pre class="hljs"><code><div>  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> detailedLogs = <span class="hljs-literal">true</span>
+    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> argmap: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] = args
+      .map(a =&gt; a.split(<span class="hljs-string">"="</span>))
+      .filter(a =&gt; a(<span class="hljs-number">0</span>).nonEmpty &amp;&amp; a(<span class="hljs-number">1</span>).nonEmpty)
+      .map(a =&gt; a(<span class="hljs-number">0</span>) -&gt; a(<span class="hljs-number">1</span>))
+      .toMap
+
+    <span class="hljs-keyword">val</span> applicationName = <span class="hljs-keyword">this</span>.getClass.getCanonicalName
+    <span class="hljs-keyword">val</span> runLocal = getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-string">"false"</span>).toBoolean
+    <span class="hljs-keyword">val</span> hdfsHost = getOrElse(<span class="hljs-string">"hdfs_host"</span>, <span class="hljs-string">"127.0.0.1"</span>)
+    <span class="hljs-keyword">val</span> hdfsPort = getOrElse(<span class="hljs-string">"hdfs_port"</span>, <span class="hljs-string">"9000"</span>)
+    <span class="hljs-keyword">val</span> hdfsSource = getOrElse(<span class="hljs-string">"hdfs_source"</span>, <span class="hljs-string">"/user/data"</span>)
+</div></code></pre>
+  <p>We then create and configure a Spark session and import the implicits, so that our data conversions work.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = (<span class="hljs-keyword">if</span> (runLocal) <span class="hljs-type">SparkSession</span>.builder.master(<span class="hljs-string">"local[*]"</span>) <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder())
+        .appName(applicationName)
+        .getOrCreate()
+
+    <span class="hljs-keyword">import</span> spark.implicits._
+
+    spark.sparkContext.setLogLevel(<span class="hljs-string">"WARN"</span>)
+    spark.conf.set(<span class="hljs-string">"spark.sql.session.timeZone"</span>, <span class="hljs-string">"UTC"</span>)
+</div></code></pre>
+  <p>Our data is recorded as a track. The device saves the location of a person on a hike or a walk, or while biking,
+    or while driving, from the start of the activity to the end of that activity, and that is a whole track. But the
+    track is actually divided in segments. That means the device does not save all the information of a track in a
+    single file, but partitions it into multiple files, based on how long that track is (think log segmentation). These
+    files are then pushed in HDFS, and these files are our raw data. The files are in parquet format.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> segments = spark.read
+      .format(<span class="hljs-string">"parquet"</span>)
+      .option(<span class="hljs-string">"maxFilesPerTrigger"</span>, <span class="hljs-number">1</span>)
+      .option(<span class="hljs-string">"mergeSchema"</span>, <span class="hljs-literal">true</span>)
+      .load(<span class="hljs-string">s"hdfs://<span class="hljs-subst">$hdfsHost</span>:<span class="hljs-subst">$hdfsPort</span><span class="hljs-subst">$hdfsSource</span>"</span>)
+</div></code></pre>
+  <p>The files may contain a lot more data than just the GPS, but we'll filter out that data and keep only the ID of
+    the track, the timestamp (the time at which the GPS position was recorded) and the GPS coordinates.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> gps = segments.select(
+      col(<span class="hljs-string">"trackId"</span>).as(<span class="hljs-string">"id"</span>),
+      col(<span class="hljs-string">"timestamp"</span>).as(<span class="hljs-string">"time"</span>),
+      array(
+        col(<span class="hljs-string">"latitude"</span>).cast(<span class="hljs-type">FloatType</span>),
+        col(<span class="hljs-string">"longitude"</span>).cast(<span class="hljs-type">FloatType</span>)
+      ).as(<span class="hljs-string">"gps"</span>)
+    )
+</div></code></pre>
+  <p>We will next need to split a track in equal sections. It may be more useful to look at and clasify
+    &quot;movements&quot; made by our device rather than the entire track. Intuitively, a track will be composed of the
+    device veerig right, veering left, going aroud in a cicle. These can be considered the components of a track, and
+    we want to identify these components through a clustering algorithm. As an exercise. We will partition our tracks
+    based on time, into 5 minute sections.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> getTimeSection = functions.udf((time: <span class="hljs-type">Timestamp</span>) =&gt; <span class="hljs-keyword">new</span> <span class="hljs-type">Timestamp</span>((time.getTime / <span class="hljs-type">WINDOW</span>) * <span class="hljs-type">WINDOW</span>))
+
+    <span class="hljs-keyword">val</span> measurements = gps.withColumn(<span class="hljs-string">"timeSection"</span>, getTimeSection(col(<span class="hljs-string">"time"</span>)))
+
+    <span class="hljs-keyword">val</span> sections = measurements.groupBy(<span class="hljs-string">"id"</span>, <span class="hljs-string">"timeSection"</span>)
+      .agg(collect_list(<span class="hljs-string">"gps"</span>).as(<span class="hljs-string">"gps"</span>))
+    sections.show(<span class="hljs-number">10</span>)
+</div></code></pre>
+  <p>But we are not done preparing the data. A track may be shorted than 5 minutes, or it will not divide exactly into
+    5 minute sections. This means the number of GPS coordinate we have in each section will vary. We need to create
+    feature vectors for our learning algorithms that have the same number of features. We are also looking for
+    directional patters in our tracks. For this, we will construct 2D tiles out of each section, matrixes whitch should
+    paint the path the device is taking during that time.</p>
+  <p>We will be using 10 by 10 tiles, which will give us a feature vector of size 100. The <code>createTile</code>
+    function will filter out invalid GPS coordinates, copmute the span for each dimension and use those spans to
+    normalize the coordinates, then use the normalized coordinates to &quot;paint&quot; the tile, giving us the feature
+    vector. We apply these operations to each section.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> tileSize1 = <span class="hljs-number">10</span>
+    <span class="hljs-keyword">val</span> tileSize2 = <span class="hljs-number">10</span>
+
+    <span class="hljs-keyword">val</span> createTile = functions.udf((gps: <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[java.lang.<span class="hljs-type">Float</span>]]) =&gt; {
+      <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getIndex</span></span>(c1: <span class="hljs-type">Int</span>, c2: <span class="hljs-type">Int</span>) = c1 * tileSize2 + c2
+      <span class="hljs-keyword">val</span> tile: <span class="hljs-type">Array</span>[<span class="hljs-type">Double</span>] = <span class="hljs-type">Array</span>.fill(tileSize1 * tileSize2){<span class="hljs-number">0.0</span>}
+
+      <span class="hljs-keyword">val</span> valid = gps.map(e =&gt; (e(<span class="hljs-number">0</span>), e(<span class="hljs-number">1</span>)))
+        .filter(e =&gt; e._1 != <span class="hljs-literal">null</span> &amp;&amp; e._2 != <span class="hljs-literal">null</span>)
+
+      <span class="hljs-keyword">if</span> (valid.nonEmpty) {
+        <span class="hljs-keyword">val</span> min1 = valid.map(_._1).min
+        <span class="hljs-keyword">val</span> max1 = valid.map(_._1).max
+        <span class="hljs-keyword">val</span> span1 = max1 - min1
+        <span class="hljs-keyword">val</span> min2 = valid.map(_._2).min
+        <span class="hljs-keyword">val</span> max2 = valid.map(_._2).max
+        <span class="hljs-keyword">val</span> span2 = max2 - min2
+
+        <span class="hljs-keyword">val</span> normalized = valid.map(e =&gt; (
+            (e._1 - min1) / span1,
+            (e._2 - min2) / span2)
+        )
+
+        <span class="hljs-keyword">val</span> quantized = normalized.map(e =&gt; (
+            (e._1 * (tileSize1<span class="hljs-number">-1</span>)).toInt,
+            (e._2 * (tileSize2<span class="hljs-number">-1</span>)).toInt)
+        )
+
+        quantized.foreach(e =&gt; tile(getIndex(e._1, e._2)) = tile(getIndex(e._1, e._2)) + <span class="hljs-number">1</span>)
+      }
+
+      tile
+    })
+    <span class="hljs-keyword">val</span> tileSizeComputation = functions.udf((tile: <span class="hljs-type">Seq</span>[<span class="hljs-type">Double</span>]) =&gt; tile.length)
+
+    <span class="hljs-keyword">val</span> tiles = sections.withColumn(<span class="hljs-string">"tile"</span>, createTile(col(<span class="hljs-string">"gps"</span>)))
+        .withColumn(<span class="hljs-string">"tileSize"</span>, tileSizeComputation(col(<span class="hljs-string">"tile"</span>)))
+    tiles.show(<span class="hljs-number">10</span>)
+</div></code></pre>
+  <p>Now we are ready to feed our data to the learning algorithm. We'll convert the tiles into vectors, and update the
+    IDs of those vectors to contain the start time of the sections. We then use Spark's MLlib to train a KMeans cluster
+    model with 5 centers.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> dataset = tiles
+      .map(s =&gt; (
+        s.getString(s.fieldIndex(<span class="hljs-string">"id"</span>)) + <span class="hljs-string">" "</span> + s.getAs[<span class="hljs-type">Timestamp</span>](<span class="hljs-string">"timeSection"</span>).getTime.toString,
+        <span class="hljs-type">Vectors</span>.dense(s.getAs[<span class="hljs-type">Seq</span>[<span class="hljs-type">Double</span>]](<span class="hljs-string">"tile"</span>).toArray))
+      )
+      .toDF(<span class="hljs-string">"label"</span>, <span class="hljs-string">"features"</span>)
+
+    <span class="hljs-keyword">val</span> resultFolderPath = <span class="hljs-string">"clustering-result-"</span> + <span class="hljs-type">System</span>.currentTimeMillis()
+
+    <span class="hljs-keyword">val</span> kmeans = <span class="hljs-keyword">new</span> <span class="hljs-type">KMeans</span>().setK(<span class="hljs-number">5</span>).setSeed(<span class="hljs-number">1</span>L)
+    <span class="hljs-keyword">val</span> model = kmeans.fit(dataset)
+</div></code></pre>
+  <p>Once we have our model, we can go over the data and classify it, put each section into it's cluster. As we print
+    all this to the console, we see a lot of numbers, which are hard to understand (for me, at least). We want a better
+    way to represent our data, so we'll have to paint our tiles into image files, and output those image files to
+    folders, with a separate folder for each cluster. The following code does just that, and you can look at the end of
+    this post to see how we write a vector to an image file.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> predictions: <span class="hljs-type">DataFrame</span> = model.transform(dataset)
+    <span class="hljs-keyword">val</span> evaluator = <span class="hljs-keyword">new</span> <span class="hljs-type">ClusteringEvaluator</span>()
+    predictions.show(<span class="hljs-number">10</span>)
+    predictions
+      .map(p =&gt; p.getAs[<span class="hljs-type">String</span>](<span class="hljs-string">"label"</span>) + <span class="hljs-string">","</span> + p.getAs[<span class="hljs-type">Int</span>](<span class="hljs-string">"prediction"</span>).toString)
+      .write.csv(resultFolderPath)
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">createFolder</span></span>(path: <span class="hljs-type">String</span>) = <span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(path).mkdir()
+
+    <span class="hljs-keyword">val</span> predictionGroups = predictions
+      .groupBy(<span class="hljs-string">"prediction"</span>)
+      .agg(collect_list(
+        struct(col(<span class="hljs-string">"label"</span>), col(<span class="hljs-string">"features"</span>))
+      ).as(<span class="hljs-string">"tiles"</span>))
+    predictionGroups.show(<span class="hljs-number">10</span>)
+
+    predictionGroups.foreach(cluster =&gt; {
+        <span class="hljs-keyword">val</span> clusterPath = resultFolderPath + <span class="hljs-string">"\\"</span> + cluster.getAs[<span class="hljs-type">String</span>](<span class="hljs-string">"prediction"</span>)
+        createFolder(clusterPath)
+
+        <span class="hljs-keyword">val</span> tiles = cluster.getSeq[<span class="hljs-type">Row</span>](cluster.fieldIndex(<span class="hljs-string">"tiles"</span>))
+        tiles.foreach(tile =&gt;
+          <span class="hljs-type">ArrayToImageWriter</span>.writeArray(tile.getAs[<span class="hljs-type">Vector</span>](<span class="hljs-number">1</span>).toArray, tileSize1, tileSize2, clusterPath + <span class="hljs-string">"\\"</span> + tile.getString(<span class="hljs-number">0</span>) + <span class="hljs-string">".jpg"</span>)
+        )
+      })
+</div></code></pre>
+  <p>At the end of the program we can look at the cluster centers.</p>
+  <pre class="hljs"><code><div>    <span class="hljs-keyword">val</span> silhouette = evaluator.evaluate(predictions)
+    println(<span class="hljs-string">s"Silhouette with squared euclidean distance = <span class="hljs-subst">$silhouette</span>"</span>)
+
+    println(<span class="hljs-string">"Cluster Centers: "</span>)
+    model.clusterCenters.foreach(println)
+  }
+}
+</div></code></pre>
+  <p>We can now look at our clusters and see if any patterns have emerged. The first cluster seems to have centered on
+    mostly sections that don't have any GPS data at all, and there are some weird entries where the GPS values seem to
+    be erratic.</p>
+  <p><img src="mllib_cluster_0.png" alt="Cluster 0"></p>
+  <p>Our second cluster is very small and contains tracks that seem interrupted and have data in the corners of the
+    tile, apparently around the anti-diagonal, north-east to south-west.</p>
+  <p><img src="mllib_cluster_1.png" alt="Cluster 1"></p>
+  <p>Our third cluster is more interesting, we have a lot of data here, a lot of activity in the center and on the
+    diagonals. This cluster looks like a good canditate for splitting. We can maybe increase the number of clusters, or
+    we could select only the tiles in this cluster and split them into sub-clusters.</p>
+  <p><img src="mllib_cluster_2.png" alt="Cluster 2"></p>
+  <p>In the fourth cluster we seem to have tracks where we had GPS data, but the device stood still. This cluster seems
+    very consistent.</p>
+  <p><img src="mllib_cluster_3.png" alt="Cluster 3"></p>
+  <p>The last cluster seems to show situations where the device moved along the main diagonal, north-west to
+    south-east.</p>
+  <p><img src="mllib_cluster_4.png" alt="Cluster 4"></p>
+  <p>We now have our clusters and visualization. Are the results useful? Not so much. We can continue experimenting
+    with different machine learning algorithms, different parameters, different ways of building our feature vectors,
+    but we have a starting point, a pipeline that includes data transformation and ends in result visualization.</p>
+  <h2 id="bonus-write-an-array-to-an-image">Bonus: Write an Array to an Image</h2>
+  <p>Following is a small Scala object that can write an array into a black-and-white image at a certain path on disk.</p>
+  <pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">ArrayToImageWriter</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">writeArray</span></span>(data: <span class="hljs-type">Array</span>[<span class="hljs-type">Double</span>], size1: <span class="hljs-type">Int</span>, size2: <span class="hljs-type">Int</span>, path: <span class="hljs-type">String</span>) = {
+    write(
+      data.map(d =&gt; d.toInt),
+      size1,
+      size2,
+      path
+    )
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">write</span></span>(data: <span class="hljs-type">Seq</span>[<span class="hljs-type">Int</span>], size1: <span class="hljs-type">Int</span>, size2: <span class="hljs-type">Int</span>, path: <span class="hljs-type">String</span>) = {
+    <span class="hljs-keyword">val</span> scale = <span class="hljs-number">10</span>
+
+    <span class="hljs-keyword">val</span> width = size1 * scale
+    <span class="hljs-keyword">val</span> height = size2 * scale
+    <span class="hljs-keyword">val</span> img = <span class="hljs-keyword">new</span> <span class="hljs-type">BufferedImage</span>(width, height, <span class="hljs-type">BufferedImage</span>.<span class="hljs-type">TYPE_INT_ARGB</span>)
+
+    <span class="hljs-keyword">val</span> black = getPixel(<span class="hljs-number">255</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>)
+    <span class="hljs-keyword">val</span> white = getPixel(<span class="hljs-number">255</span>, <span class="hljs-number">255</span>, <span class="hljs-number">255</span>, <span class="hljs-number">255</span>)
+
+    <span class="hljs-keyword">for</span> (y &lt;- <span class="hljs-number">0</span> until height) {
+      <span class="hljs-keyword">for</span> (x &lt;- <span class="hljs-number">0</span> until width) {
+        <span class="hljs-keyword">val</span> p = <span class="hljs-keyword">if</span> (data(getIndex(x, y, scale, size1)) == <span class="hljs-number">0</span>) white <span class="hljs-keyword">else</span> black
+        img.setRGB(x, y, p)
+      }
+    }
+
+    <span class="hljs-keyword">val</span> f = <span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(path)
+    <span class="hljs-type">ImageIO</span>.write(img, <span class="hljs-string">"png"</span>, f)
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getIndex</span></span>(x: <span class="hljs-type">Int</span>, y: <span class="hljs-type">Int</span>, scale: <span class="hljs-type">Int</span>, size1: <span class="hljs-type">Int</span>) = (y / scale) * size1 + (x / scale)
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getPixel</span></span>(a: <span class="hljs-type">Int</span>, r: <span class="hljs-type">Int</span>, g: <span class="hljs-type">Int</span>, b: <span class="hljs-type">Int</span>) = {
+    (a &lt;&lt; <span class="hljs-number">24</span>) | (r &lt;&lt; <span class="hljs-number">16</span>) | (g &lt;&lt; <span class="hljs-number">8</span>) | b
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">test</span></span>()= {
+
+    <span class="hljs-keyword">val</span> size1 = <span class="hljs-number">10</span>
+    <span class="hljs-keyword">val</span> size2 = <span class="hljs-number">10</span>
+    <span class="hljs-keyword">val</span> data = <span class="hljs-type">Seq</span>(
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>,
+      <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>
+    )
+
+    write(data, size1, size2, <span class="hljs-string">"output.jpg"</span>)
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    test()
+  }
+}
+</div></code></pre>
+  <p>And the image generated by the test method is:</p>
+  <p><img src="data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAA1UlEQVR42u3YsQ3AMAwDQe6/dLKEEBHKPeDe5nXOo6piAiACAkRAgAgIEAEBIiACAkRAgAgIEAEBorMgSUbP7+4HBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIEDOgggIEAEBIiACAkRAgOgLkK2vhPoBh3cBAgQIECBAgAABAgQIECBAui94ZWggQIAAAQIECBAgQIAAAQJkB2T6wVtnbRcgQIAAAQIECBAgQIAAAQJETV82JgAiIEAEBIiAABEQIAIiIEAEBIiAABEQIGrpBQnC/nlQxzkqAAAAAElFTkSuQmCC"></p>
+
+</body>
+
+</html>

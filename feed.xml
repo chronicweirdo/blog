@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2019-01-27T11:20:00+02:00</pubDate>
+        <pubDate>2019-02-08T19:20:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>A Spark MLlib Test Setup</title>
+            <description>I am creating a short clustering test pipeline for GPS data, from loading the data from HDFS, through preparing the feature vectors and ending with the visualization of the data.</description>
+            <pubDate>2019-02-08T19:20:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2019/2019.02.08.spark_ml.html</link>
+            <category>apache spark</category>
+            <category>mllib</category>
+            <category>scala</category>
+            <category>clustering</category>
+        </item>
 
         <item>
             <title>Going Static Tutorial</title>
