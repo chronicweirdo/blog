@@ -6,8 +6,18 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2019-02-08T19:20:00+02:00</pubDate>
+        <pubDate>2019-02-11T21:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Spark UI Authentication</title>
+            <description>Presenting two methods for building an authentication filter for Spark UI. And a little bonus at the end.</description>
+            <pubDate>2019-02-11T21:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2019/2019.02.11.spark_ui_authentication.html</link>
+            <category>apache spark</category>
+            <category>authentication</category>
+            <category>servlet filter</category>
+        </item>
 
         <item>
             <title>A Spark MLlib Test Setup</title>

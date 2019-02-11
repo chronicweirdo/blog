@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spark UI Authentication</title>
+  <meta name="description" content="Presenting two methods for building an authentication filter for Spark UI. And a little bonus at the end.">
+  <meta name="keywords" content="apache spark, authentication, servlet filter">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2019.02.11 21:00 / apache spark / authentication / servlet filter</p>
+<h1 id="spark-ui-authentication">Spark UI Authentication</h1>
+<p>Following is a small filter to be used to authenticate users that want to access a Spark cluster, the master of ther worker nodes, through Spark's web UI. The filter in this post is not just verifying that a correct authentication token is present on the requests made to the Spark UI, it is actually trying to provide a minimal authentication mechanism (authentication form plus token generation and token verification), all in one small Java class. The post also details how to install the authentication filter across your Spark cluster and contains a small bonus at the end. The solution explored here is no appropriate for a real cluster deployment, but could be adapted to become an actual authentication solution that can scale across clusters.</p>
+<h2 id="description-of-the-old-school-approach">Description of the old-school approach</h2>
+<p>Spark gives us the option of implementing authentication using a servlet filter. This class is part of a chain of classes that intercept the requests sent to the Spark UI server before Spark actually builds the view that is served to the browser. A filter on this chain can do some work and the pass the request/response pair to the next filter in the chain, but it can also write the response and end the chain if we want to.</p>
+<p>We will implement a filter that decides is a user is authorized to access the Spark UI based on a session token. If the request made to Spark UI does not contain a valid token, we will deny access to the UI. But this solves only part of the problem, the one where we only permit access to the UI to the people that are supposed to have access. We also need a mechanism to allow users to obtain that access.</p>
+<p>Obtaining access is usually done by providing credentials through a HTML form. The server then replies with a token that the client should save and include in all subsequent requests. An old-school strategy to make the client remember stuff and send that stuff back to the server are cookies. If the server provides the token in a cookie, the token will then be sent to the server and can be used to identify the users accessing the UI.</p>
+<p>And that is exactly what we will implement. We will have a filter that checks is the request contains a token, as a cookie. If that token is present, we will validate it. If it is valid, we will let the user access the UI. If the token is not valid, we will ask the user to log in again. If the token is not present at all, we will ask the user to log in. We will provide a HTML form for the user to log in, by writing the HTML form on the response.</p>
+<p>Another security mechanism we will include in this exercise is session expiration. We will use both cookie expiration settings, and an expiration date in the token, to validate that a token used by the client is still valid. This will be done without storing session data on the server (a good approach when working with a distributed application). And the last step we'll take will be to encrypt the token to prevent users from forging it and extending their sessions.</p>
+<h2 id="setting-up-a-java-project">Setting up a Java project</h2>
+<p>We can create a Maven project, and we'll need a dependency to the Java servlet API. We can mark that dependency as &quot;provided&quot; since the Spark installation will have the servlet API in its JARs.</p>
+<pre class="hljs"><code><div><span class="php"><span class="hljs-meta">&lt;?</span>xml version=<span class="hljs-string">"1.0"</span> encoding=<span class="hljs-string">"UTF-8"</span><span class="hljs-meta">?&gt;</span></span>
+<span class="hljs-tag">&lt;<span class="hljs-name">project</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"http://maven.apache.org/POM/4.0.0"</span>
+         <span class="hljs-attr">xmlns:xsi</span>=<span class="hljs-string">"http://www.w3.org/2001/XMLSchema-instance"</span>
+         <span class="hljs-attr">xsi:schemaLocation</span>=<span class="hljs-string">"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">modelVersion</span>&gt;</span>4.0.0<span class="hljs-tag">&lt;/<span class="hljs-name">modelVersion</span>&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">groupId</span>&gt;</span>com.cacoveanu<span class="hljs-tag">&lt;/<span class="hljs-name">groupId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">artifactId</span>&gt;</span>sparkauth<span class="hljs-tag">&lt;/<span class="hljs-name">artifactId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">version</span>&gt;</span>1.0-SNAPSHOT<span class="hljs-tag">&lt;/<span class="hljs-name">version</span>&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">properties</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">maven.compiler.source</span>&gt;</span>1.8<span class="hljs-tag">&lt;/<span class="hljs-name">maven.compiler.source</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">maven.compiler.target</span>&gt;</span>1.8<span class="hljs-tag">&lt;/<span class="hljs-name">maven.compiler.target</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">properties</span>&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">dependencies</span>&gt;</span>
+        <span class="hljs-comment">&lt;!-- https://mvnrepository.com/artifact/javax.servlet/javax.servlet-api --&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">dependency</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">groupId</span>&gt;</span>javax.servlet<span class="hljs-tag">&lt;/<span class="hljs-name">groupId</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">artifactId</span>&gt;</span>javax.servlet-api<span class="hljs-tag">&lt;/<span class="hljs-name">artifactId</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">version</span>&gt;</span>4.0.1<span class="hljs-tag">&lt;/<span class="hljs-name">version</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">scope</span>&gt;</span>provided<span class="hljs-tag">&lt;/<span class="hljs-name">scope</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">dependency</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">dependencies</span>&gt;</span>
+
+<span class="hljs-tag">&lt;/<span class="hljs-name">project</span>&gt;</span>
+</div></code></pre>
+<p>You will build the project with <code>mvn install</code> and copy the resulting jar into your Spark installation to test out the filter (see the deployment section).</p>
+<h2 id="implementing-the-actual-filter">Implementing the actual filter</h2>
+<h3 id="filter-main-logic">Filter main logic</h3>
+<p>The <code>javax.servlet.Filter</code> interface requires you to implement three methods, <code>init</code>, <code>doFilter</code> and <code>destroy</code>. The <code>doFilter</code> method is the main logic of our filter. This method gets called on every request made to the Spark UI.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">doFilter</span><span class="hljs-params">(
+    ServletRequest servletRequest,
+    ServletResponse servletResponse,
+    FilterChain filterChain
+)</span> <span class="hljs-keyword">throws</span> IOException, ServletException </span>{
+    Map&lt;String, String&gt; headers = getHeaders((HttpServletRequest) servletRequest);
+    <span class="hljs-keyword">if</span> (isAuthenticated(headers)) {
+        filterChain.doFilter(servletRequest, servletResponse);
+
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (isLoggingIn(servletRequest)) {
+        Map&lt;String, String&gt; parameters = getPostParameters(readRequest(servletRequest));
+
+        <span class="hljs-keyword">if</span> (areCredentialsCorrect(parameters)) {
+            Date expiration = getMinutesFromNow(expirationMinutes);
+            String token = createToken(expiration);
+            String cookie = createCookieString(<span class="hljs-string">"auth"</span>, token, expiration);
+            ((HttpServletResponse) servletResponse).setHeader(<span class="hljs-string">"Set-Cookie"</span>, cookie);
+            ((HttpServletResponse) servletResponse).sendRedirect(<span class="hljs-string">"/"</span>);
+
+        } <span class="hljs-keyword">else</span> {
+            servletResponse.getWriter().print(getLoginForm());
+        }
+    } <span class="hljs-keyword">else</span> {
+        servletResponse.getWriter().print(getLoginForm());
+    }
+}
+</div></code></pre>
+<p>The logic in this method follows three main branches:</p>
+<ul>
+<li>we are authenticated, so the Spark UI can be accessed</li>
+<li>we are in the process of getting authenticated, which means we have some credentials in the request body and we must generate a login token if the credentials are valid</li>
+<li>we are not authenticated, so we serve the login form</li>
+</ul>
+<h3 id="verifying-if-a-user-is-authenticated">Verifying if a user is authenticated</h3>
+<p>A user is authenticated when the requests they make have a valid token in the headers. A token is valid if the expiration date it contains is after the current date on the server. The verification mechanism we implemented will look in two places for the token. We can provide the token as a simple header named &quot;auth&quot;, or the token can be presented in a &quot;Cookie&quot; header. A cookie header can contain a list of cookies for the current domain, so we need to parse all cookies and find a cookie named &quot;auth&quot;, that should contain the token.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">getAuthenticationToken</span><span class="hljs-params">(String name, Map&lt;String, String&gt; headers)</span> </span>{
+    <span class="hljs-keyword">if</span> (headers.containsKey(name)) {
+        <span class="hljs-keyword">return</span> headers.get(name);
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (headers.containsKey(<span class="hljs-string">"Cookie"</span>)) {
+        Map&lt;String, String&gt; cookies = parseMap(headers.get(<span class="hljs-string">"Cookie"</span>), <span class="hljs-string">"; "</span>, <span class="hljs-string">"="</span>);
+        <span class="hljs-keyword">if</span> (cookies.containsKey(name)) <span class="hljs-keyword">return</span> cookies.get(name);
+    }
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+}
+
+<span class="hljs-function"><span class="hljs-keyword">private</span> Boolean <span class="hljs-title">isAuthenticated</span><span class="hljs-params">(Map&lt;String, String&gt; headers)</span> </span>{
+    String token = getAuthenticationToken(<span class="hljs-string">"auth"</span>, headers);
+    <span class="hljs-keyword">if</span> (token != <span class="hljs-keyword">null</span>) {
+        Date expiration = parseToken(token);
+        Date now = <span class="hljs-keyword">new</span> Date();
+        <span class="hljs-keyword">if</span> (now.before(expiration)) {
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">true</span>;
+        }
+    }
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">false</span>;
+}
+</div></code></pre>
+<h3 id="providing-a-login-form">Providing a Login Form</h3>
+<p>If the user is not logged in, we can give them the options of logging in. Since we have access to the response in our filter, we can write anything we want to the response body. One of those things can be a html login form. If that is what we return, the browser will display it. The action we use for the form is under the <code>/login</code> URL. That way, when credentials are sent to our server, they are sent under this URL, so our filter will know that the user is trying to log in.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">getLoginForm</span><span class="hljs-params">()</span> </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-string">"&lt;html&gt;&lt;form action=\"/login\" method=\"post\"&gt;"</span> +
+        <span class="hljs-string">"&lt;label for=\"username\"&gt;&lt;b&gt;Username&lt;/b&gt;&lt;/label&gt;"</span> +
+        <span class="hljs-string">"&lt;input type=\"text\" placeholder=\"Enter Username\" name=\"username\" required&gt;"</span> +
+        <span class="hljs-string">"&lt;label for=\"password\"&gt;&lt;b&gt;Password&lt;/b&gt;&lt;/label&gt;"</span> +
+        <span class="hljs-string">"&lt;input type=\"password\" placeholder=\"Enter Password\" name=\"password\" required&gt;"</span> +
+        <span class="hljs-string">"&lt;button type=\"submit\"&gt;Login&lt;/button&gt;"</span> +
+        <span class="hljs-string">"&lt;form&gt;&lt;/html&gt;"</span>;
+    }
+</div></code></pre>
+<h3 id="verifying-login-credentials">Verifying Login Credentials</h3>
+<p>In our main filter method, one of the paths our logic takes it the log in process. We verify if we are in that process with the <code>isLoggingIn(servletRequest)</code> method call. That method will check if the request URL ends in &quot;/login&quot;. That is the way we recognize a login scenario.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">boolean</span> <span class="hljs-title">isLoggingIn</span><span class="hljs-params">(ServletRequest servletRequest)</span> </span>{
+    String url = ((HttpServletRequest)servletRequest)
+        .getRequestURL().toString();
+    <span class="hljs-keyword">return</span> url.endsWith(<span class="hljs-string">"/login"</span>);
+}
+</div></code></pre>
+<p>Once we know we are in the login scenario, we must obtain the credentials from the request body. We do that with the <code>getPostParameters</code> method, which uses the more generic method <code>parseMap</code>. We end up with a String to String map of post parameters.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> Map&lt;String, String&gt; <span class="hljs-title">getPostParameters</span><span class="hljs-params">(String requestBody)</span> </span>{
+    <span class="hljs-keyword">return</span> parseMap(requestBody, <span class="hljs-string">"\\&amp;"</span>, <span class="hljs-string">"="</span>);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> Map&lt;String, String&gt; <span class="hljs-title">parseMap</span><span class="hljs-params">(
+    String data,
+    String entrySeparator,
+    String keyValueSeparator
+)</span> </span>{
+    <span class="hljs-keyword">return</span> Arrays.stream(data.split(entrySeparator))
+        .map(p -&gt; p.split(keyValueSeparator))
+        .collect(Collectors.toMap(a -&gt; a[<span class="hljs-number">0</span>], a-&gt; a[<span class="hljs-number">1</span>]));
+}
+</div></code></pre>
+<p>We finally verify that we have the required parameters <code>username</code> and <code>password</code> and we check that their values correspond to the hardcoded values in our filter.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">boolean</span> <span class="hljs-title">areCredentialsCorrect</span><span class="hljs-params">(Map&lt;String, String&gt; parameters)</span> </span>{
+    <span class="hljs-keyword">return</span> parameters.containsKey(<span class="hljs-string">"username"</span>)
+        &amp;&amp; parameters.containsKey(<span class="hljs-string">"password"</span>)
+        &amp;&amp; parameters.get(<span class="hljs-string">"username"</span>).equals(username)
+        &amp;&amp; parameters.get(<span class="hljs-string">"password"</span>).equals(password);
+}
+</div></code></pre>
+<h3 id="generating-a-token">Generating a Token</h3>
+<pre class="hljs"><code><div>Date expiration = getMinutesFromNow(expirationMinutes);
+String token = createToken(expiration);
+String cookie = createCookieString(<span class="hljs-string">"auth"</span>, token, expiration);
+((HttpServletResponse) servletResponse).setHeader(<span class="hljs-string">"Set-Cookie"</span>, cookie);
+((HttpServletResponse) servletResponse).sendRedirect(<span class="hljs-string">"/"</span>);
+</div></code></pre>
+<p>After the credentials have been successfully validated, we are at the step where we must provide a session token to our user. Our token will only be valid for a number of minutes, which can be defined as a parameter of our filter. The <code>getMinutesFromNow</code> method will return the token expiration date based on the number of minutes a token should be valid. We take that date and create our token with the <code>createToken</code> method.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">createToken</span><span class="hljs-params">(Date date)</span> </span>{
+    String payload = toUtcString(date);
+    <span class="hljs-keyword">return</span> encrypt(payload);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">toUtcString</span><span class="hljs-params">(Date date)</span> </span>{
+    <span class="hljs-keyword">return</span> date.toInstant().toString();
+}
+</div></code></pre>
+<p>The token is encrypted, to prevent the possibility of changing the expiration date of a session (see the encryption section). We then include in an cookie called &quot;auth&quot;, and we create a <code>Set-Cookie</code> header on the response with the <code>createCookieString</code> method.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">createCookieString</span><span class="hljs-params">(
+    String name,
+    String value,
+    Date expiration
+)</span> </span>{
+    String cookie = name + <span class="hljs-string">"="</span> + value;
+    <span class="hljs-keyword">if</span> (expiration != <span class="hljs-keyword">null</span>) {
+        <span class="hljs-keyword">return</span> cookie 
+            + <span class="hljs-string">"; Expires="</span>
+            + toGMTString(expiration);
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> cookie;
+    }
+}
+</div></code></pre>
+<p>We add this header to instruct the client, usually a browser, to store this cookie and use it on all subsequent requests to the domain our server is running on. The last step after a successfull login is to include a redirect instruction on the response, to instruct the browser to load the main Spark UI page.</p>
+<h3 id="encryption-and-decryption">Encryption and Decryption</h3>
+<p>As mentioned above, we want to keep the expiration date of a session secure. We could store session IDs and session expiration dates on the server, but this would complicate our code. We would need to store this information in a data structure that can be safely accessed and updated concurrently, because we can expect our filter to run on multiple threads at the same time (standard with a web server that can service multiple requests at the same time). The solution we chose was to make the expiration date part of the token that users store on their clients, and send on each call to our server. But since the tokens are stored by the clients, the clients can also edit them. It's easy to change the expiration date of a cookie, so we can't rely on that mechanism to expire the session after the alloted time has elapsed. In order to prevent tampering with the contents of our token, we will encrypt that token. We use the following code for encryption and decryption:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">encrypt</span><span class="hljs-params">(String plainText)</span> </span>{
+    String encryptedText = <span class="hljs-string">""</span>;
+    <span class="hljs-keyword">try</span> {
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
+        <span class="hljs-keyword">byte</span>[] cipherText = cipher.doFinal(plainText.getBytes(<span class="hljs-string">"UTF8"</span>));
+        Base64.Encoder encoder = Base64.getEncoder();
+        encryptedText = encoder.encodeToString(cipherText);
+    } <span class="hljs-keyword">catch</span> (Exception e) {
+        System.err.println(<span class="hljs-string">"Encrypt Exception : "</span> + e.getMessage());
+    }
+    <span class="hljs-keyword">return</span> encryptedText;
+}
+
+<span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">decrypt</span><span class="hljs-params">(String encryptedText)</span> </span>{
+    String decryptedText = <span class="hljs-string">""</span>;
+    <span class="hljs-keyword">try</span> {
+        Base64.Decoder decoder = Base64.getDecoder();
+        <span class="hljs-keyword">byte</span>[] cipherText = decoder.decode(encryptedText.getBytes(<span class="hljs-string">"UTF8"</span>));
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
+        decryptedText = <span class="hljs-keyword">new</span> String(cipher.doFinal(cipherText), <span class="hljs-string">"UTF-8"</span>);
+    } <span class="hljs-keyword">catch</span> (Exception e) {
+        System.err.println(<span class="hljs-string">"decrypt Exception : "</span> + e.getMessage());
+    }
+    <span class="hljs-keyword">return</span> decryptedText;
+}
+</div></code></pre>
+<h3 id="initializing-the-filter">Initializing the Filter</h3>
+<p>One last step we need to do to have a functioning solution is to set up the initialization of our filter, through the <code>init</code> method.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">init</span><span class="hljs-params">(FilterConfig filterConfig)</span> <span class="hljs-keyword">throws</span> ServletException </span>{
+    String encryptionKey = filterConfig.getInitParameter(<span class="hljs-string">"encryptionKey"</span>);
+    username = filterConfig.getInitParameter(<span class="hljs-string">"username"</span>);
+    password = filterConfig.getInitParameter(<span class="hljs-string">"password"</span>);
+    expirationMinutes = Integer.parseInt(filterConfig.getInitParameter(<span class="hljs-string">"expirationMinutes"</span>));
+    <span class="hljs-keyword">try</span> {
+        cipher = Cipher.getInstance(cipherTransformation);
+        <span class="hljs-keyword">byte</span>[] key = encryptionKey.getBytes(characterEncoding);
+        secretKey = <span class="hljs-keyword">new</span> SecretKeySpec(key, aesEncryptionAlgorithem);
+        ivParameterSpec = <span class="hljs-keyword">new</span> IvParameterSpec(key);
+    } <span class="hljs-keyword">catch</span> (Exception e) {
+        <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> ServletException(e);
+    }
+}
+</div></code></pre>
+<p>The values for these parameters will come from Spark's properties files. We need the accepted username and password, hardcoded (in the config files) for now. We also need an encryption key. If, for any reason, we will need to invalidate all active sessions, we can change the encryption key in the configuration files and restart our Spark services. And we can also configure the lifetime of a token, through the number of minutes a token will be valid. We also initialize some of the classes needed for the encryption and decryption code.</p>
+<h2 id="deploying-the-filter">Deploying the Filter</h2>
+<p>We first need to build our jar with <code>mvn install</code>. Then, we copy the jar to the machine running the Spark master. Make sure the Spark master is offline. Copy your jar to the <code>$SPARK_HOME/jars</code> folder.</p>
+<p>Next, we add the configuration. Copy the <code>$SPARK_HOME/conf/spark-defaults.conf.template</code> file to <code>$SPARK_HOME/conf/spark-defaults.conf</code> and edit <code>$SPARK_HOME/conf/spark-defaults.conf</code> to add the following properties:</p>
+<pre class="hljs"><code><div>spark.ui.filters=com.cacoveanu.spark.authentication.SparkAuthFilter
+spark.com.cacoveanu.spark.authentication.SparkAuthFilter.param.encryptionKey=tV5XPijhZiclsAmi
+spark.com.cacoveanu.spark.authentication.SparkAuthFilter.param.username=admin
+spark.com.cacoveanu.spark.authentication.SparkAuthFilter.param.password=pass
+spark.com.cacoveanu.spark.authentication.SparkAuthFilter.param.expirationMinutes=5
+</div></code></pre>
+<p>Of course, change the values of the properties. For the encryption key, use a 16 character random string.</p>
+<p>We can now start the Spark master with the <code>$SPARK_HOME/sbin/start-master.sh</code> command. If we navigate in the browser to the Spark UI at <code>http://spark-master-url:8080/</code>, we should be greeted by the login page.</p>
+<p><img src="spark_ui_authentication_cookie.png" alt="Spark UI cookie-based authentication form"></p>
+<p>Following the same steps on all your Spark workers will apply the filter to them as well.</p>
+<h2 id="problems-and-further-development">Problems and Further Development</h2>
+<p>First thing that should be mentioned for any web application that requires login is that you need to enable HTTPS. Otherwise, your credentials will be provided in plaintext, so anyone watching the network between the client and the server will obtain them. This applies to both the cookie implementation and the basic authentication implementation.</p>
+<p>Another mention and problem to solve in the future is that when deploying in an actual cluster, you will need to login on all the machines you connect to across the cluster when you access them for the first time. To fix this, you will need a better implementation of this filter, some kind of single sign-on setup for your Spark cluster.</p>
+<h2 id="description-of-the-new-school-approach">Description of the new-school approach</h2>
+<p>We have another, simpler, option to implement our authentication filter, the &quot;new-school&quot; approach, I call it. Instead of making a filter that relies on cookies to identify users, we can use the basic authentication mechanism. Basic athentication is a simple web access control mechanism that relies on headers to provide a username and a password. The steps in this new filter are:</p>
+<p>Basic authentication works based on every request sent to the server having a header called &quot;Authorization&quot; that contains the username and password, separated by a colon and encoded in Base64 (not encrypted!). If that header is present, the credentials can be verified. If they are correct, the user is authenticated and the UI can be accessed. If the header is missing, or the credentials are not correct, the user is not authenticated and the server will signal this (ask for authentication) by adding a header named &quot;WWW-Authenticate&quot; to the response. This header will let the client know they need to use basic authentication to access the page. Most modern browsers support this authentication method and will store the &quot;Authorization&quot; header for that domain and add it to every request automatically.</p>
+<h2 id="implementation-of-filter-using-basic-authentication">Implementation of filter using Basic Authentication</h2>
+<p>Our new <code>doFilter</code> method is very simple now, because we only have two logic paths that we must handle. We are no longer responsible for providing a method for the user to authenticate, the browsers will provide that functionality. We only need to check if the user is authenticated, based on the relevant header, or if they are not authenticated we must ask them to provide their credentials. This is done by adding a header named <code>WWW-Authenticate</code> to the response. The value of that header contains the realm under which they are asked to authenticate. This realm can be any string and it is used to identify the application, so the users know what credentials to provide. We must also mark the status of the response as <code>401</code>.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">doFilter</span><span class="hljs-params">(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain)</span> <span class="hljs-keyword">throws</span> IOException, ServletException </span>{
+        Map&lt;String, String&gt; headers = getHeaders((HttpServletRequest) servletRequest);
+        <span class="hljs-keyword">if</span> (isAuthenticated(headers)) {
+            filterChain.doFilter(servletRequest, servletResponse);
+        } <span class="hljs-keyword">else</span> {
+            ((HttpServletResponse) servletResponse).setHeader(<span class="hljs-string">"WWW-Authenticate"</span>, <span class="hljs-string">"Basic realm=\""</span> + realm + <span class="hljs-string">"\""</span>);
+            ((HttpServletResponse) servletResponse).setStatus(<span class="hljs-number">401</span>);
+        }
+    }
+</div></code></pre>
+<p>To verify if a user is authenticated, we look at the <code>Authorization</code> header, if it exists. This header should start with the word <code>Basic</code>, a space and then a base64 encoded string. We decode the base64 string and expect to find the username and password fields separated by a colon (usernames used for basic authentication can't contain colons). We then check that the username and password are equal to the hard-coded values we expect.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">private</span> Boolean <span class="hljs-title">isAuthenticated</span><span class="hljs-params">(Map&lt;String, String&gt; headers)</span> </span>{
+    <span class="hljs-keyword">if</span> (headers.containsKey(<span class="hljs-string">"Authorization"</span>)) {
+        String token = headers.get(<span class="hljs-string">"Authorization"</span>);
+        String userPass = token.substring(<span class="hljs-string">"Basic "</span>.length());
+        String res = <span class="hljs-keyword">new</span> String(DatatypeConverter.parseBase64Binary(userPass));
+        String username = res.substring(<span class="hljs-number">0</span>, res.indexOf(<span class="hljs-string">':'</span>));
+        String password = res.substring(res.indexOf(<span class="hljs-string">':'</span>) + <span class="hljs-number">1</span>);
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">this</span>.username.equals(username) &amp;&amp; <span class="hljs-keyword">this</span>.password.equals(password);
+    }
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">false</span>;
+}
+</div></code></pre>
+<p>That is all the login in this filter. Even the initialization is simpler, we only require three parameters, the username, the password and the name of the realm.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">init</span><span class="hljs-params">(FilterConfig filterConfig)</span> <span class="hljs-keyword">throws</span> ServletException </span>{
+    username = filterConfig.getInitParameter(<span class="hljs-string">"username"</span>);
+    password = filterConfig.getInitParameter(<span class="hljs-string">"password"</span>);
+    realm = filterConfig.getInitParameter(<span class="hljs-string">"realm"</span>);
+}
+</div></code></pre>
+<p>The browser will present it's standard form when you try to connect to the Spark UI. You can see the realm you configured in the form name.</p>
+<p><img src="spark_ui_authentication_basic.png" alt="Spark UI basic authentication window"></p>
+<p>The same problems and further development points apply to this sollution as well. While the solution is simpler, you have less control. You can't write your own login form and are dependent on the login window the browsers present. You also can't determine the expiration time of the session, this time is also decided by the browser and may vary between browsers, leading to a more inconsistent experience.</p>
+<h2 id="bonus-fully-styled-web-page">Bonus: Fully Styled Web Page</h2>
+<p>The login page we serve can be a fully styled HTML page, and can even include images. These images can be embedded into the HTML code if they are encoded in Base64.</p>
+<p>Convert your image to a base64 string using PowerShell:</p>
+<pre class="hljs"><code><div>[convert]::ToBase64String((get-content filename.png -encoding byte)) &gt;&gt; filename.txt
+</div></code></pre>
+<p>Or convert your image to a base64 string on Linux:</p>
+<pre class="hljs"><code><div>base64 filename.png &gt; filename.txt
+</div></code></pre>
+<p>Then you can embed the image directly in your HTML:</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">img</span> <span class="hljs-attr">src</span>=<span class="hljs-string">"data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAA1UlEQVR42u3YsQ3AMAwDQe6/dLKEEBHKPeDe5nXOo6piAiACAkRAgAgIEAEBIiACAkRAgAgIEAEBorMgSUbP7+4HBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIEDOgggIEAEBIiACAkRAgOgLkK2vhPoBh3cBAgQIECBAgAABAgQIECBAui94ZWggQIAAAQIECBAgQIAAAQJkB2T6wVtnbRcgQIAAAQIECBAgQIAAAQJETV82JgAiIEAEBIiAABEQIAIiIEAEBIiAABEQIGrpBQnC/nlQxzkqAAAAAElFTkSuQmCC
+"</span>&gt;</span>
+</div></code></pre>
+<p>Replace everything after <code>&lt;IMG SRC=&quot;data:image/gif;base64,</code> with the base64 data for your image.</p>
+<p>With this simple method we could serve html with embedded images from inside our filter.</p>
+<h2 id="full-code">Full Code</h2>
+<p>Cookie-based authentication filter.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark.authentication;
+
+<span class="hljs-keyword">import</span> javax.crypto.Cipher;
+<span class="hljs-keyword">import</span> javax.crypto.spec.IvParameterSpec;
+<span class="hljs-keyword">import</span> javax.crypto.spec.SecretKeySpec;
+<span class="hljs-keyword">import</span> javax.servlet.*;
+<span class="hljs-keyword">import</span> javax.servlet.http.HttpServletRequest;
+<span class="hljs-keyword">import</span> javax.servlet.http.HttpServletResponse;
+<span class="hljs-keyword">import</span> java.io.IOException;
+<span class="hljs-keyword">import</span> java.text.DateFormat;
+<span class="hljs-keyword">import</span> java.text.SimpleDateFormat;
+<span class="hljs-keyword">import</span> java.time.Instant;
+<span class="hljs-keyword">import</span> java.util.*;
+<span class="hljs-keyword">import</span> java.util.stream.Collectors;
+
+<span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">SparkAuthFilter</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">javax</span>.<span class="hljs-title">servlet</span>.<span class="hljs-title">Filter</span> </span>{
+
+    <span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">final</span> String characterEncoding = <span class="hljs-string">"UTF-8"</span>;
+    <span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">final</span> String cipherTransformation = <span class="hljs-string">"AES/CBC/PKCS5PADDING"</span>;
+    <span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">final</span> String aesEncryptionAlgorithem = <span class="hljs-string">"AES"</span>;
+
+    <span class="hljs-keyword">private</span> Cipher cipher;
+    <span class="hljs-keyword">private</span> SecretKeySpec secretKey;
+    <span class="hljs-keyword">private</span> IvParameterSpec ivParameterSpec;
+    <span class="hljs-keyword">private</span> String username;
+    <span class="hljs-keyword">private</span> String password;
+    <span class="hljs-keyword">private</span> Integer expirationMinutes;
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">createCookieString</span><span class="hljs-params">(
+        String name,
+        String value,
+        Date expiration
+    )</span> </span>{
+        String cookie = name + <span class="hljs-string">"="</span> + value;
+        <span class="hljs-keyword">if</span> (expiration != <span class="hljs-keyword">null</span>) {
+            <span class="hljs-keyword">return</span> cookie 
+                + <span class="hljs-string">"; Expires="</span>
+                + toGMTString(expiration);
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-keyword">return</span> cookie;
+        }
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">doFilter</span><span class="hljs-params">(
+        ServletRequest servletRequest,
+        ServletResponse servletResponse,
+        FilterChain filterChain
+    )</span> <span class="hljs-keyword">throws</span> IOException, ServletException </span>{
+        Map&lt;String, String&gt; headers = getHeaders((HttpServletRequest) servletRequest);
+
+        <span class="hljs-keyword">if</span> (isAuthenticated(headers)) {
+            filterChain.doFilter(servletRequest, servletResponse);
+
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (isLoggingIn(servletRequest)) {
+            Map&lt;String, String&gt; parameters = getPostParameters(readRequest(servletRequest));
+            <span class="hljs-keyword">if</span> (areCredentialsCorrect(parameters)) {
+                Date expiration = getMinutesFromNow(expirationMinutes);
+                String token = createToken(expiration);
+                String cookie = createCookieString(<span class="hljs-string">"auth"</span>, token, expiration);
+                ((HttpServletResponse) servletResponse).setHeader(<span class="hljs-string">"Set-Cookie"</span>, cookie);
+                ((HttpServletResponse) servletResponse).sendRedirect(<span class="hljs-string">"/"</span>);
+            } <span class="hljs-keyword">else</span> {
+                servletResponse.getWriter().print(getLoginForm());
+            }
+        } <span class="hljs-keyword">else</span> {
+            servletResponse.getWriter().print(getLoginForm());
+        }
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">boolean</span> <span class="hljs-title">areCredentialsCorrect</span><span class="hljs-params">(Map&lt;String, String&gt; parameters)</span> </span>{
+        <span class="hljs-keyword">return</span> parameters.containsKey(<span class="hljs-string">"username"</span>)
+                &amp;&amp; parameters.containsKey(<span class="hljs-string">"password"</span>)
+                &amp;&amp; parameters.get(<span class="hljs-string">"username"</span>).equals(username)
+                &amp;&amp; parameters.get(<span class="hljs-string">"password"</span>).equals(password)
+                ;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">boolean</span> <span class="hljs-title">isLoggingIn</span><span class="hljs-params">(ServletRequest servletRequest)</span> </span>{
+        String url = ((HttpServletRequest)servletRequest)
+            .getRequestURL().toString();
+        <span class="hljs-keyword">return</span> url.endsWith(<span class="hljs-string">"/login"</span>);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> Map&lt;String, String&gt; <span class="hljs-title">getPostParameters</span><span class="hljs-params">(
+        String requestBody
+    )</span> </span>{
+        <span class="hljs-keyword">return</span> parseMap(requestBody, <span class="hljs-string">"\\&amp;"</span>, <span class="hljs-string">"="</span>);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> Map&lt;String, String&gt; <span class="hljs-title">parseMap</span><span class="hljs-params">(
+        String data,
+        String entrySeparator,
+        String keyValueSeparator
+    )</span> </span>{
+        <span class="hljs-keyword">return</span> Arrays.stream(data.split(entrySeparator))
+                .map(p -&gt; p.split(keyValueSeparator))
+                .collect(Collectors.toMap(a -&gt; a[<span class="hljs-number">0</span>], a-&gt; a[<span class="hljs-number">1</span>]));
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">readRequest</span><span class="hljs-params">(
+        ServletRequest servletRequest
+    )</span> <span class="hljs-keyword">throws</span> IOException </span>{
+        java.util.Scanner s = <span class="hljs-keyword">new</span> java.util.Scanner(
+            servletRequest.getInputStream()
+        ).useDelimiter(<span class="hljs-string">"\\A"</span>);
+
+        <span class="hljs-keyword">return</span> s.hasNext() ? s.next() : <span class="hljs-string">""</span>;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">getLoginForm</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> <span class="hljs-string">"&lt;html&gt;&lt;form action=\"/login\" method=\"post\"&gt;\n"</span> +
+                <span class="hljs-string">"    &lt;label for=\"username\"&gt;&lt;b&gt;Username&lt;/b&gt;&lt;/label&gt;\n"</span> +
+                <span class="hljs-string">"    &lt;input type=\"text\" placeholder=\"Enter Username\" name=\"username\" required&gt;\n"</span> +
+                <span class="hljs-string">"\n"</span> +
+                <span class="hljs-string">"    &lt;label for=\"password\"&gt;&lt;b&gt;Password&lt;/b&gt;&lt;/label&gt;\n"</span> +
+                <span class="hljs-string">"    &lt;input type=\"password\" placeholder=\"Enter Password\" name=\"password\" required&gt;\n"</span> +
+                <span class="hljs-string">"\n"</span> +
+                <span class="hljs-string">"    &lt;button type=\"submit\"&gt;Login&lt;/button&gt;\n"</span> +
+                <span class="hljs-string">"&lt;form&gt;&lt;/html&gt;"</span>;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">getAuthenticationToken</span><span class="hljs-params">(
+        String name,
+        Map&lt;String, String&gt; headers
+    )</span> </span>{
+        <span class="hljs-keyword">if</span> (headers.containsKey(name)) {
+            <span class="hljs-keyword">return</span> headers.get(name);
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (headers.containsKey(<span class="hljs-string">"Cookie"</span>)) {
+            Map&lt;String, String&gt; cookies = parseMap(headers.get(<span class="hljs-string">"Cookie"</span>), <span class="hljs-string">"; "</span>, <span class="hljs-string">"="</span>);
+            <span class="hljs-keyword">if</span> (cookies.containsKey(name)) <span class="hljs-keyword">return</span> cookies.get(name);
+        }
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> Boolean <span class="hljs-title">isAuthenticated</span><span class="hljs-params">(Map&lt;String, String&gt; headers)</span> </span>{
+        String token = getAuthenticationToken(<span class="hljs-string">"auth"</span>, headers);
+        <span class="hljs-keyword">if</span> (token != <span class="hljs-keyword">null</span>) {
+            Date expiration = parseToken(token);
+            Date now = <span class="hljs-keyword">new</span> Date();
+            <span class="hljs-keyword">if</span> (now.before(expiration)) {
+                <span class="hljs-keyword">return</span> <span class="hljs-keyword">true</span>;
+            }
+        }
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">false</span>;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> Map&lt;String, String&gt; <span class="hljs-title">getHeaders</span><span class="hljs-params">(HttpServletRequest servletRequest)</span> </span>{
+        <span class="hljs-keyword">return</span> Collections.list(servletRequest.getHeaderNames()).stream()
+                .collect(Collectors.toMap(h -&gt; h, servletRequest::getHeader));
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">init</span><span class="hljs-params">(FilterConfig filterConfig)</span> <span class="hljs-keyword">throws</span> ServletException </span>{
+        String encryptionKey = filterConfig.getInitParameter(<span class="hljs-string">"encryptionKey"</span>);
+        username = filterConfig.getInitParameter(<span class="hljs-string">"username"</span>);
+        password = filterConfig.getInitParameter(<span class="hljs-string">"password"</span>);
+        expirationMinutes = Integer.parseInt(filterConfig.getInitParameter(<span class="hljs-string">"expirationMinutes"</span>));
+        <span class="hljs-keyword">try</span> {
+            cipher = Cipher.getInstance(cipherTransformation);
+            <span class="hljs-keyword">byte</span>[] key = encryptionKey.getBytes(characterEncoding);
+            secretKey = <span class="hljs-keyword">new</span> SecretKeySpec(key, aesEncryptionAlgorithem);
+            ivParameterSpec = <span class="hljs-keyword">new</span> IvParameterSpec(key);
+        } <span class="hljs-keyword">catch</span> (Exception e) {
+            <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> ServletException(e);
+        }
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">destroy</span><span class="hljs-params">()</span> </span>{
+
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">static</span> Date <span class="hljs-title">getMinutesFromNow</span><span class="hljs-params">(<span class="hljs-keyword">int</span> minutes)</span> </span>{
+        Calendar now = Calendar.getInstance();
+        now.add(Calendar.MINUTE, minutes);
+        <span class="hljs-keyword">return</span> now.getTime();
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">toGMTString</span><span class="hljs-params">(Date date)</span> </span>{
+        <span class="hljs-comment">//return date.toGMTString();</span>
+        DateFormat df = <span class="hljs-keyword">new</span> SimpleDateFormat(<span class="hljs-string">"EEE, dd-MMM-yyyy HH:mm:ss zzz"</span>);
+        df.setTimeZone(TimeZone.getTimeZone(<span class="hljs-string">"GMT"</span>));
+        <span class="hljs-keyword">return</span> df.format(date);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> String <span class="hljs-title">toUtcString</span><span class="hljs-params">(Date date)</span> </span>{
+        <span class="hljs-keyword">return</span> date.toInstant().toString();
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> Date <span class="hljs-title">parseToken</span><span class="hljs-params">(String encryptedToken)</span> </span>{
+        String token = decrypt(encryptedToken);
+        Instant time = Instant.parse(token);
+        <span class="hljs-keyword">return</span> Date.from(time);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">createToken</span><span class="hljs-params">(Date date)</span> </span>{
+        String payload = toUtcString(date);
+        <span class="hljs-keyword">return</span> encrypt(payload);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">encrypt</span><span class="hljs-params">(String plainText)</span> </span>{
+        String encryptedText = <span class="hljs-string">""</span>;
+        <span class="hljs-keyword">try</span> {
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
+            <span class="hljs-keyword">byte</span>[] cipherText = cipher.doFinal(plainText.getBytes(<span class="hljs-string">"UTF8"</span>));
+            Base64.Encoder encoder = Base64.getEncoder();
+            encryptedText = encoder.encodeToString(cipherText);
+        } <span class="hljs-keyword">catch</span> (Exception e) {
+            System.err.println(<span class="hljs-string">"Encrypt Exception : "</span> + e.getMessage());
+        }
+        <span class="hljs-keyword">return</span> encryptedText;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> String <span class="hljs-title">decrypt</span><span class="hljs-params">(String encryptedText)</span> </span>{
+        String decryptedText = <span class="hljs-string">""</span>;
+        <span class="hljs-keyword">try</span> {
+            Base64.Decoder decoder = Base64.getDecoder();
+            <span class="hljs-keyword">byte</span>[] cipherText = decoder.decode(encryptedText.getBytes(<span class="hljs-string">"UTF8"</span>));
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
+            decryptedText = <span class="hljs-keyword">new</span> String(cipher.doFinal(cipherText), <span class="hljs-string">"UTF-8"</span>);
+        } <span class="hljs-keyword">catch</span> (Exception e) {
+            System.err.println(<span class="hljs-string">"decrypt Exception : "</span> + e.getMessage());
+        }
+        <span class="hljs-keyword">return</span> decryptedText;
+    }
+}
+</div></code></pre>
+<p>Basic authentication-based filter:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark.authentication;
+
+<span class="hljs-keyword">import</span> javax.servlet.*;
+<span class="hljs-keyword">import</span> javax.servlet.http.HttpServletRequest;
+<span class="hljs-keyword">import</span> javax.servlet.http.HttpServletResponse;
+<span class="hljs-keyword">import</span> javax.xml.bind.DatatypeConverter;
+<span class="hljs-keyword">import</span> java.io.IOException;
+<span class="hljs-keyword">import</span> java.util.Arrays;
+<span class="hljs-keyword">import</span> java.util.Collections;
+<span class="hljs-keyword">import</span> java.util.Map;
+<span class="hljs-keyword">import</span> java.util.stream.Collectors;
+
+<span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">SparkBasicAuthFilter</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">Filter</span> </span>{
+
+    <span class="hljs-keyword">private</span> String username;
+    <span class="hljs-keyword">private</span> String password;
+    <span class="hljs-keyword">private</span> String realm;
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">doFilter</span><span class="hljs-params">(
+        ServletRequest servletRequest,
+        ServletResponse servletResponse,
+        FilterChain filterChain
+    )</span> <span class="hljs-keyword">throws</span> IOException, ServletException </span>{
+        Map&lt;String, String&gt; headers = getHeaders((HttpServletRequest) servletRequest);
+        <span class="hljs-keyword">if</span> (isAuthenticated(headers)) {
+            filterChain.doFilter(servletRequest, servletResponse);
+        } <span class="hljs-keyword">else</span> {
+            ((HttpServletResponse) servletResponse).setHeader(
+                <span class="hljs-string">"WWW-Authenticate"</span>,
+                <span class="hljs-string">"Basic realm=\""</span> + realm + <span class="hljs-string">"\""</span>
+            );
+            ((HttpServletResponse) servletResponse).setStatus(<span class="hljs-number">401</span>);
+        }
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">static</span> Map&lt;String, String&gt; <span class="hljs-title">parseMap</span><span class="hljs-params">(
+        String data,
+        String entrySeparator,
+        String keyValueSeparator
+    )</span> </span>{
+        <span class="hljs-keyword">return</span> Arrays.stream(data.split(entrySeparator))
+                .map(p -&gt; p.split(keyValueSeparator))
+                .collect(Collectors.toMap(a -&gt; a[<span class="hljs-number">0</span>], a-&gt; a[<span class="hljs-number">1</span>]));
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> Boolean <span class="hljs-title">isAuthenticated</span><span class="hljs-params">(Map&lt;String, String&gt; headers)</span> </span>{
+        <span class="hljs-keyword">if</span> (headers.containsKey(<span class="hljs-string">"Authorization"</span>)) {
+            String token = headers.get(<span class="hljs-string">"Authorization"</span>);
+            String userPassB64 = token.substring(<span class="hljs-string">"Basic "</span>.length());
+            String userPassText = <span class="hljs-keyword">new</span> String(
+                DatatypeConverter.parseBase64Binary(userPassB64)
+            );
+            String username = userPassText.substring(
+                <span class="hljs-number">0</span>, 
+                userPassText.indexOf(<span class="hljs-string">':'</span>)
+            );
+            String password = userPassText.substring(
+                userPassText.indexOf(<span class="hljs-string">':'</span>) + <span class="hljs-number">1</span>
+            );
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">this</span>.username.equals(username)
+                &amp;&amp; <span class="hljs-keyword">this</span>.password.equals(password);
+        }
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">false</span>;
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">private</span> Map&lt;String, String&gt; <span class="hljs-title">getHeaders</span><span class="hljs-params">(HttpServletRequest servletRequest)</span> </span>{
+        <span class="hljs-keyword">return</span> Collections.list(servletRequest.getHeaderNames()).stream()
+                .collect(Collectors.toMap(h -&gt; h, servletRequest::getHeader));
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">init</span><span class="hljs-params">(FilterConfig filterConfig)</span> <span class="hljs-keyword">throws</span> ServletException </span>{
+        username = filterConfig.getInitParameter(<span class="hljs-string">"username"</span>);
+        password = filterConfig.getInitParameter(<span class="hljs-string">"password"</span>);
+        realm = filterConfig.getInitParameter(<span class="hljs-string">"realm"</span>);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">destroy</span><span class="hljs-params">()</span> </span>{
+
+    }
+}
+</div></code></pre>
+
+</body>
+</html>
