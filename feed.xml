@@ -6,8 +6,17 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2019-02-11T21:00:00+02:00</pubDate>
+        <pubDate>2019-02-23T08:30:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Spark Job File Configuration</title>
+            <description>How to simplify the deployment of your Spark jobs with a configuration file.</description>
+            <pubDate>2019-02-23T08:30:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2019/2019.02.23.spark_job_file_configuration.html</link>
+            <category>apache spark</category>
+            <category>configuration</category>
+        </item>
 
         <item>
             <title>Spark UI Authentication</title>

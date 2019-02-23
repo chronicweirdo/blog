@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spark Job File Configuration</title>
+  <meta name="description" content="How to simplify the deployment of your Spark jobs with a configuration file.">
+  <meta name="keywords" content="apache spark, configuration">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2019.02.23 8:30 / apache spark / configuration</p>
+<h1 id="spark-job-file-configuration">Spark Job File Configuration</h1>
+<p>In this short post, I will go over a small solution for using a file to configure a Spark job. The file will be read at the beginning of the Spark job and its contents will be used to configure various variables of the Spark job. This means we need to build this solution to make the file accessible both when running a job locally, and when deploying the job in the Spark cluster. When deploying jobs, we can also deploy external resources that should be accessible to those jobs by using the <code>--files</code> argument. So we only need to worry about providing an easily configurable mechanism to access those files both locally or in a cluster.</p>
+<h2 id="dependencies">Dependencies</h2>
+<p>The first step, configuration of our SBT project, we will use just two dependencies, one to the Spark libraries, which we need to load the file, and another to a json library, because our configuration file will be a json file.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">val</span> sparkSql = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-sql"</span> % <span class="hljs-string">"2.4.0"</span> % <span class="hljs-string">"provided"</span>
+<span class="hljs-keyword">val</span> json = <span class="hljs-string">"io.spray"</span> %%  <span class="hljs-string">"spray-json"</span> % <span class="hljs-string">"1.3.5"</span>
+
+<span class="hljs-keyword">lazy</span> <span class="hljs-keyword">val</span> tools = (project in file(<span class="hljs-string">"spark/Tools"</span>))
+  .settings(
+    name := <span class="hljs-string">"Tools"</span>,
+    organization := <span class="hljs-string">"com.cacoveanu.spark.tools"</span>,
+    libraryDependencies ++= <span class="hljs-type">Seq</span>(
+      sparkSql,
+      json
+    )
+  )
+</div></code></pre>
+<h2 id="file-access">File Access</h2>
+<p>We'll implement a short utility class that can load the file, call it <code>SparkUtil</code>. We need a way to differentiate wether we are working in a local environment or on a cluster, and we'll use a <code>local</code> flag to define that. This flag will be set to <code>false</code> by default, because we are running locally only when testing our code.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">import</span> java.io.<span class="hljs-type">FileInputStream</span>
+
+<span class="hljs-keyword">import</span> org.apache.spark.<span class="hljs-type">SparkFiles</span>
+
+<span class="hljs-keyword">import</span> spray.json._
+
+<span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">SparkUtil</span> </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOperatingPath</span></span>(path: <span class="hljs-type">String</span>, local: <span class="hljs-type">Boolean</span>) =
+    <span class="hljs-keyword">if</span> (local) path <span class="hljs-keyword">else</span> <span class="hljs-type">SparkFiles</span>.get(path)
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">loadConfigJsonFile</span></span>(path: <span class="hljs-type">String</span>, local: <span class="hljs-type">Boolean</span> = <span class="hljs-literal">false</span>) = {
+    <span class="hljs-keyword">val</span> operatingPath = getOperatingPath(path, local)
+    <span class="hljs-keyword">val</span> source = scala.io.<span class="hljs-type">Source</span>.fromFile(operatingPath)
+    <span class="hljs-keyword">val</span> lines: <span class="hljs-type">String</span> = <span class="hljs-keyword">try</span> source.mkString <span class="hljs-keyword">finally</span> source.close()
+    lines.parseJson
+  }
+}
+</div></code></pre>
+<p>Reading the file and parsing the json in it is simple enough with Scala and a json library. The main problem this object solves is getting the correct path to the file. When running locally, the local path we provide to the <code>loadConfigJsonFile</code> method is the correct path. Not so in a cluster, where the JAR and dependencies deployed with our Spark job are all copied to temporary folders on worker nodes. If we are not in a local execution context, we can use the <code>SparkFiles.get</code> method to obtain the real path on the node running this job.</p>
+<h2 id="json-configuration-file-utility">Json Configuration File Utility</h2>
+<p>Next I've implemented a utility class that can wrap over a json file and access properties based on a property path. You can see example methods for loading <code>String</code>, <code>Int</code>, <code>Double</code>, array of <code>String</code> and arrat of <code>Double</code> properties.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">import</span> spray.json.{<span class="hljs-type">JsArray</span>, <span class="hljs-type">JsObject</span>, <span class="hljs-type">JsValue</span>}
+<span class="hljs-keyword">import</span> spray.json.<span class="hljs-type">DefaultJsonProtocol</span>._
+
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">JsonConfiguration</span>(<span class="hljs-params">val path: <span class="hljs-type">String</span></span>)(<span class="hljs-params">implicit local: <span class="hljs-type">Boolean</span> = false</span>) </span>{
+
+  <span class="hljs-keyword">val</span> config: <span class="hljs-type">JsValue</span> = <span class="hljs-type">SparkUtil</span>.loadConfigJsonFile(path, local)
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getProperty</span></span>(path: <span class="hljs-type">String</span>*): <span class="hljs-type">Option</span>[<span class="hljs-type">Any</span>] = {
+    <span class="hljs-keyword">var</span> current: <span class="hljs-type">Option</span>[<span class="hljs-type">Any</span>] = <span class="hljs-type">Some</span>(config)
+    path.foreach(e =&gt;
+      current = current <span class="hljs-keyword">match</span> {
+        <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(map: <span class="hljs-type">JsObject</span>) =&gt; map.getFields(e).headOption
+        <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt; <span class="hljs-type">None</span>
+        <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-type">None</span>
+      }
+    )
+    current
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(path: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], <span class="hljs-keyword">default</span>: <span class="hljs-type">String</span>): <span class="hljs-type">String</span> = {
+    getProperty(path:_*) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value: <span class="hljs-type">JsValue</span>) =&gt; value.convertTo[<span class="hljs-type">String</span>]
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(path: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], <span class="hljs-keyword">default</span>: <span class="hljs-type">Int</span>): <span class="hljs-type">Int</span> = {
+    getProperty(path:_*) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value: <span class="hljs-type">JsValue</span>) =&gt; value.convertTo[<span class="hljs-type">Int</span>]
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(path: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], <span class="hljs-keyword">default</span>: <span class="hljs-type">Double</span>): <span class="hljs-type">Double</span> = {
+    getProperty(path:_*) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value: <span class="hljs-type">JsValue</span>) =&gt; value.convertTo[<span class="hljs-type">Double</span>]
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrStringArray</span></span>(path: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], <span class="hljs-keyword">default</span>: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>] = {
+    getProperty(path:_*) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value: <span class="hljs-type">JsArray</span>) =&gt; value.convertTo[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]]
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrDoubleArray</span></span>(path: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], <span class="hljs-keyword">default</span>: <span class="hljs-type">Seq</span>[<span class="hljs-type">Double</span>]): <span class="hljs-type">Seq</span>[<span class="hljs-type">Double</span>] = {
+    getProperty(path:_*) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value: <span class="hljs-type">JsArray</span>) =&gt; value.convertTo[<span class="hljs-type">Seq</span>[<span class="hljs-type">Double</span>]]
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+  }
+
+}
+</div></code></pre>
+<h2 id="configuring-the-spark-job">Configuring the Spark Job</h2>
+<p>Now we need to write a Spark job that uses a configuration file. First thing we need to worry about, as we start our job, is how to determine if this is a local job or if we are in a cluster. In our program, the difference is made by the presence of an argument named <code>local</code> with a boolean value. If no argument with that name is present, we just assume that we are on a cluster.</p>
+<p>Next we need to initialize the Spark session. We need to do this before we load the file, because <code>SparkFiles.get</code> will only give us a correct response if the session is already initialized. This means that certain variables, like the <code>local</code> flag or variables necessary when initializing the Spark session can't be read from the configuration file and need to be provided as command line arguments.</p>
+<p>Once we have our Spark session, we can initialize the <code>JsonConfiguration</code> and read values from it. And we can start loading Spark streams and running our algorithms.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">OurSparkJob</span> </span>{
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> argmap: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] = args
+      .map(a =&gt; a.split(<span class="hljs-string">"="</span>))
+      .filter(a =&gt; a(<span class="hljs-number">0</span>).nonEmpty &amp;&amp; a(<span class="hljs-number">1</span>).nonEmpty)
+      .map(a =&gt; a(<span class="hljs-number">0</span>) -&gt; a(<span class="hljs-number">1</span>))
+      .toMap
+    
+    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> local: <span class="hljs-type">Boolean</span> = argConfig.getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-string">"false"</span>).toBoolean
+
+    <span class="hljs-keyword">val</span> spark = (
+        <span class="hljs-keyword">if</span> (local) <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>)
+        <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder()
+      )
+      .appName(<span class="hljs-string">"ourSparkJob"</span>)
+      .getOrCreate()
+
+    <span class="hljs-keyword">val</span> jsonConfig = <span class="hljs-keyword">new</span> <span class="hljs-type">JsonConfiguration</span>(<span class="hljs-string">"configuration.json"</span>)(local)
+
+    <span class="hljs-keyword">val</span> thresholdForAlgorithmA = jsonConfig.getOrElse(
+      <span class="hljs-type">Seq</span>(<span class="hljs-string">"parameters"</span>, <span class="hljs-string">"algorithmA"</span>, <span class="hljs-string">"threshold"</span>),
+      <span class="hljs-keyword">default</span> = <span class="hljs-number">0.1</span>d
+    )
+
+    <span class="hljs-keyword">val</span> data = spark.readStream
+
+    <span class="hljs-comment">// and so on ...</span>
+  }
+}
+</div></code></pre>
+<h2 id="deploying-on-a-cluster">Deploying on a Cluster</h2>
+<p>So our job is is <code>ourSparkJob.jar</code>, class <code>com.cacoveanu.spar.OurSparkJob</code>, and our configuration file is <code>configuration.json</code>. To deploy this job on a cluster, we must run the following command:</p>
+<pre class="hljs"><code><div>spark-submit --class com.cacoveanu.spar.OurSparkJob --master spark://master-url:7077 --deploy-mode cluster --files configuration.json ourSparkJob.jar
+</div></code></pre>
+
+</body>
+</html>
