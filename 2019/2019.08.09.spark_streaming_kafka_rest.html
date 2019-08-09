@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spark Streaming Read from Kafka Rest Proxy</title>
+  <meta name="description" content="How to read from a Kafka REST proxy into a Spark streaming job using a custom stream receiver, and how to parallelize this setup.">
+  <meta name="keywords" content="apache spark, apache kafka, docker, spark streaming, custom stream receiver, kafka rest">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2019.08.09 14:00 / apache spark / apache kafka / docker / spark streaming / custom stream receiver / kafka rest</p>
+<h1 id="spark-streaming-read-from-kafka-rest-proxy">Spark Streaming Read from Kafka Rest Proxy</h1>
+<p>This article is a follow-up to the <a href="2019.08.09.kafka_port_forwarding_proxy.html">previous Kafka article</a> and presents a different way to connect Spark with Kafka when the two services are in different clouds, and when there are limitations on what services can be exposed to the outside world. In our case, the Kafka service can't be directly exposed to the Internet, but we can set up access through a proxy. In the previous article, the proxy we used was just forwarding the Kafka protocol to the Kafka service. This time, we will be using a REST proxy. In some network setups, some protocols may be restricted. Usually, HTTP/S should be considered safe to use and unrestricted, which is why we are exploring the REST proxy over Kafka. The complicated part in this setup is reading data into a Spark stream from a Kafka REST proxy.</p>
+<h2 id="test-setup">Test setup</h2>
+<p>We will start with the basic Zookeeper and Kafka images as before, this time Kafka will not be secured. For the rest proxy, we will use the <a href="https://docs.confluent.io/current/kafka-rest/quickstart.html">REST proxy for Kafka from Confluent</a>. The following <code>Dockerfile</code> will download and setup the proxy:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">FROM</span> ubuntu
+
+<span class="hljs-keyword">RUN</span><span class="bash"> apt-get update
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y wget
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y nano
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y net-tools
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y default-jre
+</span>
+<span class="hljs-keyword">WORKDIR</span><span class="bash"> /opt
+</span>
+<span class="hljs-keyword">RUN</span><span class="bash"> wget http://packages.confluent.io/archive/5.3/confluent-5.3.0-2.12.tar.gz
+</span><span class="hljs-keyword">RUN</span><span class="bash"> tar -xvzf *.tar.gz
+</span><span class="hljs-keyword">COPY</span><span class="bash"> kafka-rest.properties /opt/confluent-5.3.0/etc/kafka-rest/
+</span>
+<span class="hljs-keyword">ENTRYPOINT</span><span class="bash"> /opt/confluent-5.3.0/bin/kafka-rest-start /opt/confluent-5.3.0/etc/kafka-rest/kafka-rest.properties
+</span></div></code></pre>
+<p>As you can see, a <code>kafka-rest.properties</code> file is copied to the server. The file contents are the following:</p>
+<pre class="hljs"><code><div>zookeeper.connect=zookeeper:2181
+bootstrap.servers=PLAINTEXT://kafka:9092
+</div></code></pre>
+<p>We just tell the REST proxy how to access the Zookeeper and Kafka services.</p>
+<p>The <code>docker-compose.yml</code> file is the following:</p>
+<pre class="hljs"><code><div><span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+<span class="hljs-attr">  zookeeper:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./zookeeper</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"2181:2181"</span>
+<span class="hljs-attr">  kafka:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./kafka</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"9092:9092"</span>
+<span class="hljs-attr">  rest-proxy:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./rest-proxy</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"8082:8082"</span>
+</div></code></pre>
+<p>You can start all this up and maybe create a test topic and write some messages to it, just so we are prepared.</p>
+<h2 id="the-custom-receiver">The custom receiver</h2>
+<p>This is where the complicated part is. If we want to read data from Kafka to Spark we would normally use the Kafka source providers that come with Spark. Unfortunately, there is no source provider for a Kafka REST endpoint, so we need to write one ourselves. Moreover, working with Kafka is not as simple as reading from a REST endpoint. There are several steps a Kafka client needs to perform to be able to read from Kafka:</p>
+<ul>
+<li>we must first register a consumer with Kafka, under a consumer group</li>
+<li>next the consumer must subscribe to one or more topics</li>
+<li>now the client can start reading messages from Kafka</li>
+</ul>
+<p>The consumer within consumer group concept is the way Kakfa allows parallel consumption from its topics. Each topic is split into partitions. If we have a consumer group with a consumer that reads from that topic, all messages will go to the single consumer. If we want to read from Kafka in a parallel manner, for example from multiple Spark workers, we must create multiple consumers in a single consumer group. If we do this, Kafka will know to send each consumer messages from the same subset of partitions. So, if a topic has 4 partitions, and we create two consumers in a consumer group to read data from that topic, cosumer 1 will receive messages from partitions 1 and 2, and consumer 2 will receive messages from partitions 3 and 4. This way, Kafka ensures each message is only processed once by each consumer group.</p>
+<p>With this in mind, we can implement a custom Spark receiver for the Kafka REST endpoint in the following manner:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark
+
+<span class="hljs-keyword">import</span> java.net.<span class="hljs-type">SocketTimeoutException</span>
+<span class="hljs-keyword">import</span> java.util.<span class="hljs-type">UUID</span>
+
+<span class="hljs-keyword">import</span> io.circe.parser.decode
+<span class="hljs-keyword">import</span> io.circe.generic.auto._
+<span class="hljs-keyword">import</span> org.apache.spark.internal.<span class="hljs-type">Logging</span>
+<span class="hljs-keyword">import</span> org.apache.spark.storage.<span class="hljs-type">StorageLevel</span>
+<span class="hljs-keyword">import</span> org.apache.spark.streaming.receiver.<span class="hljs-type">Receiver</span>
+<span class="hljs-keyword">import</span> scalaj.http.<span class="hljs-type">Http</span>
+
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">KafkaRestReceiver</span>(<span class="hljs-params">consumerGroup: <span class="hljs-type">String</span>, restProxyUrl: <span class="hljs-type">String</span>, topics: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]</span>)</span>
+  <span class="hljs-keyword">extends</span> <span class="hljs-type">Receiver</span>[<span class="hljs-type">Message</span>](<span class="hljs-type">StorageLevel</span>.<span class="hljs-type">MEMORY_AND_DISK_2</span>) <span class="hljs-keyword">with</span> <span class="hljs-type">Logging</span>  {
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">registerBinaryConsumer</span></span>(consumer: <span class="hljs-type">String</span>) = {
+    <span class="hljs-keyword">val</span> url = <span class="hljs-string">s"http://<span class="hljs-subst">$restProxyUrl</span>/consumers/<span class="hljs-subst">$consumerGroup</span>"</span>
+    <span class="hljs-keyword">val</span> body =
+      <span class="hljs-string">s""</span><span class="hljs-string">"
+         |{
+         |  "</span><span class="hljs-string">name": "</span>${consumer}<span class="hljs-string">",
+         |  "</span><span class="hljs-string">format": "</span><span class="hljs-string">binary",
+         |  "</span>auto.offset.<span class="hljs-string">reset": "</span><span class="hljs-string">earliest"
+         |}
+       "</span><span class="hljs-string">""</span>.stripMargin
+
+    <span class="hljs-keyword">val</span> response = <span class="hljs-type">Http</span>(url)
+      .postData(body)
+      <span class="hljs-comment">//.proxy("localhost", 3128)</span>
+      .header(<span class="hljs-string">"Accept"</span>, <span class="hljs-string">"application/vnd.kafka.v2+json"</span>)
+      .header(<span class="hljs-string">"Content-Type"</span>, <span class="hljs-string">"application/vnd.kafka.v2+json"</span>)
+      .asString
+
+    <span class="hljs-keyword">val</span> result = <span class="hljs-keyword">if</span> (response.code == <span class="hljs-number">200</span>) {
+      decode[<span class="hljs-type">RegisterResponse</span>](response.body) <span class="hljs-keyword">match</span> {
+        <span class="hljs-keyword">case</span> <span class="hljs-type">Left</span>(_) =&gt; <span class="hljs-type">None</span>
+        <span class="hljs-keyword">case</span> <span class="hljs-type">Right</span>(res) =&gt; <span class="hljs-type">Some</span>(res)
+      }
+    } <span class="hljs-keyword">else</span> <span class="hljs-type">None</span>
+
+    result
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">closeConsumer</span></span>(consumerUrl: <span class="hljs-type">String</span>) = {
+    <span class="hljs-keyword">val</span> url = consumerUrl
+
+    <span class="hljs-keyword">val</span> response = <span class="hljs-type">Http</span>(url)
+      .method(<span class="hljs-string">"DELETE"</span>)
+      <span class="hljs-comment">//.header("X-HTTP-Method-Override", "DELETE")</span>
+      .header(<span class="hljs-string">"Content-Type"</span>, <span class="hljs-string">"application/vnd.kafka.v2+json"</span>)
+      .asString
+
+    <span class="hljs-keyword">if</span> (response.code == <span class="hljs-number">204</span>) {
+      <span class="hljs-literal">true</span>
+    } <span class="hljs-keyword">else</span> {
+      println(response.code)
+      <span class="hljs-literal">false</span>
+    }
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">subscribeConsumerToTopics</span></span>(consumerUrl: <span class="hljs-type">String</span>, topics: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]) = {
+    <span class="hljs-keyword">val</span> url = <span class="hljs-string">s"<span class="hljs-subst">$consumerUrl</span>/subscription"</span>
+    <span class="hljs-keyword">val</span> body =
+      <span class="hljs-string">s""</span><span class="hljs-string">"
+         |{"</span><span class="hljs-string">topics":["</span>${topics.mkString(<span class="hljs-string">"\",\""</span>)}<span class="hljs-string">"]}
+       "</span><span class="hljs-string">""</span>.stripMargin
+
+    <span class="hljs-keyword">val</span> response = <span class="hljs-type">Http</span>(url)
+      .postData(body)
+      <span class="hljs-comment">//.proxy("localhost", 3128)</span>
+      .header(<span class="hljs-string">"Accept"</span>, <span class="hljs-string">"application/vnd.kafka.v2+json"</span>)
+      .header(<span class="hljs-string">"Content-Type"</span>, <span class="hljs-string">"application/vnd.kafka.v2+json"</span>)
+      .asString
+
+    <span class="hljs-keyword">if</span> (response.code == <span class="hljs-number">200</span>) <span class="hljs-literal">true</span> <span class="hljs-keyword">else</span> <span class="hljs-literal">false</span>
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">readMessages</span></span>(uri: <span class="hljs-type">String</span>) = {
+    <span class="hljs-keyword">val</span> url = <span class="hljs-string">s"<span class="hljs-subst">$uri</span>/records"</span>
+
+    <span class="hljs-keyword">try</span> {
+      <span class="hljs-keyword">val</span> response = <span class="hljs-type">Http</span>(url)
+        .header(<span class="hljs-string">"Accept"</span>, <span class="hljs-string">"application/vnd.kafka.binary.v2+json"</span>)
+        <span class="hljs-comment">//.timeout(60000, 60000)</span>
+        .asString
+
+      <span class="hljs-keyword">if</span> (response.code == <span class="hljs-number">200</span>) {
+        decode[<span class="hljs-type">Seq</span>[<span class="hljs-type">Message</span>]](response.body) <span class="hljs-keyword">match</span> {
+          <span class="hljs-keyword">case</span> <span class="hljs-type">Left</span>(failure) =&gt;
+            println(failure)
+            <span class="hljs-type">None</span>
+          <span class="hljs-keyword">case</span> <span class="hljs-type">Right</span>(result) =&gt; <span class="hljs-type">Some</span>(result)
+        }
+      } <span class="hljs-keyword">else</span> <span class="hljs-type">None</span>
+    } <span class="hljs-keyword">catch</span> {
+      <span class="hljs-keyword">case</span> e: <span class="hljs-type">SocketTimeoutException</span> =&gt;
+        e.printStackTrace()
+        <span class="hljs-type">None</span>
+    }
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">onStart</span></span>(): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> consumerId = <span class="hljs-type">UUID</span>.randomUUID().toString
+    <span class="hljs-keyword">val</span> registerResponse = registerBinaryConsumer(consumerId)
+    registerResponse <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(<span class="hljs-type">RegisterResponse</span>(_, uri)) =&gt;
+        println(<span class="hljs-string">s"consumer url: <span class="hljs-subst">$uri</span>"</span>)
+        subscribeConsumerToTopics(uri, topics)
+
+        <span class="hljs-keyword">new</span> <span class="hljs-type">Thread</span>(<span class="hljs-string">"Rest Receiver"</span>) {
+          <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">run</span></span>() { receive(uri) }
+        }.start()
+
+      <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt;
+    }
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">onStop</span></span>(): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-comment">// There is nothing much to do as the thread calling receive()</span>
+    <span class="hljs-comment">// is designed to stop by itself if isStopped() returns false</span>
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">receive</span></span>(uri: <span class="hljs-type">String</span>) {
+    <span class="hljs-keyword">while</span>(!isStopped) {
+      <span class="hljs-comment">// read data from rest endpoint</span>
+      <span class="hljs-keyword">val</span> data = readMessages(uri)
+      data <span class="hljs-keyword">match</span> {
+        <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(v) =&gt;
+          println(<span class="hljs-string">s"read <span class="hljs-subst">${v.size}</span> messages"</span>)
+          store(v.iterator)
+        <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt;
+      }
+    }
+    <span class="hljs-keyword">val</span> ccRes = closeConsumer(uri)
+    println(<span class="hljs-string">s"close consumer: <span class="hljs-subst">$ccRes</span>"</span>)
+  }
+}
+
+<span class="hljs-keyword">case</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">RegisterResponse</span>(<span class="hljs-params">instance_id: <span class="hljs-type">String</span>, base_uri: <span class="hljs-type">String</span></span>)</span>
+
+<span class="hljs-keyword">case</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Message</span>(<span class="hljs-params">topic: <span class="hljs-type">String</span>, key: <span class="hljs-type">Option</span>[<span class="hljs-type">String</span>], value: <span class="hljs-type">String</span>, partition: <span class="hljs-type">Int</span>, offset: <span class="hljs-type">Int</span></span>)</span>
+</div></code></pre>
+<p>I will go over the solution step by step. For a start, we are implemeting the <code>Receiver</code> interface. This interface has two methods. <code>onStart</code> is responsible with initializing and starting the threads that will bring data into Spark, and <code>onStop</code>, responsible with closing those threads. When Spark stops the receivers, it also sets a flag called <code>isStopped</code>. In our code, we use that flag to stop the processing.</p>
+<p>Our receiver will need to know three things to work:</p>
+<ul>
+<li>the <code>consumerGroup</code> it belongs to: all receivers in a Spark application should belong to the same consumer grup, that being the manner in which we can parallelize the reading of Kafka topics</li>
+<li><code>restProxyUrl</code>: where the receiver can reach the Kafka REST proxy service,</li>
+<li><code>topics</code>: what topics we want the receiver to subscribe to</li>
+</ul>
+<pre class="hljs"><code><div><span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">onStart</span></span>(): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> consumerId = <span class="hljs-type">UUID</span>.randomUUID().toString
+    <span class="hljs-keyword">val</span> registerResponse = registerBinaryConsumer(consumerId)
+    registerResponse <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(<span class="hljs-type">RegisterResponse</span>(_, uri)) =&gt;
+        println(<span class="hljs-string">s"consumer url: <span class="hljs-subst">$uri</span>"</span>)
+        subscribeConsumerToTopics(uri, topics)
+
+        <span class="hljs-keyword">new</span> <span class="hljs-type">Thread</span>(<span class="hljs-string">"Rest Receiver"</span>) {
+          <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">run</span></span>() { receive(uri) }
+        }.start()
+
+      <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt;
+    }
+  }
+</div></code></pre>
+<p>When a reveicer is created, the <code>onStart</code> method is called. This method will generate a unique ID for the consumer to be registered, then it will use the <code>registerBinaryConsumer</code> method to make a call to the REST proxy and register the consumer. The consumer will be registered under the consumer group defined for the Spark application. The result will be a consumer URL. We use this URL to subscribe to the desired topics, then we start a thread that will periodically receive messages from Kafka using the consumer URL.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">receive</span></span>(uri: <span class="hljs-type">String</span>) {
+    <span class="hljs-keyword">while</span>(!isStopped) {
+      <span class="hljs-comment">// read data from rest endpoint</span>
+      <span class="hljs-keyword">val</span> data = readMessages(uri)
+      data <span class="hljs-keyword">match</span> {
+        <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(v) =&gt;
+          println(<span class="hljs-string">s"read <span class="hljs-subst">${v.size}</span> messages"</span>)
+          store(v.iterator)
+        <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt;
+      }
+    }
+    <span class="hljs-keyword">val</span> ccRes = closeConsumer(uri)
+    println(<span class="hljs-string">s"close consumer: <span class="hljs-subst">$ccRes</span>"</span>)
+  }
+</div></code></pre>
+<p>The <code>receive</code> method will run until the receiver is stopped by Spark. The method will keep trying to read messages from the consumer URL, and if any new messages are found, it converts them to case classes and stores them into Spark. Calling the <code>store</code> method is what sends data to the Spark stream. At the end of the <code>receive</code> method, once the receiver was stopped, we try to close the consumer by calling its URL with a <code>DELETE</code> HTTP method.</p>
+<p>It is important to signal the closing and starting of a consumer in a consumer group. If a new consumer is started, Kafka needs to know, to start sending messages to that consumer as well, otherwise the consumer would be unused and of no consequence. For Kafka to reliably use the new consumer, it needs to take some partitions away from existing consumers and assign them to the new consumer. This is all done by Kafka when a new consumer is added to a consumer group. In the same manner, when a consumer is removed, Kafka must handle the orphaned partitions and reassign them to consumers that are still running. This is why, in case we are stopping our custom receiver, we must use the Kafka REST API to notify of the consumers' deletion.</p>
+<h2 id="the-spark-program">The spark program</h2>
+<p>Following is the entire Spark program that uses our custom receiver to read data from a Kafka REST endpoint, in a streaming Spark context.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark
+
+<span class="hljs-keyword">import</span> java.io.{<span class="hljs-type">File</span>, <span class="hljs-type">PrintWriter</span>}
+<span class="hljs-keyword">import</span> java.util.<span class="hljs-type">Base64</span>
+
+<span class="hljs-keyword">import</span> org.apache.spark.<span class="hljs-type">SparkConf</span>
+<span class="hljs-keyword">import</span> org.apache.spark.sql.{<span class="hljs-type">SQLContext</span>, <span class="hljs-type">SparkSession</span>}
+<span class="hljs-keyword">import</span> org.apache.spark.streaming.dstream.<span class="hljs-type">ReceiverInputDStream</span>
+<span class="hljs-keyword">import</span> org.apache.spark.streaming.{<span class="hljs-type">Seconds</span>, <span class="hljs-type">StreamingContext</span>}
+<span class="hljs-keyword">import</span> org.apache.spark.util.<span class="hljs-type">Utils</span>
+
+<span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">SparkStreamingRestKafka</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> argmap: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] = args
+      .map(a =&gt; a.split(<span class="hljs-string">"="</span>))
+      .filter(a =&gt; a(<span class="hljs-number">0</span>).nonEmpty &amp;&amp; a(<span class="hljs-number">1</span>).nonEmpty)
+      .map(a =&gt; a(<span class="hljs-number">0</span>) -&gt; a(<span class="hljs-number">1</span>))
+      .toMap
+
+    <span class="hljs-keyword">val</span> local = argmap.contains(<span class="hljs-string">"local"</span>)
+    <span class="hljs-keyword">val</span> sparkConf = <span class="hljs-keyword">new</span> <span class="hljs-type">SparkConf</span>().setAppName(<span class="hljs-string">"CustomKafkaRestReceiver"</span>)
+    <span class="hljs-keyword">if</span> (local) sparkConf.setMaster(<span class="hljs-string">"local[2]"</span>)
+    <span class="hljs-keyword">val</span> ssc = <span class="hljs-keyword">new</span> <span class="hljs-type">StreamingContext</span>(sparkConf, <span class="hljs-type">Seconds</span>(<span class="hljs-number">1</span>))
+    ssc.sparkContext.setLogLevel(<span class="hljs-string">"WARN"</span>)
+
+    <span class="hljs-keyword">val</span> restProxyUrl = argmap.getOrElse(<span class="hljs-string">"kafka_proxy"</span> ,<span class="hljs-string">"localhost:8082"</span>)
+    <span class="hljs-keyword">val</span> consumerGroup = argmap.getOrElse(<span class="hljs-string">"consumer_group"</span>, <span class="hljs-string">"spark_consumer_"</span> + <span class="hljs-type">System</span>.currentTimeMillis().toString)
+    <span class="hljs-keyword">val</span> topics = <span class="hljs-type">Seq</span>(argmap.getOrElse(<span class="hljs-string">"topic"</span>, <span class="hljs-string">"test"</span>))
+    <span class="hljs-keyword">val</span> resultPath = argmap.getOrElse(<span class="hljs-string">"result_path"</span>, <span class="hljs-string">"r"</span>)
+
+    <span class="hljs-keyword">val</span> streamData: <span class="hljs-type">ReceiverInputDStream</span>[<span class="hljs-type">Message</span>] = ssc.receiverStream(<span class="hljs-keyword">new</span> <span class="hljs-type">KafkaRestReceiver</span>(consumerGroup, restProxyUrl, topics))
+    <span class="hljs-keyword">val</span> messages = streamData.map(m =&gt; {
+      println(m.offset)
+      <span class="hljs-type">KafkaDecoder</span>.decode(m.value)
+    })
+    
+    messages.foreachRDD(rdd =&gt; {
+      <span class="hljs-keyword">if</span> (! rdd.isEmpty()) {
+        rdd.foreachPartition(partition =&gt; {
+          println(<span class="hljs-string">"writing partition"</span>)
+          <span class="hljs-keyword">val</span> result = partition.mkString(<span class="hljs-string">"\n"</span>)
+          <span class="hljs-keyword">val</span> filename = resultPath + <span class="hljs-string">"/r-"</span> + <span class="hljs-type">System</span>.currentTimeMillis().toString + <span class="hljs-string">".txt"</span>
+          <span class="hljs-keyword">val</span> pw = <span class="hljs-keyword">new</span> <span class="hljs-type">PrintWriter</span>(<span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(filename))
+          pw.write(result)
+          pw.close
+        })
+      }
+    })
+    
+    ssc.start()
+    ssc.awaitTermination()
+  }
+}
+
+<span class="hljs-keyword">import</span> java.util.<span class="hljs-type">Base64</span>
+
+<span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">KafkaDecoder</span> </span>{
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">decode</span></span>(message: <span class="hljs-type">String</span>): <span class="hljs-type">String</span> = {
+    <span class="hljs-keyword">new</span> <span class="hljs-type">String</span>(<span class="hljs-type">Base64</span>.getDecoder.decode(message))
+  }
+}
+</div></code></pre>
+<p>The first steps is setting up the program with the use of program arguments. One interesting problem I noticed is that, if we run Spark locally with a single worker thread, <code>local[1]</code>, the result won't get printed in your output location until the very end of the execution. This is because that thread is busy with reading and processing the stream, so there are no resources to print your results. That is why, if we are running in local mode, we need at least two threads.</p>
+<p>Another thing we need is a unique consumer group name. This is generated on the driver, when the program arguments are read, and then passed to</p>
+<p>Custom receivers are compatible only with the older DStream APIs of Spark, but that API will do its job of monitoring the data source and executing the processing steps as new data appears. We create a new stream to which we provide our custom receiver. Next, we map the binary messager we receive on that stream into strings. This decoding is very simple to do and can be seen in the <code>KafkaDecoder</code> class. Once we have the string messages from our topic, we are ready to write them to our output location. We use a <code>foreachRDD</code> method that further splits exection by partitions. These are the RDD partitions, if the RDD is indeed distributed. Each partition available at that point in time will write the messages it contains in a file on disk. And this concludes our program, which we can continue to test in the following section.</p>
+<h2 id="parallelized-test-setup">Parallelized test setup</h2>
+<p>For this step, we will need to put up multiple Spark nodes, a master and at least two workers. I will go over how the master and worker images are created in a different article, but let's imagine we have them and we will add them to our <code>docker-compose.yml</code> file:</p>
+<pre class="hljs"><code><div><span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+<span class="hljs-attr">  zookeeper:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./zookeeper</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"2181:2181"</span>
+<span class="hljs-attr">  kafka:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./kafka</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"9092:9092"</span>
+<span class="hljs-attr">  rest-proxy:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./rest-proxy</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"8082:8082"</span>
+<span class="hljs-attr">  spark-master:</span>
+<span class="hljs-attr">    image:</span> <span class="hljs-string">docker-spark_spark-master</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"8080:8080"</span>
+<span class="hljs-attr">    volumes:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">/mnt/spark-apps:/opt/spark-apps</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">/mnt/spark-data:/opt/spark-data</span>
+<span class="hljs-attr">  spark-slave:</span>
+<span class="hljs-attr">    image:</span> <span class="hljs-string">docker-spark_spark-slave</span>
+<span class="hljs-attr">    environment:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">MASTER_URL=spark://spark-master:7077</span>
+<span class="hljs-attr">    volumes:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">/mnt/spark-apps:/opt/spark-apps</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">/mnt/spark-data:/opt/spark-data</span>
+</div></code></pre>
+<p>You will see the slave connects to the master through <code>MASTER_URL</code>. We also have shared volumes between the Spark master and slave(s). This is because the Spark applications and output locations need to be accessible to all nodes in the Spark cluster. This can be achieved in different ways, most common done by running Spark over a Hadoop cluster, but we can also use a shared network location, mounted at the same point on all nodes.</p>
+<p>We are now ready to assemble our Spark app. To do that successfully, you must add a <code>project/plugins.sbt</code> file to your project that imports the assembly plugin:</p>
+<pre class="hljs"><code><div>addSbtPlugin(<span class="hljs-string">"com.eed3si9n"</span> % <span class="hljs-string">"sbt-assembly"</span> % <span class="hljs-string">"0.14.8"</span>)
+</div></code></pre>
+<p>I am also using the following <code>build.sbt</code> file to build the project:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">import</span> sbtassembly.<span class="hljs-type">AssemblyPlugin</span>.autoImport
+
+name := <span class="hljs-string">"spark-kafka-rest"</span>
+<span class="hljs-keyword">val</span> projectVersion = <span class="hljs-string">"0.1"</span>
+scalaVersion := <span class="hljs-string">"2.11.12"</span>
+
+<span class="hljs-keyword">val</span> spark = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-core"</span> % <span class="hljs-string">"2.4.0"</span> % <span class="hljs-string">"provided"</span>
+<span class="hljs-keyword">val</span> sparkSql = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-sql"</span> % <span class="hljs-string">"2.4.0"</span> % <span class="hljs-string">"provided"</span>
+<span class="hljs-keyword">val</span> sparkStreaming = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-streaming"</span> % <span class="hljs-string">"2.4.0"</span> % <span class="hljs-string">"provided"</span>
+<span class="hljs-keyword">val</span> sparkSqlKafka  = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-sql-kafka-0-10"</span> % <span class="hljs-string">"2.4.0"</span>
+<span class="hljs-keyword">val</span> sparkSqlKafkaStreaming = <span class="hljs-string">"org.apache.spark"</span> %% <span class="hljs-string">"spark-streaming-kafka-0-10"</span>  % <span class="hljs-string">"2.4.0"</span>
+
+<span class="hljs-keyword">val</span> scalajHttp = <span class="hljs-string">"org.scalaj"</span> %% <span class="hljs-string">"scalaj-http"</span> % <span class="hljs-string">"2.4.1"</span>
+<span class="hljs-keyword">val</span> circeCore = <span class="hljs-string">"io.circe"</span> %% <span class="hljs-string">"circe-core"</span> % <span class="hljs-string">"0.11.1"</span>
+<span class="hljs-keyword">val</span> circeGeneric = <span class="hljs-string">"io.circe"</span> %% <span class="hljs-string">"circe-generic"</span> % <span class="hljs-string">"0.11.1"</span>
+<span class="hljs-keyword">val</span> circeParser = <span class="hljs-string">"io.circe"</span> %% <span class="hljs-string">"circe-parser"</span> % <span class="hljs-string">"0.11.1"</span>
+
+<span class="hljs-keyword">lazy</span> <span class="hljs-keyword">val</span> spark_app = (project in file(<span class="hljs-string">"."</span>))
+  .settings(
+    name := <span class="hljs-string">"spark-kafka-rest"</span>,
+    version := projectVersion,
+    organization := <span class="hljs-string">"com.cacoveanu.spark"</span>,
+    libraryDependencies ++= <span class="hljs-type">Seq</span>(
+      spark,
+      sparkSql,
+      sparkStreaming,
+      sparkSqlKafka,
+      sparkSqlKafkaStreaming,
+      scalajHttp,
+      circeCore,
+      circeGeneric,
+      circeParser
+    )
+  )
+
+<span class="hljs-keyword">val</span> meta = <span class="hljs-string">""</span><span class="hljs-string">"META.INF(.)*"</span><span class="hljs-string">""</span>.r
+assemblyMergeStrategy in assembly := {
+  <span class="hljs-keyword">case</span> <span class="hljs-type">PathList</span>(<span class="hljs-string">"javax"</span>, <span class="hljs-string">"servlet"</span>, xs @ _*) =&gt; <span class="hljs-type">MergeStrategy</span>.first
+  <span class="hljs-keyword">case</span> <span class="hljs-type">PathList</span>(ps @ _*) <span class="hljs-keyword">if</span> ps.last endsWith <span class="hljs-string">".html"</span> =&gt; <span class="hljs-type">MergeStrategy</span>.first
+  <span class="hljs-keyword">case</span> n <span class="hljs-keyword">if</span> n.startsWith(<span class="hljs-string">"reference.conf"</span>) =&gt; <span class="hljs-type">MergeStrategy</span>.concat
+  <span class="hljs-keyword">case</span> n <span class="hljs-keyword">if</span> n.endsWith(<span class="hljs-string">".conf"</span>) =&gt; <span class="hljs-type">MergeStrategy</span>.concat
+  <span class="hljs-keyword">case</span> meta(_) =&gt; <span class="hljs-type">MergeStrategy</span>.discard
+  <span class="hljs-keyword">case</span> x =&gt; <span class="hljs-type">MergeStrategy</span>.first
+}
+</div></code></pre>
+<p>Once you have all these in place, you can run <code>sbt assembly</code> in your project root folder. This will create the assembly file under the <code>target</code> folder.</p>
+<p>Next, we need to start up our cluster. Go to the folder where your docker project is and run <code>docker-compose up --scale spark-slave=2 -d</code>. This will start a cluster with a Kafka server, a Zookeeper server, a Kafka REST proxy server, one Spark master and two Spark slaves.</p>
+<p>We must next copy the assembly file to the <code>spark-apps</code> volume shared between the Spark nodes. We can do this with the <code>docker cp assembly.jar &lt;spark-node-id&gt;:/opt/spark-apps</code> (you can obtain a Spark node ID with <code>docker ps</code>, any Spark node will do since the volume is shared between them).</p>
+<p>Next, we need to start our Spark app on the cluster. We can do this from any Spark node with the following command:</p>
+<pre class="hljs"><code><div>/opt/spark-2.4.3-bin-hadoop2.7/bin/spark-submit --deploy-mode cluster --master spark://spark-master:7077 --class com.cacoveanu.spark.SparkStreamingRestKafka /opt/spark-apps/assembly.jar kafka_proxy=rest-proxy:8082 result_path=/opt/spark-data/
+</div></code></pre>
+<p>We use the <code>spark-submit</code> script from the Spark binary location, we deploy on the cluster represented by the master at <code>spark-master:7077</code>, the class we run is <code>com.cacoveanu.spark.SparkStreamingRestKafka</code> and can be found in the JAR at <code>/opt/spark-apps/assembly.jar</code>. We also provide the program arguments, where the Kafka REST proxy that we need to read data from is located and where to save the results. Once you run this command, you can go to the Spark management console at <code>localhost:8080</code> and see that a driver and an application are running, and if you click on the application you should see that it is running on two worker nodes.</p>
+<p>To really go deep into understanding how our application is functioning, we must inspect the logs of the workers. We can connect to each of the workers with <code>docker exec -it &lt;worker-id&gt; bash</code> and navigate to the Spark work folder at <code>/opt/spark-2.4.3-bin-hadoop2.7/work</code>. There, on each of the workers, we should find a folder with the application ID, as listed in the Spark management console, and in those folders we will find the <code>stdout</code> file where the <code>println</code> instructions in our code write their output. If we inspect those files, we can understand what part of the code is executed on what worker. And here we find a small surprise: <strong>only one of the workers has initialized a custom receiver and is reading data from the Kafka REST endpoint</strong>. Our data read process is not being distributed at all, and all the work of registering multiple consumers in the same consumer group is irrelevant, we have one consumer in one consumer group running on one worker node.</p>
+<p>This is how a custom Spark consumer works. Spark has no way of knowing that the consumer can parallelize. If we have a consumer reading from a socket, or some standard REST endpoint, Spark has no way of guaranteeing that there will be no data duplication, or data loss if it decides to create multiple instances of that consumer. Spark will start a single instance and have a single entry-point of the data into the streaming context. Once the data is in a Spark RDD, it can get distributed over worker nodes and processed in parallel, so there is still some advantage at that level.</p>
+<p>As it happens, the Kafka REST proxy is offering us a mechanism to parallelize data ingestion without duplicates, but we have a little more work to do before we can take advantage of that.</p>
+<h2 id="real-parallelism">Real parallelism</h2>
+<p>To read data from multiple workers, we need to create multiple custom consumers. We can then read a separate stream from each consumer, on different worker nodes. Those streams can be merged if necessary. How expensive this merge operation is will depend on your data and your cluster, I have not made a production test yet to be able to offer any advice or even know if it's a good idea. Maybe having a single entry point is the only sensible way of operating with a custom consumer. Our updated code should look like this:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">SparkStreamingRestKafka</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> argmap: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] = args
+      .map(a =&gt; a.split(<span class="hljs-string">"="</span>))
+      .filter(a =&gt; a(<span class="hljs-number">0</span>).nonEmpty &amp;&amp; a(<span class="hljs-number">1</span>).nonEmpty)
+      .map(a =&gt; a(<span class="hljs-number">0</span>) -&gt; a(<span class="hljs-number">1</span>))
+      .toMap
+
+    <span class="hljs-keyword">val</span> local = argmap.contains(<span class="hljs-string">"local"</span>)
+    <span class="hljs-keyword">val</span> sparkConf = <span class="hljs-keyword">new</span> <span class="hljs-type">SparkConf</span>().setAppName(<span class="hljs-string">"CustomKafkaRestReceiver"</span>)
+    <span class="hljs-keyword">if</span> (local) sparkConf.setMaster(<span class="hljs-string">"local[2]"</span>)
+    <span class="hljs-keyword">val</span> ssc = <span class="hljs-keyword">new</span> <span class="hljs-type">StreamingContext</span>(sparkConf, <span class="hljs-type">Seconds</span>(<span class="hljs-number">1</span>))
+    ssc.sparkContext.setLogLevel(<span class="hljs-string">"WARN"</span>)
+
+    <span class="hljs-keyword">val</span> restProxyUrl = argmap.getOrElse(<span class="hljs-string">"kafka_proxy"</span> ,<span class="hljs-string">"localhost:8082"</span>)
+    <span class="hljs-keyword">val</span> consumerGroup = argmap.getOrElse(<span class="hljs-string">"consumer_group"</span>, <span class="hljs-string">"spark_consumer_"</span> + <span class="hljs-type">System</span>.currentTimeMillis().toString)
+    <span class="hljs-keyword">val</span> topics = <span class="hljs-type">Seq</span>(argmap.getOrElse(<span class="hljs-string">"topic"</span>, <span class="hljs-string">"test"</span>))
+    <span class="hljs-keyword">val</span> resultPath = argmap.getOrElse(<span class="hljs-string">"result_path"</span>, <span class="hljs-string">"r"</span>)
+
+    <span class="hljs-keyword">val</span> readers = argmap.getOrElse(<span class="hljs-string">"readers"</span>, <span class="hljs-string">"1"</span>).toInt
+
+    <span class="hljs-keyword">val</span> streams: immutable.<span class="hljs-type">Seq</span>[<span class="hljs-type">DStream</span>[<span class="hljs-type">Message</span>]] = <span class="hljs-keyword">for</span> (_ &lt;- <span class="hljs-number">1</span> to readers)
+      <span class="hljs-keyword">yield</span> ssc.receiverStream(<span class="hljs-keyword">new</span> <span class="hljs-type">KafkaRestReceiver</span>(consumerGroup, restProxyUrl, topics))
+
+    <span class="hljs-keyword">val</span> streamData: <span class="hljs-type">DStream</span>[<span class="hljs-type">Message</span>] = streams.reduce(_ union _)
+
+    <span class="hljs-keyword">val</span> messages = streamData.map(m =&gt; {
+      println(m.offset)
+      <span class="hljs-type">KafkaDecoder</span>.decode(m.value)
+    })
+
+    messages.foreachRDD(rdd =&gt; {
+      <span class="hljs-keyword">if</span> (! rdd.isEmpty()) {
+        rdd.foreachPartition(partition =&gt; {
+          println(<span class="hljs-string">"writing partition"</span>)
+          <span class="hljs-keyword">val</span> result = partition.mkString(<span class="hljs-string">"\n"</span>)
+          <span class="hljs-keyword">val</span> filename = resultPath + <span class="hljs-string">"/r-"</span> + <span class="hljs-type">System</span>.currentTimeMillis().toString + <span class="hljs-string">".txt"</span>
+          <span class="hljs-keyword">val</span> pw = <span class="hljs-keyword">new</span> <span class="hljs-type">PrintWriter</span>(<span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(filename))
+          pw.write(result)
+          pw.close
+        })
+      }
+    })
+
+    ssc.start()
+    ssc.awaitTermination()
+  }
+</div></code></pre>
+<p>The first change is that we read a new input parameter called <code>readers</code>, this will represent the number of custom receivers we want to have in the application. Next, we initialize the desired number of custom receivers, each yielding a DStream, so we have a collection of streams. Then, we perform the (<em>questionable?</em>) union of all the streams. The rest of the processing is as before.</p>
+<p>For this new test, I started a cluster with three Spark worker nodes.</p>
+<p>We run our test again on the cluster, this time with the following command:</p>
+<pre class="hljs"><code><div>/opt/spark-2.4.3-bin-hadoop2.7/bin/spark-submit --deploy-mode cluster --master spark://spark-master:7077 --class com.cacoveanu.spark.SparkStreamingRestKafka /opt/spark-apps/assembly.jar kafka_proxy=rest-proxy:8082 result_path=/opt/spark-data/ readers=3
+</div></code></pre>
+<p>If we now inspect the <code>stdout</code> files of our application on our worker nodes we will first notice that three different consumers have been registered under the same consumer group. Further inspection of those logs will show us that different workers are processing (converting from binary to string) different messages, and different workers are writing the results to disk. We no longer have workers splitting their responsibility just across function, but also across data partitions.</p>
+<p>Spark worker 1 stdout:</p>
+<pre class="hljs"><code><div>registering consumer 3569dc71-181d-4394-903e-92e7ff5c5c09 with consumer group spark_consumer_1565336913896
+consumer url: http://rest-proxy:8082/consumers/spark_consumer_1565336913896/instances/3569dc71-181d-4394-903e-92e7ff5c5c09
+read 5 messages
+writing partition
+0
+1
+2
+3
+4
+read 2 messages
+writing partition
+read 4 messages
+7
+writing partition
+7
+8
+9
+10
+writing partition
+read 2 messages
+writing partition
+writing partition
+</div></code></pre>
+<p>Spark worker 2 stdout:</p>
+<pre class="hljs"><code><div>registering consumer 12e00986-5082-4956-b809-95469669fe1c with consumer group spark_consumer_1565336913896
+consumer url: http://rest-proxy:8082/consumers/spark_consumer_1565336913896/instances/12e00986-5082-4956-b809-95469669fe1c
+</div></code></pre>
+<p>Spark worker 3 stdout:</p>
+<pre class="hljs"><code><div>registering consumer d325e45d-7a35-40e8-a332-98b9e71840b2 with consumer group spark_consumer_1565336913896
+consumer url: http://rest-proxy:8082/consumers/spark_consumer_1565336913896/instances/d325e45d-7a35-40e8-a332-98b9e71840b2
+0
+5
+writing partition
+5
+6
+writing partition
+writing partition
+11
+writing partition
+11
+12
+</div></code></pre>
+<p>Alas, there still seems to be some issue with our setup. As you can see, the second worker just initializes a receiver, registers a consumer, and does nothing more. The third worker writes its partitions, but does not read any messages. We still have a parallelization issue somewhere. It may be related to the Kafka setup, maybe there are not enough partitions on the topic for three consumers. A quick check shows us that is the case, the topic has a single partition, but we can fix this.</p>
+<p>We first stop the Spark application driver. Then, we connect to the Kafka node and remove the <code>test</code> topic with <code>./kafka-topics.sh --bootstrap-server kafka:9092 --topic test --delete</code>. Then we can recreate the topic with more partitions: <code>./kafka-topics.sh --bootstrap-server kafka:9092 --create --replication-factor 1 --partitions 12 --topic test</code>. Finally we must restart the Spark streaming app. Once the app is up, we write some messages to that topic with the console producer: <code>./kafka-console-producer.sh --broker-list kafka:9092 --topic test</code>.</p>
+<p>Going back to the logs for each worker, we can see that the setup is now successful. All three workers are now reading messages, sharing the load between them.</p>
+<p>Spark worker 1 stdout:</p>
+<pre class="hljs"><code><div>registering consumer 29b9e1e8-ca86-49bc-8d05-9c06f2b6a8f4 with consumer group spark_consumer_1565341373338
+consumer url: http://rest-proxy:8082/consumers/spark_consumer_1565341373338/instances/29b9e1e8-ca86-49bc-8d05-9c06f2b6a8f4
+read 2 messages
+writing partition
+1
+1
+read 2 messages
+1
+writing partition
+writing partition
+1
+1
+writing partition
+writing partition
+read 1 messages
+writing partition
+2
+read 2 messages
+2
+writing partition
+2
+2
+read 1 messages
+2
+writing partition
+2
+writing partition
+writing partition
+3
+3
+writing partition
+3
+</div></code></pre>
+<p>Spark worker 2 stdout:</p>
+<pre class="hljs"><code><div>registering consumer 1dc32fc4-95e8-4986-9666-30760d359e25 with consumer group spark_consumer_1565341373338
+consumer url: http://rest-proxy:8082/consumers/spark_consumer_1565341373338/instances/1dc32fc4-95e8-4986-9666-30760d359e25
+read 16 messages
+0
+writing partition
+0
+1
+0
+1
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1
+0
+1
+read 2 messages
+1
+writing partition
+1
+1
+writing partition
+1
+1
+writing partition
+2
+writing partition
+writing partition
+2
+2
+read 1 messages
+2
+writing partition
+2
+writing partition
+read 3 messages
+2
+writing partition
+2
+2
+2
+writing partition
+writing partition
+writing partition
+2
+writing partition
+writing partition
+2
+2
+3
+writing partition
+3
+writing partition
+read 1 messages
+3
+writing partition
+3
+writing partition
+read 1 messages
+writing partition
+writing partition
+</div></code></pre>
+<p>Spark worker 3 stdout:</p>
+<pre class="hljs"><code><div>registering consumer 31ab4a3e-caaa-44e2-bb27-8aa37b58aa26 with consumer group spark_consumer_1565341373338
+consumer url: http://rest-proxy:8082/consumers/spark_consumer_1565341373338/instances/31ab4a3e-caaa-44e2-bb27-8aa37b58aa26
+read 2 messages
+read 2 messages
+read 2 messages
+read 1 messages
+read 1 messages
+</div></code></pre>
+<p>As a parting note, I must again mention that this setup has not been tested in a real production environment. I am worried about possible performance implications of stream unions, since they mean moving data around the cluster. The custom receivers can surely still be improved, with some way to handle failures and deregistering the consumer if a receiver is going down. But this whole experiment is a good starting point with the Kafka REST proxy and implementing custom Spark receivers that work with REST endpoints.</p>
+
+</body>
+</html>

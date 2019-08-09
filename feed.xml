@@ -6,8 +6,21 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2019.08.09T13:30:00+02:00</pubDate>
+        <pubDate>2019.08.09T14:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Spark Streaming Read from Kafka Rest Proxy</title>
+            <description>How to read from a Kafka REST proxy into a Spark streaming job using a custom stream receiver, and how to parallelize this setup..</description>
+            <pubDate>2019.08.09T14:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2019/2019.08.09.spark_streaming_kafka_rest.html</link>
+            <category>apache spark</category>
+            <category>apache kafka</category>
+            <category>docker</category>
+            <category>spark streaming</category>
+            <category>custom stream receiver</category>
+            <category>kafka rest</category>
+        </item>
 
         <item>
             <title>Exposing Kafka Service Through Port-Forwarding Proxy</title>
@@ -94,29 +107,6 @@
             <category>powershell</category>
             <category>java</category>
             <category>python</category>
-        </item>
-
-        <item>
-            <title>Distributed Akka Deployment</title>
-            <description>How to make a project scale seamlessly across machines, and share work, with Akka Cluster.</description>
-            <pubDate>Thu, 11 Oct 2018 21:30:00 +0300</pubDate>
-            <link>https://blog.cacoveanu.com/2018b/2018.10.11.distributed_akka.html</link>
-            <category>scala</category>
-            <category>akka</category>
-            <category>cluster</category>
-            <category>spring</category>
-        </item>
-
-        <item>
-            <title>Spark Foreach Mongo Upsert Writer</title>
-            <description>Building several iterations of a generic upsert writer from a Spark stream to MongoDB.</description>
-            <pubDate>Tue, 2 Oct 2018 19:10:00 +0300</pubDate>
-            <link>https://blog.cacoveanu.com/2018b/2018.10.02.spark.mongo.upsert.html</link>
-            <category>scala</category>
-            <category>apache spark</category>
-            <category>mongo db</category>
-            <category>apache kafka</category>
-            <category>big data</category>
         </item>
     </channel>
 </rss>
