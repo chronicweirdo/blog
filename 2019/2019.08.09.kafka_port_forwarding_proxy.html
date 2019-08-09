@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Exposing Kafka Service Through Port-Forwarding Proxy</title>
+  <meta name="description" content="How to build an architecture that connects a secured Kafka service and a Spark streaming application through a port-forwarding proxy in a Docker cluster.">
+  <meta name="keywords" content="apache spark, apache kafka, docker, spark streaming, security">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2019.08.09 13:30 / apache spark / apache kafka / docker / spark streaming / security</p>
+<h1 id="exposing-kafka-service-through-port-forwarding-proxy">Exposing Kafka Service Through Port-Forwarding Proxy</h1>
+<p>This article is part of an investigation on connecting <a href="https://kafka.apache.org/">Apache Kafka</a> with <a href="https://spark.apache.org/">Apache Spark</a>, with the twist that the two of them are in different clouds. In addition, the setup explored in this article will have the Kafka service in a private subnet, available to on-location services to interact with natively, but not accessible to services on the internet, like our Spark service. Our plan is to keep Kafka accessible to our internal services on the default, unsecured API, and to publish Kafka to internet services on a secured API, through a port-forwarding proxy. We'll implement the project and test it using docker.</p>
+<p>There are several steps to this setup:</p>
+<ul>
+<li>launch a Zookeeper instance</li>
+<li>launch a Kafka instance</li>
+<li>perform some preliminary tests</li>
+<li>add authorization to the Kafka instance</li>
+<li>add a port-forwarding proxy</li>
+<li>perform more tests</li>
+</ul>
+<p>We'll start with a folder for each service in our network (ngnix is the proxy):</p>
+<ul>
+<li>zookeeper</li>
+<li>kafka</li>
+<li>nginx</li>
+</ul>
+<h2 id="creating-a-zookeeper-service-with-docker">Creating a Zookeeper service with Docker</h2>
+<p>Create a <code>Dockerfile</code> inside the zookeeper folder and add the following to it:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">FROM</span> ubuntu
+
+<span class="hljs-keyword">EXPOSE</span> <span class="hljs-number">2181</span>
+
+<span class="hljs-keyword">RUN</span><span class="bash"> apt-get update
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y wget
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y nano
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y net-tools
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y default-jre
+</span>
+<span class="hljs-keyword">WORKDIR</span><span class="bash"> /opt
+</span>
+<span class="hljs-keyword">RUN</span><span class="bash"> wget https://www-eu.apache.org/dist/zookeeper/zookeeper-3.5.5/apache-zookeeper-3.5.5-bin.tar.gz
+</span><span class="hljs-keyword">RUN</span><span class="bash"> tar -xvzf *.tar.gz
+</span><span class="hljs-keyword">RUN</span><span class="bash"> cp apache-zookeeper-3.5.5-bin/conf/zoo_sample.cfg apache-zookeeper-3.5.5-bin/conf/zoo.cfg
+</span>
+<span class="hljs-keyword">ENTRYPOINT</span><span class="bash"> apache-zookeeper-3.5.5-bin/bin/zkServer.sh start-foreground
+</span></div></code></pre>
+<p>It's a simple Zookeeper installation, a lot of hardcoded information in there. We start from an Ubuntu image and install some general tools (wget, nano, net-tools) and the default JRE. We next download a Zookeeper binary. You may want to update this to a newer version. Next, it's just a matter of extracting the archive and starting the zookeeper server.</p>
+<h2 id="creating-a-single-simple-kafka-node-with-docker">Creating a single simple Kafka node with Docker</h2>
+<p>We next want to start up a Kafka node, so we create a <code>Dockerfile</code> in the kafka folder and add the following to it:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">FROM</span> ubuntu
+
+<span class="hljs-keyword">EXPOSE</span> <span class="hljs-number">9020</span>
+
+<span class="hljs-keyword">RUN</span><span class="bash"> apt-get update
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y wget
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y nano
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y net-tools
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y default-jre
+</span>
+<span class="hljs-keyword">WORKDIR</span><span class="bash"> /opt
+</span>
+<span class="hljs-keyword">RUN</span><span class="bash"> wget https://www-eu.apache.org/dist/kafka/2.2.0/kafka_2.11-2.2.0.tgz
+</span><span class="hljs-keyword">RUN</span><span class="bash"> tar -xvzf *.tgz
+</span><span class="hljs-keyword">COPY</span><span class="bash"> server.properties /opt/kafka_2.11-2.2.0/config/server.properties
+</span>
+<span class="hljs-keyword">ENTRYPOINT</span><span class="bash"> /opt/kafka_2.11-2.2.0/bin/kafka-server-start.sh /opt/kafka_2.11-2.2.0/config/server.properties 
+</span></div></code></pre>
+<p>The start is the same as for the Zookeeper image, an Ubuntu image followed by some tools and the default JRE install. We also download the Kafka binary and extract it. Next we copy a <code>server.properties</code> file to the Kafka install location, and start the Kafka service. The <code>server.properties</code> file contains the following:</p>
+<pre class="hljs"><code><div>broker.id=0
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+log.dirs=/tmp/kafka-logs
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connect=zookeeper:2181
+zookeeper.connection.timeout.ms=6000
+group.initial.rebalance.delay.ms=0
+offsets.topic.replication.factor=1
+ssl.endpoint.identification.algorithm=
+
+advertised.listeners=PLAINTEXT://localhost:9092
+listeners=PLAINTEXT://0.0.0.0:9092
+</div></code></pre>
+<p>Important entries here are <code>zookeeper.connect</code>, which lets Kafka know where to find the zookeeper service, and the <code>listeners</code> and <code>avertised.listeners</code> entries, which define on what interfaces the Kafka service is listening on, and on what interfaces the Kafka service is advertising to its clients.</p>
+<h2 id="starting-the-services-with-docker-compose">Starting the services with Docker Compose</h2>
+<p>To start everything up, we need to create a <code>docker-compose.yml</code> file in the root of our project that contains the following:</p>
+<pre class="hljs"><code><div><span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+<span class="hljs-attr">  zookeeper:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./zookeeper</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"2181:2181"</span>
+<span class="hljs-attr">  kafka:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./kafka</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"9092:9092"</span>
+</div></code></pre>
+<p>Then, open a shell in the root folder and run the following command:</p>
+<pre class="hljs"><code><div>docker-compose up -d
+</div></code></pre>
+<p>Docker will build the necessary images and start the kafka and zookeeper services defined in the docker-compose file. The kafka service will be accessible on <code>localhost:9092</code>. If you have a binary Kafka locally, you can run the console producer and consumer:</p>
+<pre class="hljs"><code><div>kafka-console-producer --broker-list localhost:9092 --topic test
+</div></code></pre>
+<pre class="hljs"><code><div>kafka-console-consumer --bootstrap-server localhost:9092 --topic test --from-beginning
+</div></code></pre>
+<h2 id="securing-the-kafka-service">Securing the Kafka service</h2>
+<p>For this example, I am implementing the simplest security setup for Kafka, SASL plaintext, with hardcoded user/password in a Kafka configuration file and no certificates.</p>
+<p>The first change to the Kafka service is a new configuration file named <code>kafka_server_jaas.conf</code>:</p>
+<pre class="hljs"><code><div>KafkaServer {
+    org.apache.kafka.common.security.plain.PlainLoginModule required
+    username=&quot;admin&quot;
+    password=&quot;admin-secret&quot;
+    user_admin=&quot;admin-secret&quot;
+    user_alice=&quot;alice-secret&quot;;
+};
+</div></code></pre>
+<p>This file defines the credentials that Kafka will accept, and will use when communicating with other nodes in the Kafka cluster. For this example we have the admin user, which is used for inter-Kafka communication, and another user named alice, with her own password.</p>
+<p>Next, we update the <code>server.properties</code> file:</p>
+<pre class="hljs"><code><div>broker.id=0
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+log.dirs=/tmp/kafka-logs
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connect=zookeeper:2181
+zookeeper.connection.timeout.ms=6000
+group.initial.rebalance.delay.ms=0
+offsets.topic.replication.factor=1
+ssl.endpoint.identification.algorithm=
+
+advertised.listeners=SASL_PLAINTEXT://localhost:9095, PLAINTEXT://localhost:9092
+listeners=SASL_PLAINTEXT://0.0.0.0:9095, PLAINTEXT://0.0.0.0:9092
+security.inter.broker.protocol=SASL_PLAINTEXT
+sasl.mechanism.inter.broker.protocol=PLAIN
+sasl.enabled.mechanisms=PLAIN
+</div></code></pre>
+<p>Here we have defined new <code>listeners</code> and <code>advertised.listeners</code>. Besides the default interface on port <code>9092</code>, we have a secured interface on port <code>9095</code>. The plan is to allow services inside the secured network to access Kafka on port 9092, without security, but expose Kafka on port <code>9095</code> to services outside the secured network. We also define <code>security.inter.broker.protocol</code>, the protocol that will be used by other Kafka nodes when they need to communicate with each other (for example to elect leaders). If this protocol is <code>SASL_PLAINTEXT</code>, the admin credentials will be used for inter-Kafka communication. We could also have this protocol as <code>PLAINTEXT</code>, which would configure the Kafka services to communicate on port 9092 without security.</p>
+<p>Last change for the Kafka configuration is to update the <code>Dockerfile</code>:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">FROM</span> ubuntu
+
+<span class="hljs-keyword">EXPOSE</span> <span class="hljs-number">9020</span>
+
+<span class="hljs-keyword">RUN</span><span class="bash"> apt-get update
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y wget
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y nano
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y net-tools
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y default-jre
+</span>
+<span class="hljs-keyword">WORKDIR</span><span class="bash"> /opt
+</span>
+<span class="hljs-keyword">RUN</span><span class="bash"> wget https://www-eu.apache.org/dist/kafka/2.2.0/kafka_2.11-2.2.0.tgz
+</span><span class="hljs-keyword">RUN</span><span class="bash"> tar -xvzf *.tgz
+</span><span class="hljs-keyword">COPY</span><span class="bash"> server.properties /opt/kafka_2.11-2.2.0/config/server.properties
+</span><span class="hljs-keyword">COPY</span><span class="bash"> kafka_server_jaas.conf /opt/kafka_2.11-2.2.0/config/kafka_server_jaas.conf
+</span>
+<span class="hljs-keyword">ENV</span> KAFKA_OPTS=-Djava.security.auth.login.config=/opt/kafka_2.<span class="hljs-number">11</span>-<span class="hljs-number">2.2</span>.<span class="hljs-number">0</span>/config/kafka_server_jaas.conf
+
+<span class="hljs-keyword">ENTRYPOINT</span><span class="bash"> /opt/kafka_2.11-2.2.0/bin/kafka-server-start.sh /opt/kafka_2.11-2.2.0/config/server.properties 
+</span></div></code></pre>
+<p>New entries include copying the <code>kafka_server_jaas.conf</code> file and setting the <code>KAFKA_OPTS</code> environment variable, which points to the new configuration file.</p>
+<h2 id="testing-secured-kafka">Testing secured Kafka</h2>
+<p>We need to expose port <code>9095</code> in the <code>docker-compose.iml</code> file, instead of port <code>9092</code>:</p>
+<pre class="hljs"><code><div><span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+<span class="hljs-attr">  zookeeper:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./zookeeper</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"2181:2181"</span>
+<span class="hljs-attr">  kafka:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./kafka</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"9092:9092"</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"9095:9095"</span>
+</div></code></pre>
+<p>We can then rebuild and start the services in daemon mode with <code>docker-compose --build up -d</code>.</p>
+<p>To connect to the secured Kafka, you will first need a <code>kafka_client_jaas.conf</code> file containing the following:</p>
+<pre class="hljs"><code><div>KafkaClient {
+	org.apache.kafka.common.security.plain.PlainLoginModule required
+	username=&quot;alice&quot; 
+	password=&quot;alice-secret&quot;;
+};
+</div></code></pre>
+<p>Then, you need to open a console where you will run a consumenr, and in that console export a <code>KAFKA_OPTS</code> environment variable that contains a jvm property that points to this file (windows):</p>
+<pre class="hljs"><code><div><span class="hljs-built_in">set</span> KAFKA_OPTS=-Djava.security.auth.login.config=C:\kafka_2.<span class="hljs-number">11</span>-<span class="hljs-number">2</span>.<span class="hljs-number">2</span>.<span class="hljs-number">0</span>\bin\windows\kafka_client_jaas.conf
+</div></code></pre>
+<p>You also need a <code>producer.properties</code> file, that specifies what connection protocol should be used:</p>
+<pre class="hljs"><code><div>security.protocol=SASL_PLAINTEXT
+sasl.mechanism=PLAIN
+</div></code></pre>
+<p>Now you can run the producer:</p>
+<pre class="hljs"><code><div>kafka-console-producer.bat --broker-list localhost:<span class="hljs-number">9095</span> --topic test --producer.config producer.properties
+</div></code></pre>
+<p>On the consumer side you will need to perform the same steps. Open a console and set the <code>KAFKA_OPTS</code> environment variable pointing to the same file. And when invoking the consumer you can actually use the <code>producer.properties</code> file:</p>
+<pre class="hljs"><code><div>kafka-console-consumer.bat --bootstrap-server localhost:<span class="hljs-number">9095</span> --topic test --from-beginning --consumer.config producer.properties
+</div></code></pre>
+<h2 id="introducing-the-proxy">Introducing the proxy</h2>
+<p>Now we move on to the part where we want to expose Kafka to the internet. We are trying to reproduce the architecture described in the following drawing:</p>
+<p><img src="kafka_architecture.png" alt="kafka proxy architecture"></p>
+<p>Depending on the security requirements of the environment you are working in, you may be in the position where you are required to run vital services containing client data in an internal network that can not be accessed directly from the internet. This means that, if you want to have some form of access to the services in your internal network, you will have to set up some intermediary services in a DMZ - a network that can be accessed from the internet but that can also access the internal network. In our case, that intermediary service will be a proxy that forwards connection to Kafka.</p>
+<p>We will use nginx for this, and have a new docker machine to run it on. In the nginx folder, add the following <code>Dockerfile</code>:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">FROM</span> ubuntu
+
+<span class="hljs-keyword">RUN</span><span class="bash"> apt-get update
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y nginx
+</span><span class="hljs-keyword">RUN</span><span class="bash"> apt-get install -y nginx-extras
+</span>
+<span class="hljs-keyword">COPY</span><span class="bash"> conf/nginx.conf /etc/nginx/nginx.conf
+</span>
+<span class="hljs-keyword">CMD</span><span class="bash"> [<span class="hljs-string">"nginx"</span>, <span class="hljs-string">"-g"</span>, <span class="hljs-string">"daemon off;"</span>]
+</span></div></code></pre>
+<p>We again start from an ubuntu image, install nginx and extra libraries, copy a configuration file to the nginx install folder and run nginx. The configuration file defines how this nginx install will act as a proxy for Kafka:</p>
+<pre class="hljs"><code><div>load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+
+events {
+        worker_connections 768;
+}
+
+stream {
+    upstream backend {
+        server kafka:9095;
+    }
+
+    server {
+        listen 9095;
+        proxy_pass backend;
+
+        error_log /dev/stdout info;
+    }
+}
+</div></code></pre>
+<p>The nginx server will listen on port <code>9095</code> and forward the stream it receives to the Kafka server on the same port.</p>
+<p>Our <code>docker-compose.yml</code> files changes to:</p>
+<pre class="hljs"><code><div><span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+<span class="hljs-attr">  zookeeper:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./zookeeper</span>
+<span class="hljs-attr">  kafka:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./kafka</span>
+<span class="hljs-attr">  nginx:</span>
+<span class="hljs-attr">    build:</span> <span class="hljs-string">./nginx</span>
+<span class="hljs-attr">    ports:</span>
+<span class="hljs-bullet">      -</span> <span class="hljs-string">"9095:9095"</span>
+</div></code></pre>
+<p>As you can see, Kafka and Zookeeper are no longer exposed to outside of the Docker network, only the nginx server. You can now use the same methods as described before to access the secured Kafka service on <code>localhost:9095</code>, but this time the communication will go through the proxy instead of directly to the Kafka server.</p>
+<h2 id="connecting-spark-to-a-secured-kafka">Connecting Spark to a secured Kafka</h2>
+<p>The following program can be used to read a Spark stream from a Kafka topic on a secured Kafka server. You will need to provide the <code>kafka_client_jaas.conf</code> file to the JVM, and also configure the security protocol and the SASL mechanism when intializing the stream.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark
+
+<span class="hljs-keyword">import</span> org.apache.kafka.common.serialization.<span class="hljs-type">StringDeserializer</span>
+<span class="hljs-keyword">import</span> org.apache.spark.<span class="hljs-type">SparkConf</span>
+<span class="hljs-keyword">import</span> org.apache.spark.sql.{<span class="hljs-type">DataFrame</span>, <span class="hljs-type">SparkSession</span>}
+
+<span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">TestSparkApp</span> </span>{
+
+  <span class="hljs-comment">/**
+    * This program must be run with the following VM options:
+    * -Djava.security.auth.login.config=C:\\kafka_install\\bin\\windows\\kafka_client_jaas.conf
+    */</span>
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+
+    <span class="hljs-keyword">val</span> conf = <span class="hljs-keyword">new</span> <span class="hljs-type">SparkConf</span>()
+    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[1]"</span>)
+      .config(conf)
+      .getOrCreate()
+    <span class="hljs-keyword">import</span> spark.implicits._
+
+    <span class="hljs-keyword">val</span> data: <span class="hljs-type">DataFrame</span> = spark.readStream
+      .format(<span class="hljs-string">"org.apache.spark.sql.kafka010.KafkaSourceProvider"</span>)
+      .option(<span class="hljs-string">"kafka.bootstrap.servers"</span>, <span class="hljs-string">"localhost:9095"</span>)
+      .option(<span class="hljs-string">"maxOffsetsPerTrigger"</span>, <span class="hljs-number">1</span>)
+      .option(<span class="hljs-string">"subscribe"</span>, <span class="hljs-string">"test"</span>)
+      .option(<span class="hljs-string">"startingOffsets"</span>, <span class="hljs-string">"earliest"</span>)
+      .option(<span class="hljs-string">"failOnDataLoss"</span>, <span class="hljs-string">"false"</span>)
+      .option(<span class="hljs-string">"kafka.security.protocol"</span>, <span class="hljs-string">"SASL_PLAINTEXT"</span>)
+      .option(<span class="hljs-string">"kafka.sasl.mechanism"</span>, <span class="hljs-string">"PLAIN"</span>)
+      .load()
+
+    data.writeStream.format(<span class="hljs-string">"console"</span>).start().awaitTermination()
+  }
+}
+</div></code></pre>
+<h2 id="parting-notes">Parting notes</h2>
+<p>Another test you can perform is to connect to Kafka from one of the Docker containers that run inside the network. You will see that you can access Kafka on port <code>9092</code> without requiring credentials.</p>
+<p>Also, when configuring Kafka it is important to pay attention to the <code>advertised.listeners</code> setting. This setting instructs Kafka clients on how to reach the Kafka service. With our proxy example, consider the proxy IP, available from the internet, is <code>1.2.3.4</code>. You can reach the Kafka service through the proxy by accessing <code>1.2.3.4:9095</code>. But if your <code>advertised.listeners</code> setting is not correctly configured, the connection will not work. The Kafka protocol will execute the initial connection and obtain the <code>advertised.listeners</code>, and it will next use the values in that variable to try to communicate with Kafka. If <code>advertised.listeners</code> is set to <code>localhost</code>, it will try to use <code>localhost</code> to read data, which will fail. So the <code>advertised.listeners</code> in our Kafka configuration file will need to use the proxy IP and port, <code>1.2.3.4:9095</code>. This means there is a tight coupling between the Kafka service and the proxy, a limitation imposed by the protocol used by Kafka to communicate with its clients.</p>
+
+</body>
+</html>
