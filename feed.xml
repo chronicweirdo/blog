@@ -10,6 +10,16 @@
         <generator>cacoveanu</generator>
 
         <item>
+            <title>Anki Special Characters Through JavaScript</title>
+            <description>Add special characters buttons to your Anki cards for language learning.</description>
+            <pubDate>2019.12.06T11:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2019/2019.12.06.special_characters_anki.html</link>
+            <category>anki</category>
+            <category>learning</category>
+            <category>spaced repetition</category>
+        </item>
+
+        <item>
             <title>Spark Streaming Read from Kafka Rest Proxy</title>
             <description>How to read from a Kafka REST proxy into a Spark streaming job using a custom stream receiver, and how to parallelize this setup..</description>
             <pubDate>2019.08.09T14:00:00+02:00</pubDate>
@@ -96,17 +106,6 @@
             <category>jwt</category>
             <category>microservices</category>
             <category>authentication</category>
-        </item>
-
-        <item>
-            <title>Wakey Wakey, PC</title>
-            <description>For those lazy Sunday mornings, when getting our of bed to wake up your media server seems excessive, but your laptop is within reach and writing a small program to send a Wake-On-LAN signal sounds so reasonable; it is in recognition of those mornings that I've put together this instructional page.</description>
-            <pubDate>Sun, 4 Nov 2018 10:30:00 +0200</pubDate>
-            <link>https://blog.cacoveanu.com/2018b/2018.11.04.wakey_wakey_pc.html</link>
-            <category>wake on lan</category>
-            <category>powershell</category>
-            <category>java</category>
-            <category>python</category>
         </item>
     </channel>
 </rss>

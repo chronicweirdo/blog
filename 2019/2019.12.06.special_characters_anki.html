@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anki Special Characters Through JavaScript</title>
+  <meta name="description" content="Add special characters buttons to your Anki cards for language learning.">
+  <meta name="keywords" content="anki, learning, spaced repetition">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2019.12.06 11:00 / anki / learning / spaced repetition</p>
+<h1 id="anki-special-characters-through-javascript">Anki Special Characters Through JavaScript</h1>
+<p><a href="https://apps.ankiweb.net/">Anki</a> is a great software that helps you learn through <a href="https://en.wikipedia.org/wiki/Spaced_repetition">spaced repetition</a>. There aren't many things worth memorizing, since today we can get our information on the internet easily, but some things you just can't search for fast enough. One of those things would be language. You need to memorize some vocabulary, some grammar rules, and a great method to do that efficiently is spaced repetition. And Anki is a very customizable tool that lets you organize what you need to learn and follow through with your plan. In Anki you create &quot;cards&quot; containing the information you need to learn, and the program quizzes you on the cards you learn at the right time intervals to maximize your retention.</p>
+<p>One good approach to keep yourself honest is to include a text field in your card, where you type out the answer and Anki will check if what you typed is correct. But sometimes, when learning foreign languages, you also need some special characters which your keyboard might not have. One option is to install the right keyboard setup to your computer or phone, but in this article I will explore an alternative that does not require that. Anki templates can contain HTML, and you can look at <a href="https://chrisk91.me/2018/09/28/Anki-Templates-Introduction-HTML.html">this blog post</a> to learn how to use HTML in your templates. But Anki templates can also contain JavaScript, and that is what we will use to build a more advanced template that allows us to add buttons for special characters, and to add the special character to the answer text field.</p>
+<p>I've tested this approach while creating templates for learning German, and I wanted to make the following characters available for inputs: ä, Ä, ö, Ö, ü, Ü, ß, ẞ.</p>
+<p>Our initial template contains the following:</p>
+<pre class="hljs"><code><div>{{#picture}}
+{{#hint}}
+({{hint}})<span class="hljs-tag">&lt;<span class="hljs-name">br</span>/&gt;</span>
+{{/hint}}
+{{picture}}<span class="hljs-tag">&lt;<span class="hljs-name">br</span>/&gt;</span>
+{{type:spelling}}
+{{/picture}}
+</div></code></pre>
+<p>The card will first show you a picture, followed by a hint, if it exists. Then we have a text-field (starting with <code>type:</code>) that checks what is getting typed against the <code>spelling</code> entry. We want to add some buttons under the text field that allows us to &quot;type&quot; the special characters into the text field.</p>
+<p>We add the buttons with the following code:</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ä');"</span>&gt;</span>ä<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('Ä');"</span>&gt;</span>Ä<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ö');"</span>&gt;</span>ö<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('Ö');"</span>&gt;</span>Ö<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ü');"</span>&gt;</span>ü<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('Ü');"</span>&gt;</span>Ü<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ß');"</span>&gt;</span>ß<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ẞ');"</span>&gt;</span>ẞ<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+</div></code></pre>
+<p>For each character we have a button element, containg the character in the content part. The <code>onclick</code> action of each button calls a JavaScript function to which the desired character is passed. This is the function we can use:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">insertChar</span>(<span class="hljs-params">ch</span>) </span>{
+  <span class="hljs-keyword">var</span> inp = <span class="hljs-built_in">document</span>.getElementsByTagName(<span class="hljs-string">'input'</span>)[<span class="hljs-number">0</span>]
+  inp.value = inp.value + ch
+  inp.focus()
+}
+</div></code></pre>
+<p>The first step in this function is to select the <code>input</code> element, the text-field. We select all <code>input</code> elements in the document and grab the first one. There will be a single <code>input</code> element, so this will be fine. Then, we add the character received as parameter to the end of the text in the text-field, and we update the value of the text-field with this new string. The last step we must do is to &quot;focus&quot; on the text-filed. When you click the button, the focus is set on the button element. Since we call the <code>focus()</code> method, we move the focus back to the text-field and this allows users to continue typing.</p>
+<p>The final structure of the card will be:</p>
+<pre class="hljs"><code><div>{{#picture}}
+{{#hint}}
+({{hint}})<span class="hljs-tag">&lt;<span class="hljs-name">br</span>/&gt;</span>
+{{/hint}}
+{{picture}}<span class="hljs-tag">&lt;<span class="hljs-name">br</span>/&gt;</span>
+{{type:spelling}}
+{{/picture}}
+<span class="hljs-tag">&lt;<span class="hljs-name">script</span>&gt;</span><span class="javascript">
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">insertChar</span>(<span class="hljs-params">ch</span>) </span>{
+  <span class="hljs-keyword">var</span> inp = <span class="hljs-built_in">document</span>.getElementsByTagName(<span class="hljs-string">'input'</span>)[<span class="hljs-number">0</span>]
+  inp.value = inp.value + ch
+  inp.focus()
+}
+</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ä');"</span>&gt;</span>ä<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('Ä');"</span>&gt;</span>Ä<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ö');"</span>&gt;</span>ö<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('Ö');"</span>&gt;</span>Ö<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ü');"</span>&gt;</span>ü<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('Ü');"</span>&gt;</span>Ü<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ß');"</span>&gt;</span>ß<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">onclick</span>=<span class="hljs-string">"insertChar('ẞ');"</span>&gt;</span>ẞ<span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+</div></code></pre>
+<p>And the result, when learning your card, will look like:</p>
+<p><img src="special_characters_anki.png" alt="Anki card with special character buttons"></p>
+
+</body>
+</html>
