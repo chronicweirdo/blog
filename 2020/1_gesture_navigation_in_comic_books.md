@@ -10,5 +10,8 @@ books collection from anywhere. After many hours
 of implementation and testing, the project is a
 success and it is released [here](www).
 
+In this article I will go over the design of the
+UI for reading comics, and 
+
 - objectives when designing the gestures: simple, cross-device support for clicks, gestures, keyboard
 - required functionality: prev, next, designed for both pages or views, zoom and pan, jump to specific page
