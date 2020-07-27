@@ -141,3 +141,109 @@ function approx(val1, val2, threshold = 1) {
 ```
 
 When moving to the next view, we check if we are at the end of a rown and at the end of a column. If both conditions are true, it's time to load and display the next page. Otherwise, the image is moved on the screen so the next view in the current image is displayed. If we don't have to change the row, only the left position of the image is changed, otherwise both the top and the left positions are adjusted. `getNextPosition` is a generalized method to compute the next vertical or horizontal position based on the dimensions of the image, the viewport dimension (height or width of the screen) and the current position of the image. All computations include a threhold, this allows a move to a next position even when the right edge of the screen is not necessarily in view and improves the user experience. We have similar methods for the previous gesture.
+
+``` js
+function enableGesturesOnElement(element, actions) {
+    enableTouchGestures(
+        element,
+        actions.pinchStartAction,
+        actions.pinchAction,
+        actions.pinchEndAction,
+        actions.panAction,
+        actions.panEndAction
+    )
+    element.addEventListener("wheel", (event) => mouseWheelScroll(event, actions.scrollAction, actions.scrollEndAction))
+    element.addEventListener("mousedown", mouseDown)
+    element.addEventListener("mouseup", (event) => mouseUp(event, actions.clickAction, actions.doubleClickAction, actions.tripleClickAction))
+    element.addEventListener("mouseout", mouseUp)
+    element.addEventListener("mousemove", (event) => mouseMove(event, actions.mouseMoveAction))
+}
+```
+
+The code that enables gestures on an element will add different event listeners to monitor what events are getting triggered on the element. For the previous and next actions, we are monitoring mouse clicks (which also capture tap gestures on mobile devices).
+
+``` js
+function mouseDown(event, callback) {
+    if (event.button == 0) {
+        //event.preventDefault()
+        gestures.mouseDownX = event.clientX
+        gestures.mouseDownY = event.clientY
+        gestures.mousePressed = true
+
+        if (callback) callback(event.clientX, event.clientY)
+    }
+}
+
+function mouseUp(event, clickAction, doubleClickAction, tripleClickAction) {
+    if (event.button == 0) {
+        gestures.mousePressed = false
+        if (gestures.mouseDownX == event.clientX && gestures.mouseDownY == event.clientY) {
+            // the mouse did not move, it's a click
+            click(event, clickAction, doubleClickAction, tripleClickAction)
+        }
+    }
+}
+
+function click(event, clickAction, doubleClickAction, tripleClickAction) {
+    event.preventDefault()
+    var timestamp = + new Date()
+    gestures.clickTimestamp.push(timestamp)
+    delayed(function() {
+        if (gestures.clickTimestamp.length > 2) {
+            gestures.clickTimestamp = []
+            if (tripleClickAction != null) tripleClickAction(event.clientX, event.clientY)
+        } else if (gestures.clickTimestamp.length > 1) {
+            gestures.clickTimestamp = []
+            if (doubleClickAction != null) doubleClickAction(event.clientX, event.clientY)
+        } else if (gestures.clickTimestamp.length > 0) {
+            gestures.clickTimestamp = []
+            if (clickAction != null) clickAction(event.clientX, event.clientY)
+        }
+        gestures.clickTimestamp.shift()
+    })
+}
+
+function delayed(callback) {
+    window.setTimeout(callback, 250)
+}
+```
+
+A simple click is the mouse button being pressed and released without the mouse moving. If multiple clicks happen within a time threshold, we have double and triple clicks. Counting the number of clicks is achieved by using a queue. When a click is registered, the timestamp when that click was registered is pushed to the queue. Then a delayed task is triggered which checks the number of timestamps in the queue. Depending on that number, we have a simple, a double or a triple click. The queue is cleared after a click is processed. In practice, we don't use the triple click functionality because it would make using the app too complicated. The double click is used for the zoom functionality and discussed in its section.
+
+Keyboard gestures are enabled with the following javascript:
+
+``` js
+enableKeyboardGestures({
+    "upAction": () => pan(0, getViewportHeight() / 2),
+    "downAction": () => pan(0, - (getViewportHeight() / 2)),
+    "leftAction": goToPreviousView,
+    "rightAction": goToNextView
+})
+
+function enableKeyboardGestures(actions) {
+    document.onkeydown = function(e) {
+        if (e.keyCode == '38' || e.keyCode == '87') {
+            // up arrow or w
+            if (actions.upAction) actions.upAction()
+        }
+        else if (e.keyCode == '40' || e.keyCode == '83') {
+            // down arrow or s
+            if (actions.downAction) actions.downAction()
+        }
+        else if (e.keyCode == '37' || e.keyCode == '65') {
+            // left arrow or a
+            if (actions.leftAction) actions.leftAction()
+        }
+        else if (e.keyCode == '39' || e.keyCode == '68') {
+            // right arrow or d
+            if (actions.rightAction) actions.rightAction()
+        }
+    }
+}
+```
+
+
+
+## Zooming the page
+
+Zooming is a simple concept, it will allow the user to increase the size of the image and see more details, as well as read the text easier. The minimum zoom for a page depends on the size of the page, when the whole page fits the screen, the viewport, the image can't be zoomed out anymore. The application does not currently have a maximum zoom value. If you have a mouse, you can zoom in or out with the scroll wheel. On a device with a touch screen, the pinch gesture can be used to zoom the page.
