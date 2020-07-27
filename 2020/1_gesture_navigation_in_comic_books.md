@@ -368,3 +368,37 @@ function zoom(zoom, centerX, centerY) {
 ```
 
 The pinch start ation needs to save the current zoom of the page. This is because the scale of a pinch is a relative scale, so when zooming we must multiply that scale with the original zoom of the image at the beginning of a pinch. Applying the zoom on the page also takes into account the center of the pinch gesture, and keeps that center in the same place on the screen if possible.
+
+## Panning the page
+
+Panning the page, moving it around freely with your mouse or finger, may be the simplest gesture discussed here. It just implies setting the left and top position of the image on the screen.
+
+``` js
+function pan(x, y) {
+    setImageLeft(getImageLeft() + x)
+    setImageTop(getImageTop() + y)
+    updateImage()
+}
+function updateImage() {
+    var img = getImage()
+
+    if (getZoom() < getMinimumZoom()) setZoom(getMinimumZoom())
+
+    var newWidth = getOriginalImageWidth() * getZoom()
+    var newHeight = getOriginalImageHeight() * getZoom()
+    setImageWidth(newWidth)
+    setImageHeight(newHeight)
+
+    var minimumLeft = (newWidth < getViewportWidth()) ? (getViewportWidth() / 2) - (newWidth / 2) : Math.min(0, getViewportWidth() - newWidth)
+    var maximumLeft = (newWidth < getViewportWidth()) ? (getViewportWidth() / 2) - (newWidth / 2) : Math.max(0, getViewportWidth() - newWidth)
+    var minimumTop = (newHeight < getViewportHeight()) ? (getViewportHeight() / 2) - (newHeight / 2) : Math.min(0, getViewportHeight() - newHeight)
+    var maximumTop = (newHeight < getViewportHeight()) ? (getViewportHeight() / 2) - (newHeight / 2) : Math.max(0, getViewportHeight() - newHeight)
+
+    if (getImageLeft() < minimumLeft) setImageLeft(minimumLeft)
+    if (getImageLeft() > maximumLeft) setImageLeft(maximumLeft)
+    if (getImageTop() < minimumTop) setImageTop(minimumTop)
+    if (getImageTop() > maximumTop) setImageTop(maximumTop)
+}
+```
+
+A more interesting subject to discuss here is the `updateImage` method, whics is used in all previous actions. This method applies all the requested changes to the image size and position, but not before making sure that the image is within the limits we expect, keeping at least part of the image on screen at all times; users can't pan the image out of the screen and end up with a completely blank page, or zoom the image out so much that it becomes invisible. The minimum and maximum allowed positions are computed in this method and, if the image changes would exceed these positions, the image is reset to the corresponding minimum or maximum, depending on which of the two have been exceeded.
