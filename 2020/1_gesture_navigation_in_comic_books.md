@@ -83,3 +83,61 @@ The distribution on page of the UI is done with CSS, using the following code:
 }
 ```
 
+Gestures are enabled on our elements with the following javascript:
+
+``` js
+enableGesturesOnElement(document.getElementById("prev"), {
+    "clickAction": (x, y) => goToPreviousView(),
+    "doubleClickAction": zoomJump,
+    "mouseMoveAction": mouseGestureDrag,
+    "scrollAction": mouseGestureScroll,
+    "pinchStartAction": touchGesturePinchStart,
+    "pinchAction": touchGesturePinchOngoing,
+    "panAction": touchGesturePan
+})
+enableGesturesOnElement(document.getElementById("next"), {
+    "clickAction": (x, y) => goToNextView(),
+    "doubleClickAction": zoomJump,
+    "mouseMoveAction": mouseGestureDrag,
+    "scrollAction": mouseGestureScroll,
+    "pinchStartAction": touchGesturePinchStart,
+    "pinchAction": touchGesturePinchOngoing,
+    "panAction": touchGesturePan
+})
+```
+
+The previous and next actions are controlled through the click action, but some other actions, related to zooming and panning, are defined on these elements as well. This is done to provide the largest possible action area for touch gestures.
+
+``` js
+function goToNextView() {
+    if (isEndOfRow()) {
+        if (isEndOfColumn()) {
+            goToNextPage()
+        } else {
+            setImageLeft(getNextPosition(getImage().width, getViewportWidth(), getImageLeft(), getHorizontalJumpPercentage(), getRowThreshold()))
+            setImageTop(getNextPosition(getImage().height, getViewportHeight(), getImageTop(), getVerticalJumpPercentage(), getColumnThreshold()))
+            updateImage()
+        }
+    } else {
+        setImageLeft(getNextPosition(getImage().width, getViewportWidth(), getImageLeft(), getHorizontalJumpPercentage(), getRowThreshold()))
+        updateImage()
+    }
+}
+function isEndOfRow() {
+    return (getImage().width <= getViewportWidth()) || approx(getImageLeft() + getImageWidth(), getViewportWidth(), getRowThreshold())
+}
+function isEndOfColumn() {
+    return (getImage().height <= getViewportHeight()) || approx(getImageTop() + getImageHeight(), getViewportHeight(), getColumnThreshold())
+}
+function getNextPosition(imageDimension, viewportDimension, imageValue, viewportJumpPercentage, threshold) {
+    if (approx(imageValue, viewportDimension - imageDimension, threshold)) return 0
+    var proposedNextPosition = (imageValue - viewportDimension *  viewportJumpPercentage) | 0
+    if (proposedNextPosition < viewportDimension - imageDimension) return viewportDimension - imageDimension
+    return proposedNextPosition
+}
+function approx(val1, val2, threshold = 1) {
+    return Math.abs(val1 - val2) < threshold
+}
+```
+
+When moving to the next view, we check if we are at the end of a rown and at the end of a column. If both conditions are true, it's time to load and display the next page. Otherwise, the image is moved on the screen so the next view in the current image is displayed. If we don't have to change the row, only the left position of the image is changed, otherwise both the top and the left positions are adjusted. `getNextPosition` is a generalized method to compute the next vertical or horizontal position based on the dimensions of the image, the viewport dimension (height or width of the screen) and the current position of the image. All computations include a threhold, this allows a move to a next position even when the right edge of the screen is not necessarily in view and improves the user experience. We have similar methods for the previous gesture.
