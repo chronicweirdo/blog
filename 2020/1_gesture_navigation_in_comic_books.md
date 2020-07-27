@@ -415,5 +415,6 @@ The menu displays some additional information, the name of the comic book, the c
 
 ## Conclusions
 
+An important part of the design and implementation process was the testing. I've tried different approaches
 - tested on multiple devices
 - original design had right-click for showing menu but did not work on ipad browsers
