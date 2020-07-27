@@ -269,3 +269,102 @@ function fitPageToScreen() {
 ```
 
 How the double click is handled is described in the previous section. The functinoality for deciding if we zoom in or fit the page to screen is presented in the code above. Each page has a specific zoom value for it to fully fit on the screen. When we want to fit a page to screen, we just have to compute that zoom value and apply it to the page.
+
+``` js
+function enableTouchGestures(element, pinchStartAction, pinchAction, pinchEndAction, panAction, panEndAction) {
+    disableEventHandlers(element)
+    var hammertime = new Hammer(element, {domEvents: true})
+    hammertime.get('pan').set({ direction: Hammer.DIRECTION_ALL, threshold: 0 });
+    hammertime.get('pinch').set({ enable: true });
+
+    var panStartX = null
+    var panStartY = null
+
+    var panPreviousDeltaX = 0
+    var panPreviousDeltaY = 0
+
+    var pinching = false
+    var pinchCenterX = null
+    var pinchCenterY = null
+
+    hammertime.on('pinchstart', function(ev) {
+        ev.preventDefault();
+        pinching = true
+        pinchCenterX = ev.center.x
+        pinchCenterY = ev.center.y
+        if (pinchStartAction) pinchStartAction(ev.center.x, ev.center.y)
+    })
+    hammertime.on('pinch', function(ev) {
+        ev.preventDefault()
+        var currentZoom = ev.scale
+        if (pinchAction) pinchAction(currentZoom, pinchCenterX, pinchCenterY)
+        var currentDeltaX = ev.deltaX - panPreviousDeltaX
+        var currentDeltaY = ev.deltaY - panPreviousDeltaY
+        if (panAction) panAction(currentDeltaX, currentDeltaY)
+        panPreviousDeltaX = ev.deltaX
+        panPreviousDeltaY = ev.deltaY
+    });
+    hammertime.on('pinchend', function(ev) {
+        panPreviousDeltaX = 0
+        panPreviousDeltaY = 0
+        if (pinchEndAction) pinchEndAction(ev.scale, pinchCenterX, pinchCenterY)
+    })
+
+    hammertime.on('panstart', function(ev) {
+        if (! pinching) {
+            panStartX = ev.center.x
+            panStartY = ev.center.y
+        }
+    })
+    hammertime.on('pan', function(ev) {
+        if (! pinching) {
+            var currentDeltaX = ev.deltaX - panPreviousDeltaX
+            var currentDeltaY = ev.deltaY - panPreviousDeltaY
+            if (panAction) panAction(currentDeltaX, currentDeltaY)
+            panPreviousDeltaX = ev.deltaX
+            panPreviousDeltaY = ev.deltaY
+        }
+    })
+    hammertime.on('panend', function(ev) {
+        if (! pinching) {
+            panPreviousDeltaX = 0
+            panPreviousDeltaY = 0
+
+            var dx = panStartX - ev.center.x
+            var dy = panStartY - ev.center.y
+            if (panEndAction) panEndAction(dx, dy)
+        }
+        // a pinch always ends with a pan
+        pinching = false
+    })
+}
+```
+
+Gestures for mobile devices are configured with the help of the [Hammer JS](https://hammerjs.github.io/) library. This library lets us configure pinch and pan gestures. When pinching we must save the center of the pinch gesture (a mean of all the points that are part of the pinch gesture). Then, as the fingers move on the screen, we can trigger the pinch event with the pinch center and the current scale. This scale is computed relative to the original positions of the fingers of the screen. While pinching, a pan can also happen, so the pan action is also triggered. This has to actually be handled when the pan events are triggered. To obtain the desired behavior, we must activate a flag when the user starts pinching, if a pan happens while pinching, handle the pan action through the pinch event and not the pan event, and finally turn the `pincing` flag off at the end of a pan, because the version I am using of the Hammer JS library is always finishing a pinch event with a pan event as well.
+
+``` js
+function touchGesturePinchStart(pinchCenterX, pinchCenterY) {
+    document.originalZoom = getZoom()
+}
+
+function touchGesturePinchOngoing(currentZoom, pinchCenterX, pinchCenterY) {
+    zoom(document.originalZoom * currentZoom, pinchCenterX, pinchCenterY)
+}
+
+function zoom(zoom, centerX, centerY) {
+    var sideLeft = centerX - getImageLeft()
+    var ratioLeft = sideLeft / (getImageWidth() * getZoom())
+    var newSideLeft = (getImageWidth() * zoom) * ratioLeft
+    setImageLeft(centerX - newSideLeft)
+
+    var sideTop = centerY - getImageTop()
+    var ratioTop = sideTop / (getImageHeight() * getZoom())
+    var newSideTop = (getImageHeight() * zoom) * ratioTop
+    setImageTop(centerY - newSideTop)
+
+    setZoom(zoom)
+    updateImage()
+}
+```
+
+The pinch start ation needs to save the current zoom of the page. This is because the scale of a pinch is a relative scale, so when zooming we must multiply that scale with the original zoom of the image at the beginning of a pinch. Applying the zoom on the page also takes into account the center of the pinch gesture, and keeps that center in the same place on the screen if possible.
