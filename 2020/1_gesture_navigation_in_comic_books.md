@@ -246,4 +246,26 @@ function enableKeyboardGestures(actions) {
 
 ## Zooming the page
 
-Zooming is a simple concept, it will allow the user to increase the size of the image and see more details, as well as read the text easier. The minimum zoom for a page depends on the size of the page, when the whole page fits the screen, the viewport, the image can't be zoomed out anymore. The application does not currently have a maximum zoom value. If you have a mouse, you can zoom in or out with the scroll wheel. On a device with a touch screen, the pinch gesture can be used to zoom the page.
+Zooming is a simple concept, it will allow the user to increase the size of the image and see more details, as well as read the text easier. The minimum zoom for a page depends on the size of the page, when the whole page fits the screen, the viewport, the image can't be zoomed out anymore. The application does not currently have a maximum zoom value. If you have a mouse, you can zoom in or out with the scroll wheel. On a device with a touch screen, the pinch gesture can be used to zoom the page. Another gesture in the zoom section is a double click or double tap. This gesture will fit the page to screen, if the page is zoomed in. If the page is already fit to screen, the double click gesture will zoom in to a specified level.
+
+``` js
+function zoomJump(x, y) {
+    if (isPageFitToScreen()) {
+        zoom(getZoom() * 2.5, x, y)
+    } else {
+        fitPageToScreen()
+    }
+}
+function isPageFitToScreen() {
+    return getZoomForFitToScreen() == getZoom()
+}
+function getZoomForFitToScreen() {
+    return Math.min(getViewportHeight() / getOriginalImageHeight(), getViewportWidth() / getOriginalImageWidth())
+}
+function fitPageToScreen() {
+    setZoom(getZoomForFitToScreen())
+    updateImage()
+}
+```
+
+How the double click is handled is described in the previous section. The functinoality for deciding if we zoom in or fit the page to screen is presented in the code above. Each page has a specific zoom value for it to fully fit on the screen. When we want to fit a page to screen, we just have to compute that zoom value and apply it to the page.
