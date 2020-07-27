@@ -402,3 +402,18 @@ function updateImage() {
 ```
 
 A more interesting subject to discuss here is the `updateImage` method, whics is used in all previous actions. This method applies all the requested changes to the image size and position, but not before making sure that the image is within the limits we expect, keeping at least part of the image on screen at all times; users can't pan the image out of the screen and end up with a completely blank page, or zoom the image out so much that it becomes invisible. The minimum and maximum allowed positions are computed in this method and, if the image changes would exceed these positions, the image is reset to the corresponding minimum or maximum, depending on which of the two have been exceeded.
+
+## The menu
+
+For any other functionality we want on this page, this functionality will be accessed through a menu. We want to keep the main functionality, accessible through gestures, as limited as possible. A minimalist design should make the learning curve for using the app pretty flat. The menu can be accessed by clicking on the lower-left or on the lower-right corner of the screen, with a mouse or with your finger.
+
+![menu]()
+
+Depending on what side of the screen you clicked, the menu will be aligned along that side. This design decision makes the menu easy to use indifferent of the hand you hold your device in, for a mobile device. For a desktop, the menu will be close to the point on the screen that was clicked to open the menu, again making the menu easy to use.
+
+The menu displays some additional information, the name of the comic book, the collection that the comic book is part of, the current page and the total number of pages in the comic. The separation between elements that are just information and those that can be clicked is made through a very simple color scheme, with clickable elements being golden. Clicking the collection take the user back to the library page and display all comics that are part of that collection. The user can jump to any page in the comic from this menu, switch the app to full screen, go back to the library page (without displaying the collection) or deleting the progress information for this comic. Clicking anywhere on the transparent gray area of the screen will close the menu and take users back to the comic page they were reading. All this interaction has again been designed to have the minimum amount of functionality that makes this useful but not too cluttered.
+
+## Conclusions
+
+- tested on multiple devices
+- original design had right-click for showing menu but did not work on ipad browsers
