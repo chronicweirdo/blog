@@ -46,6 +46,50 @@ class ContentService {
 }
 ```
 
+This approach will work for most comic book files, but some files may be hundreds of megabytes, for comic books with hundreds of pages. Loading several of those files and holding them in memory will fill out a lot of space. To optimize the cache further, we can load pages from disk in batches: load the first X pages of the comic and hold them in cache, after the user read those X pages load the next batch of X pages and holde them in cache.
+
+``` scala
+@Controller
+class ComicController {
+
+  // [...]
+  
+  @RequestMapping(Array("/imageData"))
+  @ResponseBody
+  def getImageData(@RequestParam("id") id: java.lang.Long, @RequestParam("page") page: Int): String = {
+    contentService
+      .loadResources(id, contentService.getBatchForPosition(page))
+      .find(p => p.index.isDefined && p.index.get == page)
+      .map(p => WebUtil.toBase64Image(p.mediaType, p.data))
+      .getOrElse("")
+  }
+}
+```
+
+``` scala
+@Service
+class ContentService {
+
+  private val BATCH_SIZE = 20
+
+  // [...]
+  
+  def getBatchForPosition(position: Int): Seq[Int] = {
+    val part = position / BATCH_SIZE
+    val positions = (part * BATCH_SIZE) until (part * BATCH_SIZE + BATCH_SIZE)
+    positions
+  }
+  
+  // [...]
+  
+}
+
+```
+
+As shown above, when the client asks the controller for a specific page, we first compute the batch for that page, then ask the `ContentService` to load the whole batch. If this batch was loaded before, the `ContentService` will just load the batch from cache. In practice this approach shows best results, we provide some caching on the server side without loading a whole archive in memory and holding resources occupied.
+
+
+
 - archiving of data when sening over the network
 - caching on the client side: pre-loading pages
 - caching on the server side: loading in batches and caching the batch
