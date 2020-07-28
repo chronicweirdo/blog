@@ -212,8 +212,6 @@ function evictOldest() {
 
 The cache is stored in an object in the page, although this could be improved and we could store the cache in the browser local storage in the future. Every time we add something new to the cache, we also check if the chache size is exceeded and if necessary we evict the oldest pages from the cache.
 
+## Conclusions
 
-
-- archiving of data when sening over the network
-- caching on the client side: pre-loading pages
-- caching on the server side: loading in batches and caching the batch
+After implementing these two caching solutions, the loading times for comic books are very small and only noticeable when first opening a comic, an in very rare instances when moving through pages of a comic. The result is a streamlined comic reading experience, with sparse and short waiting times.
