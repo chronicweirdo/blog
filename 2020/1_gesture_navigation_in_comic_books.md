@@ -29,7 +29,7 @@ If the whole page fits into the screen, this gesture will move us between pages.
 
 The next and previous gestures move users between these views. When the top-left view is displayed, the previous gesture will move to the previous page, and similar with the bottom-right view moving to the next page.
 
-![controls]()
+![controls](controls.png)
 
 The controls for these gestures are on the left and right edges of the screen, as shown in the above image. Clicking with the mouse, a left click, or tapping the areas with your fingers on a mobile device will move you between views and pages.
 
@@ -407,7 +407,7 @@ A more interesting subject to discuss here is the `updateImage` method, whics is
 
 For any other functionality we want on this page, this functionality will be accessed through a menu. We want to keep the main functionality, accessible through gestures, as limited as possible. A minimalist design should make the learning curve for using the app pretty flat. The menu can be accessed by clicking on the lower-left or on the lower-right corner of the screen, with a mouse or with your finger.
 
-![menu]()
+![menu left](menu_left.png) ![menu right](menu_right.png)
 
 Depending on what side of the screen you clicked, the menu will be aligned along that side. This design decision makes the menu easy to use indifferent of the hand you hold your device in, for a mobile device. For a desktop, the menu will be close to the point on the screen that was clicked to open the menu, again making the menu easy to use.
 
