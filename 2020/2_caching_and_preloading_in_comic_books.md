@@ -88,6 +88,130 @@ class ContentService {
 
 As shown above, when the client asks the controller for a specific page, we first compute the batch for that page, then ask the `ContentService` to load the whole batch. If this batch was loaded before, the `ContentService` will just load the batch from cache. In practice this approach shows best results, we provide some caching on the server side without loading a whole archive in memory and holding resources occupied.
 
+## Preloading and caching on the client side
+
+Now that we have caching on the server side, comic pages will load faster on the client once a batch has been loaded in the server cache. However, there is still a small delay when the image for a page gets downloaded to the browser. To hide this delay, we can prelaod pages. We load the previous and next page and save it into a cache in the browser, ready to be displayed as soon as they are required. This preloading takes place while the user is reading the current page, so the time it takes to load pages is hidden except when the comic is opened up and the first page is loaded. Using the preloading will also hide loading of a page from a new batch, which will takes than loading pages from a batch that is already in the server cache.
+
+``` js
+function displayPage(page, callback) {
+    var timestamp = + new Date()
+    showSpinner()
+    document.pageDisplayTimestamp = timestamp
+    var displayPageInternalCallback = function(data) {
+        if (document.pageDisplayTimestamp == timestamp) {
+            hideSpinner()
+            var img = getImage()
+            img.onload = function() {
+            
+                // update page position and zoom
+            
+                if (callback != null) {
+                    callback()
+                }
+                prefetch(page+1, function() {
+                    prefetch(page+2, function() {
+                        prefetch(page+3, function() {
+                            prefetch(page-1, function() {
+                                prefetch(page-2, null)
+                            })
+                        })
+                    })
+                })
+            }
+            img.src = data
+        }
+    }
+    var imageData = getFromCache(page)
+    if (imageData != null) {
+        displayPageInternalCallback(imageData)
+    } else {
+        downloadImageData(page, function() {
+            displayPageInternalCallback(getFromCache(page))
+        })
+    }
+}
+```
+
+At the end of the `displayPage` method we first try to load the page from cache. If we have the image there, we invoke the `displayPageInternalCallback`. If the image is not there, we download the image from the server and then call `displayPageInternalCallback`. This second path is the one that gets executed when a comic if first loaded, and it takes longer. The `displayPageInternalCallback` will put the image data into the image element on page, then adjust the image position and zoom. At the end there is a series of prefetch method calls. We load, in succession, image data for several pages (three pages forward and two pages back), to make sure we have enough data in the cache to have smooth page to page transitions in the UI.
+
+``` js
+function prefetch(page, callback) {
+    if (! cacheContains(page)) {
+        downloadImageData(page, callback)
+    } else {
+        if (callback != null) {
+            callback()
+        }
+    }
+}
+
+function downloadImageData(page, callback) {
+    var xhttp = new XMLHttpRequest()
+    xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200 && this.responseText.length > 0) {
+            addToCache(page, this.responseText)
+            if (callback != null) {
+                callback()
+            }
+        }
+    }
+    xhttp.open("GET", "imageData?id=" + getComicId() + "&page=" + (page-1), true)
+    xhttp.send()
+}
+```
+
+The `prefetch` method does not always need to load an image from the server, if that image is already in the cache. `downloadImageData` makes an Ajax request and saves the response to the cache, with the timestamp when the image was loaded from the server.
+
+
+``` js
+function cacheContains(page) {
+    if (document.comicPageCache && document.comicPageCache[page] && document.comicPageCache[page] != null) {
+        return true
+    } else {
+        return false
+    }
+}
+
+function addToCache(page, data) {
+    if (! document.comicPageCache) document.comicPageCache = {}
+    document.comicPageCache[page] = {
+        "timestamp": + new Date(),
+        "data": data
+    }
+    // evict some old data if cache is too large
+    while (getCacheSize() > getMaximumCacheSize()) {
+        evictOldest()
+    }
+}
+
+function getMaximumCacheSize() {
+    return 10
+}
+
+function getCacheSize() {
+    return Object.keys(document.comicPageCache).length
+}
+
+function evictOldest() {
+    if (document.comicPageCache) {
+        var oldest = null
+        var oldestPage = null
+        for (let [key, value] of Object.entries(document.comicPageCache)) {
+            if (oldest == null) {
+                oldest = value.timestamp
+                oldestPage = key
+            } else if (value.timestamp < oldest) {
+                oldest = value.timestamp
+                oldestPage = key
+            }
+        }
+        delete document.comicPageCache[oldestPage]
+    }
+}
+```
+
+The cache is stored in an object in the page, although this could be improved and we could store the cache in the browser local storage in the future. Every time we add something new to the cache, we also check if the chache size is exceeded and if necessary we evict the oldest pages from the cache.
+
 
 
 - archiving of data when sening over the network
