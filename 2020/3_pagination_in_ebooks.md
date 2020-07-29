@@ -290,5 +290,7 @@ function findPages() {
 
 We start by constructing the `pagesKey`, then check local storage to see if we have already computed the pages for the current book, section, screen size and zoom value. If we have an entry in local storage we must parse the pages array; data stored in local storage is primitive key-values, so the pages array we stored before was stored as a string. If parsing was successful we now have the pagination information and we can display the book. If we don't have an entry in local storage, we must compute the pages and make sure we store the result to local storage.
 
+<video src="pagination_optimization.mp4" controls></video>
+
 With this improvement, the experience of our users is improved, they only have to wait once, on a device, for the pagination to be computed. When reopening the book in a future section, the book will be displayed almost instantaneously because the pagination computation can be skipped.
 
