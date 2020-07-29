@@ -255,9 +255,40 @@ This is the whole algorithm for computing and displaying ebook pages in the brow
 
 ## A small optimization
 
+Besides the improvements I suggested just now, there is one small thing we can do to improve the performance of the application. Computing the ebook pagination on the client, as soon as the ebook content is loaded, can be a lengthy process. For small ebook sections, pagination computation is not noticeable, but there are some ebooks that are organized into very large sections, one section being an HTML file containg tens of chapters. When the pagination for such a section is computed, the algorithm may take a longer time and the browser may even complain and ask the user if they want to stop the backgroung javascript. Going through this algorithm every time the user opens the book on their device will lead to a bad experience for them. But we can use a little trick to limit the amount of times this algorithm has to run: store the pagination results in the browser local storage.
 
+Pagination information depends on the book and the section, but also on the viewport size (resizing the browser on desktop will require recomputing the pagination) and the zoom value, which is what determines the text size in the application. Since these are the variables that pagination depends on, all of them must be part of the key we use for storing the pagination result in the local storage of the browser. With this in mind, the actual `findPages` method looks like:
 
+``` js
+function findPages() {
+    var pagesKey = getBookId() + "_" + getCurrentSection() + "_" + getViewportWidth() + "_" + getViewportHeight() + "_" + getZoom()
+    var savedPages = window.localStorage.getItem(pagesKey)
+    if (savedPages) {
+        var stringPages = savedPages.split(",")
+        var parsedSavedPages = []
+        for (var i = 0; i < stringPages.length; i++) {
+            parsedSavedPages[i] = parseInt(stringPages[i])
+        }
+        document.pages = parsedSavedPages
+    } else {
+        var pages = []
+        pages.push(0)
+        var jump = 100
+        while (pages[pages.length - 1] < getMaxPosition()) {
+            if (pages.length > 2) jump = pages[pages.length - 1] - pages[pages.length - 2]
+            var endPosition = findPage(pages[pages.length - 1], jump)
+            pages.push(endPosition)
+        }
+        clearPage()
+        document.pages = pages
+        window.localStorage.setItem(pagesKey, pages)
+    }
 
-- how much content makes it in a screen? images and tables... the only way to really know is to actually display it in the rendering browser
-- steps necessary to do that with javascript - leads to accurate results (except on iphone)
-- this is a costly operation; caching on the client to save expensive work 
+    document.currentPage = 0
+}
+```
+
+We start by constructing the `pagesKey`, then check local storage to see if we have already computed the pages for the current book, section, screen size and zoom value. If we have an entry in local storage we must parse the pages array; data stored in local storage is primitive key-values, so the pages array we stored before was stored as a string. If parsing was successful we now have the pagination information and we can display the book. If we don't have an entry in local storage, we must compute the pages and make sure we store the result to local storage.
+
+With this improvement, the experience of our users is improved, they only have to wait once, on a device, for the pagination to be computed. When reopening the book in a future section, the book will be displayed almost instantaneously because the pagination computation can be skipped.
+
