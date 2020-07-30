@@ -1,7 +1,5 @@
 # Gesture navigation in comic books
 
-- about the new app
-
 In the last couple if months I've spent some of
 my time on a very specific project: develop a 
 web-based cross-device comic, and eventually ebook, 
@@ -10,16 +8,14 @@ books collection from anywhere. After many hours
 of implementation and testing, the project is a
 success and it is released [here](www).
 
-After implementing the reading and display of comic book files, which 
-
 A very important part of the experience of reading comics on a web-app are the controls. They must be simple, minimalistic, and intuitive. It's also important for the controls to be adapted to the device used to read the comic. When on a mobile or tablet device, users interact with a web page using their finges, and there is already a natural array of gestures that get used everywhere, pinch gestures for zooming, panning for moving objects on screen. On a desktop computer, a mouse is used most of the time, sometimes the keyboard. I have implemented support for both kinds of devices and tested and tuned their usage over several weeks.
 
-In the end, the following functionality proved the required set for creating a good experience with the app:
+In the end, I have settled on the following functionality set as the optimum choice for creating a good experience with the app:
 
 - moving between pages and views: if the whole page fits into the screen, we move between pages; if the page is zoomed and does not fit, this gesture will take us to the next or previous part of the screen
-- zooming the image
-- moving the image
-- opening a menu
+- zooming the image in and out
+- moving the image, or panning, with your mouse or your finger
+- opening a menu for additional options
 
 ## Moving between pages and views (next/previous gestures)
 
@@ -415,6 +411,4 @@ The menu displays some additional information, the name of the comic book, the c
 
 ## Conclusions
 
-An important part of the design and implementation process was the testing. I've tried different approaches
-- tested on multiple devices
-- original design had right-click for showing menu but did not work on ipad browsers
+An important part of the design and implementation process was the testing. I've tested the applicatio on multiple browsers, desktop and mobile devices. The original feature set was richer, used more controls. The original action to open a menu was a right-click on desktop, which translated to a long click on mobile. But when testing this on the iPad I found out there is no such thing as a right click on the available browsers, so I had to go back to the drawing board and design a different way of accessing the menu. In a similar manner, the library page of the application, which is not discussed here, originally had more complex functionality that allowed users to select multiple books in the library and remove the progress information from that page. But limitations across devices led to me removing that functinality, moving it to the menu for each comic. But these limitations may prove useful, forcing me to rethink the array of gestures users need to learn and leading to a more streamlined application and, I believe, a better overall user experience.
