@@ -1,7 +1,5 @@
 # Caching and preloading in comic books
 
-- issues when loading images: large, some hundreds of megabytes, take a while to download over the network
-
 There are two main time-consuming operations when loading comics for the UI: loading the image data from the comic archive and downloading the image data from the server to the client. Digital comic books are stored in archives under `cbz` or `cbr` extensions, corresponding to `zip` and `rar` archives. When we want to display pages from a comic book, we must first read the archive, get the files index, identify the images, order them by filename and then extract the pages we need. This is one costly operation in the comic reading process. The other costly operation is sending this image from the server to the client.  For one image, the download will not usually take a long time, but a comic mai have tens or even hundreds of pages. Depending on how fast the user reads those pages, a new page may have to be downloaded fairly often. The road the page takes from archive to user screen can be seconds long, and it would be a bad experience for the user to wait a few seconds for every new page to get displayed. This is why we must look for a a few shortcuts that can optimize the user experience.
 
 ## Caching on the server side
