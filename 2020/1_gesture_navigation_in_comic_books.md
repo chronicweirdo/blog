@@ -70,7 +70,6 @@ The distribution on page of the UI is done with CSS, using the following code:
     width: 10vw;
     height: 10vh;
 }
-
 #canv {
     top: 0;
     left: 10vw;
@@ -91,6 +90,7 @@ enableGesturesOnElement(document.getElementById("prev"), {
     "pinchAction": touchGesturePinchOngoing,
     "panAction": touchGesturePan
 })
+
 enableGesturesOnElement(document.getElementById("next"), {
     "clickAction": (x, y) => goToNextView(),
     "doubleClickAction": zoomJump,
@@ -110,27 +110,57 @@ function goToNextView() {
         if (isEndOfColumn()) {
             goToNextPage()
         } else {
-            setImageLeft(getNextPosition(getImage().width, getViewportWidth(), getImageLeft(), getHorizontalJumpPercentage(), getRowThreshold()))
-            setImageTop(getNextPosition(getImage().height, getViewportHeight(), getImageTop(), getVerticalJumpPercentage(), getColumnThreshold()))
+            setImageLeft(getNextPosition(
+                getImage().width, 
+                getViewportWidth(), 
+                getImageLeft(), 
+                getHorizontalJumpPercentage(), 
+                getRowThreshold()
+            ))
+            setImageTop(getNextPosition(
+                getImage().height, 
+                getViewportHeight(), 
+                getImageTop(), 
+                getVerticalJumpPercentage(), 
+                getColumnThreshold()
+            ))
             updateImage()
         }
     } else {
-        setImageLeft(getNextPosition(getImage().width, getViewportWidth(), getImageLeft(), getHorizontalJumpPercentage(), getRowThreshold()))
+        setImageLeft(getNextPosition(
+            getImage().width, 
+            getViewportWidth(), 
+            getImageLeft(), 
+            getHorizontalJumpPercentage(), 
+            getRowThreshold()
+        ))
         updateImage()
     }
 }
+
 function isEndOfRow() {
-    return (getImage().width <= getViewportWidth()) || approx(getImageLeft() + getImageWidth(), getViewportWidth(), getRowThreshold())
+    return (getImage().width <= getViewportWidth()) 
+        || approx(getImageLeft() + getImageWidth(), getViewportWidth(), getRowThreshold())
 }
+
 function isEndOfColumn() {
-    return (getImage().height <= getViewportHeight()) || approx(getImageTop() + getImageHeight(), getViewportHeight(), getColumnThreshold())
+    return (getImage().height <= getViewportHeight()) 
+        || approx(getImageTop() + getImageHeight(), getViewportHeight(), getColumnThreshold())
 }
+
 function getNextPosition(imageDimension, viewportDimension, imageValue, viewportJumpPercentage, threshold) {
-    if (approx(imageValue, viewportDimension - imageDimension, threshold)) return 0
+    if (approx(imageValue, viewportDimension - imageDimension, threshold)) {
+        return 0
+    }
+
     var proposedNextPosition = (imageValue - viewportDimension *  viewportJumpPercentage) | 0
-    if (proposedNextPosition < viewportDimension - imageDimension) return viewportDimension - imageDimension
+    if (proposedNextPosition < viewportDimension - imageDimension) {
+        return viewportDimension - imageDimension
+    }
+
     return proposedNextPosition
 }
+
 function approx(val1, val2, threshold = 1) {
     return Math.abs(val1 - val2) < threshold
 }
@@ -148,11 +178,17 @@ function enableGesturesOnElement(element, actions) {
         actions.panAction,
         actions.panEndAction
     )
-    element.addEventListener("wheel", (event) => mouseWheelScroll(event, actions.scrollAction, actions.scrollEndAction))
+    element.addEventListener("wheel", (event) => 
+        mouseWheelScroll(event, actions.scrollAction, actions.scrollEndAction)
+    )
     element.addEventListener("mousedown", mouseDown)
-    element.addEventListener("mouseup", (event) => mouseUp(event, actions.clickAction, actions.doubleClickAction, actions.tripleClickAction))
+    element.addEventListener("mouseup", (event) => 
+        mouseUp(event, actions.clickAction, actions.doubleClickAction, actions.tripleClickAction)
+    )
     element.addEventListener("mouseout", mouseUp)
-    element.addEventListener("mousemove", (event) => mouseMove(event, actions.mouseMoveAction))
+    element.addEventListener("mousemove", (event) => 
+        mouseMove(event, actions.mouseMoveAction)
+    )
 }
 ```
 
@@ -161,7 +197,6 @@ The code that enables gestures on an element will add different event listeners 
 ``` js
 function mouseDown(event, callback) {
     if (event.button == 0) {
-        //event.preventDefault()
         gestures.mouseDownX = event.clientX
         gestures.mouseDownY = event.clientY
         gestures.mousePressed = true
@@ -173,7 +208,8 @@ function mouseDown(event, callback) {
 function mouseUp(event, clickAction, doubleClickAction, tripleClickAction) {
     if (event.button == 0) {
         gestures.mousePressed = false
-        if (gestures.mouseDownX == event.clientX && gestures.mouseDownY == event.clientY) {
+        if (gestures.mouseDownX == event.clientX 
+            && gestures.mouseDownY == event.clientY) {
             // the mouse did not move, it's a click
             click(event, clickAction, doubleClickAction, tripleClickAction)
         }
@@ -187,13 +223,19 @@ function click(event, clickAction, doubleClickAction, tripleClickAction) {
     delayed(function() {
         if (gestures.clickTimestamp.length > 2) {
             gestures.clickTimestamp = []
-            if (tripleClickAction != null) tripleClickAction(event.clientX, event.clientY)
+            if (tripleClickAction != null) {
+                tripleClickAction(event.clientX, event.clientY)
+            }
         } else if (gestures.clickTimestamp.length > 1) {
             gestures.clickTimestamp = []
-            if (doubleClickAction != null) doubleClickAction(event.clientX, event.clientY)
+            if (doubleClickAction != null) {
+                doubleClickAction(event.clientX, event.clientY)
+            }
         } else if (gestures.clickTimestamp.length > 0) {
             gestures.clickTimestamp = []
-            if (clickAction != null) clickAction(event.clientX, event.clientY)
+            if (clickAction != null) {
+                clickAction(event.clientX, event.clientY)
+            }
         }
         gestures.clickTimestamp.shift()
     })
@@ -252,12 +294,18 @@ function zoomJump(x, y) {
         fitPageToScreen()
     }
 }
+
 function isPageFitToScreen() {
     return getZoomForFitToScreen() == getZoom()
 }
+
 function getZoomForFitToScreen() {
-    return Math.min(getViewportHeight() / getOriginalImageHeight(), getViewportWidth() / getOriginalImageWidth())
+    return Math.min(
+        getViewportHeight() / getOriginalImageHeight(),
+        getViewportWidth() / getOriginalImageWidth()
+    )
 }
+
 function fitPageToScreen() {
     setZoom(getZoomForFitToScreen())
     updateImage()
@@ -290,6 +338,7 @@ function enableTouchGestures(element, pinchStartAction, pinchAction, pinchEndAct
         pinchCenterY = ev.center.y
         if (pinchStartAction) pinchStartAction(ev.center.x, ev.center.y)
     })
+
     hammertime.on('pinch', function(ev) {
         ev.preventDefault()
         var currentZoom = ev.scale
@@ -299,7 +348,8 @@ function enableTouchGestures(element, pinchStartAction, pinchAction, pinchEndAct
         if (panAction) panAction(currentDeltaX, currentDeltaY)
         panPreviousDeltaX = ev.deltaX
         panPreviousDeltaY = ev.deltaY
-    });
+    })
+
     hammertime.on('pinchend', function(ev) {
         panPreviousDeltaX = 0
         panPreviousDeltaY = 0
@@ -312,6 +362,7 @@ function enableTouchGestures(element, pinchStartAction, pinchAction, pinchEndAct
             panStartY = ev.center.y
         }
     })
+
     hammertime.on('pan', function(ev) {
         if (! pinching) {
             var currentDeltaX = ev.deltaX - panPreviousDeltaX
@@ -321,6 +372,7 @@ function enableTouchGestures(element, pinchStartAction, pinchAction, pinchEndAct
             panPreviousDeltaY = ev.deltaY
         }
     })
+
     hammertime.on('panend', function(ev) {
         if (! pinching) {
             panPreviousDeltaX = 0
@@ -375,6 +427,7 @@ function pan(x, y) {
     setImageTop(getImageTop() + y)
     updateImage()
 }
+
 function updateImage() {
     var img = getImage()
 
@@ -385,10 +438,21 @@ function updateImage() {
     setImageWidth(newWidth)
     setImageHeight(newHeight)
 
-    var minimumLeft = (newWidth < getViewportWidth()) ? (getViewportWidth() / 2) - (newWidth / 2) : Math.min(0, getViewportWidth() - newWidth)
-    var maximumLeft = (newWidth < getViewportWidth()) ? (getViewportWidth() / 2) - (newWidth / 2) : Math.max(0, getViewportWidth() - newWidth)
-    var minimumTop = (newHeight < getViewportHeight()) ? (getViewportHeight() / 2) - (newHeight / 2) : Math.min(0, getViewportHeight() - newHeight)
-    var maximumTop = (newHeight < getViewportHeight()) ? (getViewportHeight() / 2) - (newHeight / 2) : Math.max(0, getViewportHeight() - newHeight)
+    var minimumLeft = (newWidth < getViewportWidth())
+        ? (getViewportWidth() / 2) - (newWidth / 2)
+        : Math.min(0, getViewportWidth() - newWidth)
+
+    var maximumLeft = (newWidth < getViewportWidth())
+        ? (getViewportWidth() / 2) - (newWidth / 2)
+        : Math.max(0, getViewportWidth() - newWidth)
+
+    var minimumTop = (newHeight < getViewportHeight())
+        ? (getViewportHeight() / 2) - (newHeight / 2)
+        : Math.min(0, getViewportHeight() - newHeight)
+
+    var maximumTop = (newHeight < getViewportHeight()) 
+        ? (getViewportHeight() / 2) - (newHeight / 2)
+        : Math.max(0, getViewportHeight() - newHeight)
 
     if (getImageLeft() < minimumLeft) setImageLeft(minimumLeft)
     if (getImageLeft() > maximumLeft) setImageLeft(maximumLeft)
