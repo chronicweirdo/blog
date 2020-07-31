@@ -10,6 +10,17 @@
         <generator>cacoveanu</generator>
 
         <item>
+            <title>Gesture Navigation in Comic Books</title>
+            <description>How navigation in comic books is implemented for the Chronic Reader application.</description>
+            <pubDate>2020.07.31T14:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2020/2020.07.31.gesture_navigation_in_comic_books.html</link>
+            <category>javascript</category>
+            <category>css</category>
+            <category>ux</category>
+            <category>web</category>
+        </item>
+
+        <item>
             <title>Anki Special Characters Through JavaScript</title>
             <description>Add special characters buttons to your Anki cards for language learning.</description>
             <pubDate>2019.12.06T11:00:00+02:00</pubDate>
