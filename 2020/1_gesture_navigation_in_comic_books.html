@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Going Static</title>
+		<meta name="description" content="Where I give you a short history of my blogs and make the case that taking a simpler approach to running your site may be the better option in the long run.">
+		<meta name="keywords" content="blog, web design, github, minimalism">
+		<link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+        <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+        <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+	</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="gesture-navigation-in-comic-books">Gesture navigation in comic books</h1>
+<p>In the last couple if months I've spent some of
+my time on a very specific project: develop a
+web-based cross-device comic, and eventually ebook,
+reader app than gives me access to my comics and
+books collection from anywhere. After many hours
+of implementation and testing, the project is a
+success and it is released <a href="www">here</a>.</p>
+<p>A very important part of the experience of reading comics on a web-app are the controls. They must be simple, minimalistic, and intuitive. It's also important for the controls to be adapted to the device used to read the comic. When on a mobile or tablet device, users interact with a web page using their finges, and there is already a natural array of gestures that get used everywhere, pinch gestures for zooming, panning for moving objects on screen. On a desktop computer, a mouse is used most of the time, sometimes the keyboard. I have implemented support for both kinds of devices and tested and tuned their usage over several weeks.</p>
+<p>In the end, I have settled on the following functionality set as the optimum choice for creating a good experience with the app:</p>
+<ul>
+<li>moving between pages and views: if the whole page fits into the screen, we move between pages; if the page is zoomed and does not fit, this gesture will take us to the next or previous part of the screen</li>
+<li>zooming the image in and out</li>
+<li>moving the image, or panning, with your mouse or your finger</li>
+<li>opening a menu for additional options</li>
+</ul>
+<h2 id="moving-between-pages-and-views-nextprevious-gestures">Moving between pages and views (next/previous gestures)</h2>
+<p>If the whole page fits into the screen, this gesture will move us between pages. If the page is zoomed in and a full page does not fit into the screen, this gesture will take us to the next or previous part of the screen that is not currently visible. The application is currently designed for western media, so the reading order is assumed to be left to right, top to bottom. A zoomed in page can be considered to be composed of multiple views, as presented in the image below.</p>
+<p><img src="views_on_page.png" alt="page views"></p>
+<p>The next and previous gestures move users between these views. When the top-left view is displayed, the previous gesture will move to the previous page, and similar with the bottom-right view moving to the next page.</p>
+<p><img src="controls.png" alt="controls"></p>
+<p>The controls for these gestures are on the left and right edges of the screen, as shown in the above image. Clicking with the mouse, a left click, or tapping the areas with your fingers on a mobile device will move you between views and pages.</p>
+<p>The UI for the controls is built from the following DIVs: <code>prev</code> and <code>next</code> representing the areas triggering the previous and next gestures, the tools bottons, placed on both the left and side of the screen, and a central area named <code>canv</code> which will be the trigger area for some of the gestures detailed in the next sections.</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"prev"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"next"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"toolsButtonLeft"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"toolsButtonRight"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"canv"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+</div></code></pre>
+<p>The distribution on page of the UI is done with CSS, using the following code:</p>
+<pre class="hljs"><code><div><span class="hljs-selector-id">#prev</span>, <span class="hljs-selector-id">#next</span>, <span class="hljs-selector-id">#toolsButtonLeft</span>, <span class="hljs-selector-id">#toolsButtonRight</span>, <span class="hljs-selector-id">#canv</span> {
+    <span class="hljs-attribute">display</span>: block;
+    <span class="hljs-attribute">position</span>: fixed;
+}
+<span class="hljs-selector-id">#prev</span> {
+    <span class="hljs-attribute">top</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">left</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">width</span>: <span class="hljs-number">10vw</span>;
+    <span class="hljs-attribute">height</span>: <span class="hljs-number">90vh</span>;
+}
+<span class="hljs-selector-id">#next</span> {
+    <span class="hljs-attribute">top</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">right</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">width</span>: <span class="hljs-number">10vw</span>;
+    <span class="hljs-attribute">height</span>: <span class="hljs-number">90vh</span>;
+}
+<span class="hljs-selector-id">#toolsButtonLeft</span> {
+    <span class="hljs-attribute">bottom</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">left</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">width</span>: <span class="hljs-number">10vw</span>;
+    <span class="hljs-attribute">height</span>: <span class="hljs-number">10vh</span>;
+}
+<span class="hljs-selector-id">#toolsButtonRight</span> {
+    <span class="hljs-attribute">bottom</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">right</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">width</span>: <span class="hljs-number">10vw</span>;
+    <span class="hljs-attribute">height</span>: <span class="hljs-number">10vh</span>;
+}
+
+<span class="hljs-selector-id">#canv</span> {
+    <span class="hljs-attribute">top</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">left</span>: <span class="hljs-number">10vw</span>;
+    <span class="hljs-attribute">width</span>: <span class="hljs-number">80vw</span>;
+    <span class="hljs-attribute">height</span>: <span class="hljs-number">100vh</span>;
+}
+</div></code></pre>
+<p>Gestures are enabled on our elements with the following javascript:</p>
+<pre class="hljs"><code><div>enableGesturesOnElement(<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"prev"</span>), {
+    <span class="hljs-string">"clickAction"</span>: <span class="hljs-function">(<span class="hljs-params">x, y</span>) =&gt;</span> goToPreviousView(),
+    <span class="hljs-string">"doubleClickAction"</span>: zoomJump,
+    <span class="hljs-string">"mouseMoveAction"</span>: mouseGestureDrag,
+    <span class="hljs-string">"scrollAction"</span>: mouseGestureScroll,
+    <span class="hljs-string">"pinchStartAction"</span>: touchGesturePinchStart,
+    <span class="hljs-string">"pinchAction"</span>: touchGesturePinchOngoing,
+    <span class="hljs-string">"panAction"</span>: touchGesturePan
+})
+enableGesturesOnElement(<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"next"</span>), {
+    <span class="hljs-string">"clickAction"</span>: <span class="hljs-function">(<span class="hljs-params">x, y</span>) =&gt;</span> goToNextView(),
+    <span class="hljs-string">"doubleClickAction"</span>: zoomJump,
+    <span class="hljs-string">"mouseMoveAction"</span>: mouseGestureDrag,
+    <span class="hljs-string">"scrollAction"</span>: mouseGestureScroll,
+    <span class="hljs-string">"pinchStartAction"</span>: touchGesturePinchStart,
+    <span class="hljs-string">"pinchAction"</span>: touchGesturePinchOngoing,
+    <span class="hljs-string">"panAction"</span>: touchGesturePan
+})
+</div></code></pre>
+<p>The previous and next actions are controlled through the click action, but some other actions, related to zooming and panning, are defined on these elements as well. This is done to provide the largest possible action area for touch gestures.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">goToNextView</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">if</span> (isEndOfRow()) {
+        <span class="hljs-keyword">if</span> (isEndOfColumn()) {
+            goToNextPage()
+        } <span class="hljs-keyword">else</span> {
+            setImageLeft(getNextPosition(getImage().width, getViewportWidth(), getImageLeft(), getHorizontalJumpPercentage(), getRowThreshold()))
+            setImageTop(getNextPosition(getImage().height, getViewportHeight(), getImageTop(), getVerticalJumpPercentage(), getColumnThreshold()))
+            updateImage()
+        }
+    } <span class="hljs-keyword">else</span> {
+        setImageLeft(getNextPosition(getImage().width, getViewportWidth(), getImageLeft(), getHorizontalJumpPercentage(), getRowThreshold()))
+        updateImage()
+    }
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">isEndOfRow</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> (getImage().width &lt;= getViewportWidth()) || approx(getImageLeft() + getImageWidth(), getViewportWidth(), getRowThreshold())
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">isEndOfColumn</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> (getImage().height &lt;= getViewportHeight()) || approx(getImageTop() + getImageHeight(), getViewportHeight(), getColumnThreshold())
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getNextPosition</span>(<span class="hljs-params">imageDimension, viewportDimension, imageValue, viewportJumpPercentage, threshold</span>) </span>{
+    <span class="hljs-keyword">if</span> (approx(imageValue, viewportDimension - imageDimension, threshold)) <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+    <span class="hljs-keyword">var</span> proposedNextPosition = (imageValue - viewportDimension *  viewportJumpPercentage) | <span class="hljs-number">0</span>
+    <span class="hljs-keyword">if</span> (proposedNextPosition &lt; viewportDimension - imageDimension) <span class="hljs-keyword">return</span> viewportDimension - imageDimension
+    <span class="hljs-keyword">return</span> proposedNextPosition
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">approx</span>(<span class="hljs-params">val1, val2, threshold = <span class="hljs-number">1</span></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">Math</span>.abs(val1 - val2) &lt; threshold
+}
+</div></code></pre>
+<p>When moving to the next view, we check if we are at the end of a rown and at the end of a column. If both conditions are true, it's time to load and display the next page. Otherwise, the image is moved on the screen so the next view in the current image is displayed. If we don't have to change the row, only the left position of the image is changed, otherwise both the top and the left positions are adjusted. <code>getNextPosition</code> is a generalized method to compute the next vertical or horizontal position based on the dimensions of the image, the viewport dimension (height or width of the screen) and the current position of the image. All computations include a threhold, this allows a move to a next position even when the right edge of the screen is not necessarily in view and improves the user experience. We have similar methods for the previous gesture.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">enableGesturesOnElement</span>(<span class="hljs-params">element, actions</span>) </span>{
+    enableTouchGestures(
+        element,
+        actions.pinchStartAction,
+        actions.pinchAction,
+        actions.pinchEndAction,
+        actions.panAction,
+        actions.panEndAction
+    )
+    element.addEventListener(<span class="hljs-string">"wheel"</span>, (event) =&gt; mouseWheelScroll(event, actions.scrollAction, actions.scrollEndAction))
+    element.addEventListener(<span class="hljs-string">"mousedown"</span>, mouseDown)
+    element.addEventListener(<span class="hljs-string">"mouseup"</span>, (event) =&gt; mouseUp(event, actions.clickAction, actions.doubleClickAction, actions.tripleClickAction))
+    element.addEventListener(<span class="hljs-string">"mouseout"</span>, mouseUp)
+    element.addEventListener(<span class="hljs-string">"mousemove"</span>, (event) =&gt; mouseMove(event, actions.mouseMoveAction))
+}
+</div></code></pre>
+<p>The code that enables gestures on an element will add different event listeners to monitor what events are getting triggered on the element. For the previous and next actions, we are monitoring mouse clicks (which also capture tap gestures on mobile devices).</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">mouseDown</span>(<span class="hljs-params">event, callback</span>) </span>{
+    <span class="hljs-keyword">if</span> (event.button == <span class="hljs-number">0</span>) {
+        <span class="hljs-comment">//event.preventDefault()</span>
+        gestures.mouseDownX = event.clientX
+        gestures.mouseDownY = event.clientY
+        gestures.mousePressed = <span class="hljs-literal">true</span>
+
+        <span class="hljs-keyword">if</span> (callback) callback(event.clientX, event.clientY)
+    }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">mouseUp</span>(<span class="hljs-params">event, clickAction, doubleClickAction, tripleClickAction</span>) </span>{
+    <span class="hljs-keyword">if</span> (event.button == <span class="hljs-number">0</span>) {
+        gestures.mousePressed = <span class="hljs-literal">false</span>
+        <span class="hljs-keyword">if</span> (gestures.mouseDownX == event.clientX &amp;&amp; gestures.mouseDownY == event.clientY) {
+            <span class="hljs-comment">// the mouse did not move, it's a click</span>
+            click(event, clickAction, doubleClickAction, tripleClickAction)
+        }
+    }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">click</span>(<span class="hljs-params">event, clickAction, doubleClickAction, tripleClickAction</span>) </span>{
+    event.preventDefault()
+    <span class="hljs-keyword">var</span> timestamp = + <span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>()
+    gestures.clickTimestamp.push(timestamp)
+    delayed(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+        <span class="hljs-keyword">if</span> (gestures.clickTimestamp.length &gt; <span class="hljs-number">2</span>) {
+            gestures.clickTimestamp = []
+            <span class="hljs-keyword">if</span> (tripleClickAction != <span class="hljs-literal">null</span>) tripleClickAction(event.clientX, event.clientY)
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (gestures.clickTimestamp.length &gt; <span class="hljs-number">1</span>) {
+            gestures.clickTimestamp = []
+            <span class="hljs-keyword">if</span> (doubleClickAction != <span class="hljs-literal">null</span>) doubleClickAction(event.clientX, event.clientY)
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (gestures.clickTimestamp.length &gt; <span class="hljs-number">0</span>) {
+            gestures.clickTimestamp = []
+            <span class="hljs-keyword">if</span> (clickAction != <span class="hljs-literal">null</span>) clickAction(event.clientX, event.clientY)
+        }
+        gestures.clickTimestamp.shift()
+    })
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">delayed</span>(<span class="hljs-params">callback</span>) </span>{
+    <span class="hljs-built_in">window</span>.setTimeout(callback, <span class="hljs-number">250</span>)
+}
+</div></code></pre>
+<p>A simple click is the mouse button being pressed and released without the mouse moving. If multiple clicks happen within a time threshold, we have double and triple clicks. Counting the number of clicks is achieved by using a queue. When a click is registered, the timestamp when that click was registered is pushed to the queue. Then a delayed task is triggered which checks the number of timestamps in the queue. Depending on that number, we have a simple, a double or a triple click. The queue is cleared after a click is processed. In practice, we don't use the triple click functionality because it would make using the app too complicated. The double click is used for the zoom functionality and discussed in its section.</p>
+<p>Keyboard gestures are enabled with the following javascript:</p>
+<pre class="hljs"><code><div>enableKeyboardGestures({
+    <span class="hljs-string">"upAction"</span>: <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> pan(<span class="hljs-number">0</span>, getViewportHeight() / <span class="hljs-number">2</span>),
+    <span class="hljs-string">"downAction"</span>: <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> pan(<span class="hljs-number">0</span>, - (getViewportHeight() / <span class="hljs-number">2</span>)),
+    <span class="hljs-string">"leftAction"</span>: goToPreviousView,
+    <span class="hljs-string">"rightAction"</span>: goToNextView
+})
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">enableKeyboardGestures</span>(<span class="hljs-params">actions</span>) </span>{
+    <span class="hljs-built_in">document</span>.onkeydown = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">e</span>) </span>{
+        <span class="hljs-keyword">if</span> (e.keyCode == <span class="hljs-string">'38'</span> || e.keyCode == <span class="hljs-string">'87'</span>) {
+            <span class="hljs-comment">// up arrow or w</span>
+            <span class="hljs-keyword">if</span> (actions.upAction) actions.upAction()
+        }
+        <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (e.keyCode == <span class="hljs-string">'40'</span> || e.keyCode == <span class="hljs-string">'83'</span>) {
+            <span class="hljs-comment">// down arrow or s</span>
+            <span class="hljs-keyword">if</span> (actions.downAction) actions.downAction()
+        }
+        <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (e.keyCode == <span class="hljs-string">'37'</span> || e.keyCode == <span class="hljs-string">'65'</span>) {
+            <span class="hljs-comment">// left arrow or a</span>
+            <span class="hljs-keyword">if</span> (actions.leftAction) actions.leftAction()
+        }
+        <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (e.keyCode == <span class="hljs-string">'39'</span> || e.keyCode == <span class="hljs-string">'68'</span>) {
+            <span class="hljs-comment">// right arrow or d</span>
+            <span class="hljs-keyword">if</span> (actions.rightAction) actions.rightAction()
+        }
+    }
+}
+</div></code></pre>
+<h2 id="zooming-the-page">Zooming the page</h2>
+<p>Zooming is a simple concept, it will allow the user to increase the size of the image and see more details, as well as read the text easier. The minimum zoom for a page depends on the size of the page, when the whole page fits the screen, the viewport, the image can't be zoomed out anymore. The application does not currently have a maximum zoom value. If you have a mouse, you can zoom in or out with the scroll wheel. On a device with a touch screen, the pinch gesture can be used to zoom the page. Another gesture in the zoom section is a double click or double tap. This gesture will fit the page to screen, if the page is zoomed in. If the page is already fit to screen, the double click gesture will zoom in to a specified level.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">zoomJump</span>(<span class="hljs-params">x, y</span>) </span>{
+    <span class="hljs-keyword">if</span> (isPageFitToScreen()) {
+        zoom(getZoom() * <span class="hljs-number">2.5</span>, x, y)
+    } <span class="hljs-keyword">else</span> {
+        fitPageToScreen()
+    }
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">isPageFitToScreen</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> getZoomForFitToScreen() == getZoom()
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getZoomForFitToScreen</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">Math</span>.min(getViewportHeight() / getOriginalImageHeight(), getViewportWidth() / getOriginalImageWidth())
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">fitPageToScreen</span>(<span class="hljs-params"></span>) </span>{
+    setZoom(getZoomForFitToScreen())
+    updateImage()
+}
+</div></code></pre>
+<p>How the double click is handled is described in the previous section. The functinoality for deciding if we zoom in or fit the page to screen is presented in the code above. Each page has a specific zoom value for it to fully fit on the screen. When we want to fit a page to screen, we just have to compute that zoom value and apply it to the page.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">enableTouchGestures</span>(<span class="hljs-params">element, pinchStartAction, pinchAction, pinchEndAction, panAction, panEndAction</span>) </span>{
+    disableEventHandlers(element)
+    <span class="hljs-keyword">var</span> hammertime = <span class="hljs-keyword">new</span> Hammer(element, {<span class="hljs-attr">domEvents</span>: <span class="hljs-literal">true</span>})
+    hammertime.get(<span class="hljs-string">'pan'</span>).set({ <span class="hljs-attr">direction</span>: Hammer.DIRECTION_ALL, <span class="hljs-attr">threshold</span>: <span class="hljs-number">0</span> });
+    hammertime.get(<span class="hljs-string">'pinch'</span>).set({ <span class="hljs-attr">enable</span>: <span class="hljs-literal">true</span> });
+
+    <span class="hljs-keyword">var</span> panStartX = <span class="hljs-literal">null</span>
+    <span class="hljs-keyword">var</span> panStartY = <span class="hljs-literal">null</span>
+
+    <span class="hljs-keyword">var</span> panPreviousDeltaX = <span class="hljs-number">0</span>
+    <span class="hljs-keyword">var</span> panPreviousDeltaY = <span class="hljs-number">0</span>
+
+    <span class="hljs-keyword">var</span> pinching = <span class="hljs-literal">false</span>
+    <span class="hljs-keyword">var</span> pinchCenterX = <span class="hljs-literal">null</span>
+    <span class="hljs-keyword">var</span> pinchCenterY = <span class="hljs-literal">null</span>
+
+    hammertime.on(<span class="hljs-string">'pinchstart'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">ev</span>) </span>{
+        ev.preventDefault();
+        pinching = <span class="hljs-literal">true</span>
+        pinchCenterX = ev.center.x
+        pinchCenterY = ev.center.y
+        <span class="hljs-keyword">if</span> (pinchStartAction) pinchStartAction(ev.center.x, ev.center.y)
+    })
+    hammertime.on(<span class="hljs-string">'pinch'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">ev</span>) </span>{
+        ev.preventDefault()
+        <span class="hljs-keyword">var</span> currentZoom = ev.scale
+        <span class="hljs-keyword">if</span> (pinchAction) pinchAction(currentZoom, pinchCenterX, pinchCenterY)
+        <span class="hljs-keyword">var</span> currentDeltaX = ev.deltaX - panPreviousDeltaX
+        <span class="hljs-keyword">var</span> currentDeltaY = ev.deltaY - panPreviousDeltaY
+        <span class="hljs-keyword">if</span> (panAction) panAction(currentDeltaX, currentDeltaY)
+        panPreviousDeltaX = ev.deltaX
+        panPreviousDeltaY = ev.deltaY
+    });
+    hammertime.on(<span class="hljs-string">'pinchend'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">ev</span>) </span>{
+        panPreviousDeltaX = <span class="hljs-number">0</span>
+        panPreviousDeltaY = <span class="hljs-number">0</span>
+        <span class="hljs-keyword">if</span> (pinchEndAction) pinchEndAction(ev.scale, pinchCenterX, pinchCenterY)
+    })
+
+    hammertime.on(<span class="hljs-string">'panstart'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">ev</span>) </span>{
+        <span class="hljs-keyword">if</span> (! pinching) {
+            panStartX = ev.center.x
+            panStartY = ev.center.y
+        }
+    })
+    hammertime.on(<span class="hljs-string">'pan'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">ev</span>) </span>{
+        <span class="hljs-keyword">if</span> (! pinching) {
+            <span class="hljs-keyword">var</span> currentDeltaX = ev.deltaX - panPreviousDeltaX
+            <span class="hljs-keyword">var</span> currentDeltaY = ev.deltaY - panPreviousDeltaY
+            <span class="hljs-keyword">if</span> (panAction) panAction(currentDeltaX, currentDeltaY)
+            panPreviousDeltaX = ev.deltaX
+            panPreviousDeltaY = ev.deltaY
+        }
+    })
+    hammertime.on(<span class="hljs-string">'panend'</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">ev</span>) </span>{
+        <span class="hljs-keyword">if</span> (! pinching) {
+            panPreviousDeltaX = <span class="hljs-number">0</span>
+            panPreviousDeltaY = <span class="hljs-number">0</span>
+
+            <span class="hljs-keyword">var</span> dx = panStartX - ev.center.x
+            <span class="hljs-keyword">var</span> dy = panStartY - ev.center.y
+            <span class="hljs-keyword">if</span> (panEndAction) panEndAction(dx, dy)
+        }
+        <span class="hljs-comment">// a pinch always ends with a pan</span>
+        pinching = <span class="hljs-literal">false</span>
+    })
+}
+</div></code></pre>
+<p>Gestures for mobile devices are configured with the help of the <a href="https://hammerjs.github.io/">Hammer JS</a> library. This library lets us configure pinch and pan gestures. When pinching we must save the center of the pinch gesture (a mean of all the points that are part of the pinch gesture). Then, as the fingers move on the screen, we can trigger the pinch event with the pinch center and the current scale. This scale is computed relative to the original positions of the fingers of the screen. While pinching, a pan can also happen, so the pan action is also triggered. This has to actually be handled when the pan events are triggered. To obtain the desired behavior, we must activate a flag when the user starts pinching, if a pan happens while pinching, handle the pan action through the pinch event and not the pan event, and finally turn the <code>pincing</code> flag off at the end of a pan, because the version I am using of the Hammer JS library is always finishing a pinch event with a pan event as well.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">touchGesturePinchStart</span>(<span class="hljs-params">pinchCenterX, pinchCenterY</span>) </span>{
+    <span class="hljs-built_in">document</span>.originalZoom = getZoom()
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">touchGesturePinchOngoing</span>(<span class="hljs-params">currentZoom, pinchCenterX, pinchCenterY</span>) </span>{
+    zoom(<span class="hljs-built_in">document</span>.originalZoom * currentZoom, pinchCenterX, pinchCenterY)
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">zoom</span>(<span class="hljs-params">zoom, centerX, centerY</span>) </span>{
+    <span class="hljs-keyword">var</span> sideLeft = centerX - getImageLeft()
+    <span class="hljs-keyword">var</span> ratioLeft = sideLeft / (getImageWidth() * getZoom())
+    <span class="hljs-keyword">var</span> newSideLeft = (getImageWidth() * zoom) * ratioLeft
+    setImageLeft(centerX - newSideLeft)
+
+    <span class="hljs-keyword">var</span> sideTop = centerY - getImageTop()
+    <span class="hljs-keyword">var</span> ratioTop = sideTop / (getImageHeight() * getZoom())
+    <span class="hljs-keyword">var</span> newSideTop = (getImageHeight() * zoom) * ratioTop
+    setImageTop(centerY - newSideTop)
+
+    setZoom(zoom)
+    updateImage()
+}
+</div></code></pre>
+<p>The pinch start ation needs to save the current zoom of the page. This is because the scale of a pinch is a relative scale, so when zooming we must multiply that scale with the original zoom of the image at the beginning of a pinch. Applying the zoom on the page also takes into account the center of the pinch gesture, and keeps that center in the same place on the screen if possible.</p>
+<h2 id="panning-the-page">Panning the page</h2>
+<p>Panning the page, moving it around freely with your mouse or finger, may be the simplest gesture discussed here. It just implies setting the left and top position of the image on the screen.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">pan</span>(<span class="hljs-params">x, y</span>) </span>{
+    setImageLeft(getImageLeft() + x)
+    setImageTop(getImageTop() + y)
+    updateImage()
+}
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">updateImage</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">var</span> img = getImage()
+
+    <span class="hljs-keyword">if</span> (getZoom() &lt; getMinimumZoom()) setZoom(getMinimumZoom())
+
+    <span class="hljs-keyword">var</span> newWidth = getOriginalImageWidth() * getZoom()
+    <span class="hljs-keyword">var</span> newHeight = getOriginalImageHeight() * getZoom()
+    setImageWidth(newWidth)
+    setImageHeight(newHeight)
+
+    <span class="hljs-keyword">var</span> minimumLeft = (newWidth &lt; getViewportWidth()) ? (getViewportWidth() / <span class="hljs-number">2</span>) - (newWidth / <span class="hljs-number">2</span>) : <span class="hljs-built_in">Math</span>.min(<span class="hljs-number">0</span>, getViewportWidth() - newWidth)
+    <span class="hljs-keyword">var</span> maximumLeft = (newWidth &lt; getViewportWidth()) ? (getViewportWidth() / <span class="hljs-number">2</span>) - (newWidth / <span class="hljs-number">2</span>) : <span class="hljs-built_in">Math</span>.max(<span class="hljs-number">0</span>, getViewportWidth() - newWidth)
+    <span class="hljs-keyword">var</span> minimumTop = (newHeight &lt; getViewportHeight()) ? (getViewportHeight() / <span class="hljs-number">2</span>) - (newHeight / <span class="hljs-number">2</span>) : <span class="hljs-built_in">Math</span>.min(<span class="hljs-number">0</span>, getViewportHeight() - newHeight)
+    <span class="hljs-keyword">var</span> maximumTop = (newHeight &lt; getViewportHeight()) ? (getViewportHeight() / <span class="hljs-number">2</span>) - (newHeight / <span class="hljs-number">2</span>) : <span class="hljs-built_in">Math</span>.max(<span class="hljs-number">0</span>, getViewportHeight() - newHeight)
+
+    <span class="hljs-keyword">if</span> (getImageLeft() &lt; minimumLeft) setImageLeft(minimumLeft)
+    <span class="hljs-keyword">if</span> (getImageLeft() &gt; maximumLeft) setImageLeft(maximumLeft)
+    <span class="hljs-keyword">if</span> (getImageTop() &lt; minimumTop) setImageTop(minimumTop)
+    <span class="hljs-keyword">if</span> (getImageTop() &gt; maximumTop) setImageTop(maximumTop)
+}
+</div></code></pre>
+<p>A more interesting subject to discuss here is the <code>updateImage</code> method, whics is used in all previous actions. This method applies all the requested changes to the image size and position, but not before making sure that the image is within the limits we expect, keeping at least part of the image on screen at all times; users can't pan the image out of the screen and end up with a completely blank page, or zoom the image out so much that it becomes invisible. The minimum and maximum allowed positions are computed in this method and, if the image changes would exceed these positions, the image is reset to the corresponding minimum or maximum, depending on which of the two have been exceeded.</p>
+<h2 id="the-menu">The menu</h2>
+<p>For any other functionality we want on this page, this functionality will be accessed through a menu. We want to keep the main functionality, accessible through gestures, as limited as possible. A minimalist design should make the learning curve for using the app pretty flat. The menu can be accessed by clicking on the lower-left or on the lower-right corner of the screen, with a mouse or with your finger.</p>
+<p><video src="menu.mp4" controls></video></p>
+<p>Depending on what side of the screen you clicked, the menu will be aligned along that side. This design decision makes the menu easy to use indifferent of the hand you hold your device in, for a mobile device. For a desktop, the menu will be close to the point on the screen that was clicked to open the menu, again making the menu easy to use.</p>
+<p>The menu displays some additional information, the name of the comic book, the collection that the comic book is part of, the current page and the total number of pages in the comic. The separation between elements that are just information and those that can be clicked is made through a very simple color scheme, with clickable elements being golden. Clicking the collection take the user back to the library page and display all comics that are part of that collection. The user can jump to any page in the comic from this menu, switch the app to full screen, go back to the library page (without displaying the collection) or deleting the progress information for this comic. Clicking anywhere on the transparent gray area of the screen will close the menu and take users back to the comic page they were reading. All this interaction has again been designed to have the minimum amount of functionality that makes this useful but not too cluttered.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>An important part of the design and implementation process was the testing. I've tested the applicatio on multiple browsers, desktop and mobile devices. The original feature set was richer, used more controls. The original action to open a menu was a right-click on desktop, which translated to a long click on mobile. But when testing this on the iPad I found out there is no such thing as a right click on the available browsers, so I had to go back to the drawing board and design a different way of accessing the menu. In a similar manner, the library page of the application, which is not discussed here, originally had more complex functionality that allowed users to select multiple books in the library and remove the progress information from that page. But limitations across devices led to me removing that functinality, moving it to the menu for each comic. But these limitations may prove useful, forcing me to rethink the array of gestures users need to learn and leading to a more streamlined application and, I believe, a better overall user experience.</p>
+
+</body>
+</html>
