@@ -299,6 +299,82 @@ We see above two operations:
 - the first one is run on CSV files only, and only when a CSV file has been added or modified to the configuration; the operation will run after the added/modified CSV file has been copied from the source folder to the destination folder; and this operation will execute the `modifiedCsvScript.bat` script;
 - the second operation is run only on TXT files when a file was added to our configuration; the operation will execute the `addedTextScript.bat` script only after all the changes have been applied on the destination folder.
 
+``` scala
+object Operation {
 
+  private def parseLine(line: String): Option[Operation] = {
+    val tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)")
+    if (tokens.length == 4) {
+      val t = tokens
+        .map(t => t.trim)
+        .map(t => if (t.startsWith("\"") && t.endsWith("\"")) t.substring(1, t.length - 1) else t)
+      Some(Operation(t(0), t(1), t(2), t(3)))
+    } else {
+      None
+    }
+  }
+
+  def readOperations(path: String): Seq[Operation] = {
+    val input = FileSystemOperations.getFileSystemOperations(path).getInputStream(path)
+    val lines: Seq[String] = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8)).lines().collect(Collectors.toList()).asScala.toList
+    lines.map(parseLine).filter(o => o.isDefined).map(o => o.get)
+  }
+
+  implicit class OperationExtensions(operation: Operation) {
+    private def mergePath(file: Seq[String]) = file.mkString("/")
+    def matches(change: Change) = {
+      operation.kind.r.matches(change.kind) && operation.file.r.matches(mergePath(change.file))
+    }
+  }
+}
+```
+
+The `Operation` object parses the lines of the configuration file and extracts `Operation` class entities from each line, if possible. In the `Operation` object we also have an implicit class that adds a `matches` functionality for each operation. This method is used to extract all the changes that an operation can apply to.
 
 ### Applying the changes and operations
+
+``` scala
+object Change {
+  implicit class ChangeSeqExtensions(changes: Seq[Change]) {
+    private def getEnvironment(sourceTree: FileTree, destinationTree: FileTree, change: Change): Map[String, String] =
+      Map(
+        "DESTINATION_FILE" -> destinationTree.getFullPath(change.file),
+        "DESTINATION_FOLDER" -> destinationTree.getFullPath(change.file.slice(0, change.file.length - 1))
+      ) ++ (if ("(new|modified)".r.matches(change.kind))
+        Map(
+          "SOURCE_FILE" -> sourceTree.getFullPath(change.file),
+          "SOURCE_FOLDER" -> sourceTree.getFullPath(change.file.slice(0, change.file.length - 1))
+        ) else Map())
+
+    def applyChanges(sourceTree: FileTree, destinationTree: FileTree, operations: Seq[Operation], scriptsPath: String) = {
+      changes.foreach(change => {
+        // prepare variables
+        //var environment = Map("DESTINATION_FILE" -> destinationTree.getFullPath(change.file))
+        //if ("(new|modified)".r.matches(change.kind)) environment = environment + ("SOURCE_FILE" -> sourceTree.getFullPath(change.file))
+        //println(s"environment: $environment")
+        val environment = getEnvironment(sourceTree, destinationTree, change)
+        // find operations, if any
+        val aplicableOperations = operations.filter(o => o.matches(change))
+        val beforeOperations = aplicableOperations.filter(o => o.when == "before")
+        val afterOperations = aplicableOperations.filter(o => o.when == "after")
+        println(s"executing before operations for change $change")
+        println(beforeOperations)
+        beforeOperations.foreach(o => ScriptUtils.executeScript(scriptsPath + o.script, environment))
+        println(s"making change $change")
+        destinationTree.write(change.file, sourceTree.read(change.file))
+        println(s"executing after operations for change $change")
+        println(afterOperations)
+        afterOperations.foreach(o => ScriptUtils.executeScript(scriptsPath + o.script, environment))
+      })
+      // apply "end" operations
+      changes.foreach(change => {
+        val environment = getEnvironment(sourceTree, destinationTree, change)
+        val endOperations = operations.filter(o => o.matches(change)).filter(o => o.when == "end")
+        println(s"executing end operations for change $change")
+        println(endOperations)
+        endOperations.foreach(o => ScriptUtils.executeScript(scriptsPath + o.script, environment))
+      })
+    }
+  }
+}
+```
