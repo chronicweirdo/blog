@@ -178,3 +178,66 @@ object FilesystemUtils {
   // [...]
 }
 ```
+
+``` scala
+object HdfsFileSystemOperations extends FileSystemOperations {
+
+  private def getHdfs(path: String) = {
+    val conf = new Configuration()
+    import org.apache.hadoop.security.UserGroupInformation
+    UserGroupInformation.setConfiguration(conf)
+    UserGroupInformation.loginUserFromSubject(null)
+
+    FileSystem.get(conf)
+  }
+
+  override def getInputStream(path: String): InputStream = {
+    val hdfs = getHdfs(path)
+    hdfs.open(new Path(path))
+  }
+
+  override def write(path: String, input: InputStream): Unit = {
+    val hdfs = getHdfs(path)
+    val p = new Path(path)
+    if (hdfs.exists(p)) hdfs.delete(p, true)
+    val output = hdfs.create(p)
+    Iterator
+      .continually (input.read)
+      .takeWhile (-1 !=)
+      .foreach (output.write)
+    output.close()
+  }
+
+  override def getChecksum(path: String): String = {
+    val in = getInputStream(path)
+    val checksum = FilesystemUtils.getInputStreamChecksum(in)
+    IOUtils.closeStream(in)
+    checksum
+  }
+
+  private def getHdfsTree(fs: FileSystem, current: String, relativePath: Seq[String], withFolders: Boolean = false): Seq[Seq[String]] = {
+    val fileStatus = fs.listStatus(new Path(current))
+    fileStatus.flatMap(s => {
+      val currentPath = relativePath ++ Seq(s.getPath.getName)
+      if (s.isDirectory) {
+        (if (withFolders) Seq(currentPath) else Seq()) ++ getHdfsTree(fs, s.getPath.toString, currentPath, withFolders)
+      } else {
+        Seq(currentPath)
+      }
+    })
+  }
+
+  private def getHdfsTree(uri: String): Seq[Seq[String]] = {
+    val fs: FileSystem = getHdfs(uri)
+    getHdfsTree(fs, uri, Seq(), false)
+  }
+
+  override def getTree(path: String): Seq[Seq[String]] = {
+    getHdfsTree(path)
+  }
+
+  override def getFileSeparator(): String = "/"
+}
+```
+
+With the `HdfsFileSystemOperations` we must use the `org.apache.hadoop.hadoop-client` and `org.apache.hadoop.hadoop-hdfs-client` libraries to access HDFS.
