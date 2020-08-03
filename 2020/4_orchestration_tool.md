@@ -276,3 +276,29 @@ The `FileTree` class also has a method for comparing file trees. From this compa
 ``` scala
 case class Change(kind: String, file: Seq[String])
 ```
+
+### The operations
+
+The next part we will look over is the operations that permit us to customize a general tool for a particular use case. An operation is encoded in the following class:
+
+``` scala
+case class Operation(kind: String, file: String, when: String, script: String)
+```
+
+Each operation has a `kind`, which correspond to the kind of change that this opperation will be triggered by. We also have a file that will trigger the change, but in this particular case the value stored in the `file` field can be an exact file path, or a regex that can match on multiple files. We also have a `when` field, which will define when we want to run this operation: before the change has been applied to the destination folder, after the change has been applied to the destination folder, or at the end, after all changes have been applied to the destination folder. This granularity will allow us to control when scripts are run, and this is the way we can ensure that we have the desired environment set up before we run our scripts. Finally, the operation contains the path to a `script` that will be triggered when necessary.
+
+Operations are defined in a simple CSV file, in the following manner:
+
+```
+(new|modified),".*\\.csv","after","D:\\orchestration\\diffscripts\\modifiedCsvScript.bat"
+"new", ".*\\.txt", "end", "D:\\orchestration\\diffscripts\\addedTextScript.bat"
+```
+
+We see above two operations:
+
+- the first one is run on CSV files only, and only when a CSV file has been added or modified to the configuration; the operation will run after the added/modified CSV file has been copied from the source folder to the destination folder; and this operation will execute the `modifiedCsvScript.bat` script;
+- the second operation is run only on TXT files when a file was added to our configuration; the operation will execute the `addedTextScript.bat` script only after all the changes have been applied on the destination folder.
+
+
+
+### Applying the changes and operations
