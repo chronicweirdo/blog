@@ -241,3 +241,38 @@ object HdfsFileSystemOperations extends FileSystemOperations {
 ```
 
 With the `HdfsFileSystemOperations` we must use the `org.apache.hadoop.hadoop-client` and `org.apache.hadoop.hadoop-hdfs-client` libraries to access HDFS.
+
+As seen in the code sequences abote, the file tree obtained from our file systems is a sequence of sequences of strings. Every file path for each file in the interest subfolder is relativized to the root path we provided, then the path elements are split and stored in a sequence of strings. We do this so we don't have to take into account different file
+separators for different files systems when comparing file paths. A file tree is just a list of the paths of files in our interest folders.
+
+``` scala
+class FileTree(root: String) {
+
+  // [...]
+  
+  private val tree = ops.getTree(root)
+  
+  // [...]
+  
+  def compare(other: FileTree): Seq[Change] = {
+    // check which files are new: files in source that are missing in the destination
+    val newFiles = tree.filter(sf => !other.tree.contains(sf)).map(f => Change("new", f))
+    
+    // check which files are deleted: files in destination that are missing in the source
+    val deletedFiles = other.tree.filter(df => !tree.contains(df)).map(f => Change("deleted", f))
+    
+    // check which files have been modified: files that are in source and destination but have different checksums
+    val modifiedFiles = tree.filter(sf => other.tree.contains(sf))
+      .filter(f => ops.getChecksum(getFullPath(f)) != other.ops.getChecksum(other.getFullPath(f)))
+      .map(f => Change("modified", f))
+      
+    newFiles ++ deletedFiles ++ modifiedFiles
+  }
+}
+```
+
+The `FileTree` class also has a method for comparing file trees. From this comparison we obtain three classes of files: new files, deleted files and modified files. These are different classes of changes, and are stored into a `Change` class, which contains a kind of change and the file that change refers to:
+
+``` scala
+case class Change(kind: String, file: Seq[String])
+```
