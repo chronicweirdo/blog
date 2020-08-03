@@ -90,5 +90,91 @@ As seen above, the application performs the following steps:
 - we compare the two trees to obtain the list of changes that need to be applied to the destination path to bring it to the same state as the source path;
 - then, we apply those changes; when changes are applied, the operations list is used to plug in custom operations, as defined in a configuration file, this is where we plug in the custom functionality we need to start and stop jobs in the cluster.
 
+### The file tree
 
+``` scala
+class FileTree(root: String) {
 
+  private val ops: FileSystemOperations = FileSystemOperations.getFileSystemOperations(root)
+  
+  // [...]
+}
+```
+
+The file tree class is initialized with a root path. Once we know the root path, we use it to first obtain a `FileSystemOperations` object. This is a different object depending on the file system we want to access. In our current tool, we have a file system object for a normal Windows or Linux file system, implemented using standard Java functionality to
+access these kinds of file systems, and another file system object that helps us access HDFS, implemented using Java libraries for HDFS access.
+
+``` scala
+trait FileSystemOperations {
+
+  def getInputStream(path: String): InputStream
+
+  def write(path: String, input: InputStream)
+
+  def getChecksum(path: String): String
+  
+  def getTree(path: String): Seq[Seq[String]]
+
+  def getFileSeparator(): String
+}
+```
+
+The `FileSystemOperations` interface defines methods for obtaining the input stream of a file, which allows us to read that file, another method that lets us write to a file path; these two methods being used to copy files from the desired configuration tree to the current configuration tree. We also have functionality for obtaining the checksum of a file, scanning the whole file tree of a folder, and getting the file separator for that file system.
+
+``` scala
+object LocalFileSystemOperations extends FileSystemOperations {
+
+  override def getInputStream(path: String): InputStream = new FileInputStream(path)
+
+  override def write(path: String, input: InputStream): Unit = {
+    val output = new FileOutputStream(path)
+    Iterator
+      .continually (input.read)
+      .takeWhile (-1 !=)
+      .foreach (output.write)
+    output.close()
+  }
+
+  override def getChecksum(path: String): String = {
+    val in = getInputStream(path)
+    val checksum = FilesystemUtils.getInputStreamChecksum(in)
+    IOUtils.closeStream(in)
+    checksum
+  }
+
+  private def getLocalTree(current: String, relativePath: Seq[String], withFolders: Boolean): Seq[Seq[String]] = {
+    val f = new File(current)
+    f.listFiles().flatMap(e => {
+      val currentPath = relativePath ++ Seq(e.getName)
+      if (e.isDirectory) {
+        (if (withFolders) Seq(currentPath) else Seq()) ++ getLocalTree(e.getPath, currentPath, withFolders)
+      } else {
+        Seq(currentPath)
+      }
+    })
+  }
+
+  private def getLocalTree(path: String): Seq[Seq[String]] = getLocalTree(path, Seq(), false)
+
+  override def getTree(path: String): Seq[Seq[String]] = {
+    getLocalTree(path)
+  }
+
+  override def getFileSeparator(): String = File.separator
+}
+```
+
+Above is the implementation of the `LocalFileSystemOperations` object which can work with local file systems, standard file systems used in Linux, Windows operating systems that can be handled out of the box by the JVM. Computing the checksum is deferred to a utility function that can read the byte content of any input stream and compute a checksum based on those bytes:
+
+``` scala
+object FilesystemUtils {
+
+  def getInputStreamChecksum(in: InputStream) = {
+    val barr = Iterator.continually(in.read).takeWhile(_ != -1).map(_.toByte).toArray
+    val md: Array[Byte] = MessageDigest.getInstance("MD5").digest(barr)
+    new String(Base64.getEncoder.encode(md))
+  }
+  
+  // [...]
+}
+```
