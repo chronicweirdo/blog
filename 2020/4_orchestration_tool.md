@@ -47,3 +47,48 @@ be tailored to our cluster but can be configured for a very different ecosystem.
 - plug in way of defining the actions that must be executed on the changes list to bring the current system to the desired state.
 
 Next, I will go over the current implementation of these features, with the plug in functionality only described for our current HDFS cluster.
+
+## The implementation
+
+The tool is implemented in Scala and compiled into a JDK that we can run on one of our cluster edge nodes.
+
+Since this is a console application, the main steps that the tool executes when invoked is defined in a `Console` object:
+
+``` scala
+object Console {
+
+  // [...]
+
+  def main(args: Array[String]): Unit = {
+    if (args.length < 2 || args.length > 3) {
+      println(instructions)
+      return
+    }
+
+    val source = args(0)
+    val destination = args(1)
+    val configuration = if (args.length == 3) args(2) else "config"
+
+    val operations = Operation.readOperations(configuration)
+    val scriptsPath = new File(configuration).getParentFile.getAbsolutePath + File.separator
+    val sourceTree = new FileTree(source)
+    val destinationTree = new FileTree(destination)
+
+    val changes = sourceTree.compare(destinationTree)
+    println(changes)
+    changes.applyChanges(sourceTree, destinationTree, operations, scriptsPath)
+    println("done")
+  }
+}
+```
+
+As seen above, the application performs the following steps:
+
+- it expects two or three arguments, this is the way we can provide the location of the configuration trees, the current configurationa and the desired configuration; the third argument can be a path to a configuration file;
+- from the configuration file we read a list of operations;
+- we use the source (desired configuration) and destination (current configuration) paths to get the source and destination trees; these trees can be read from different file systems but are stored in a uniform internal class structure that can be easily compared;
+- we compare the two trees to obtain the list of changes that need to be applied to the destination path to bring it to the same state as the source path;
+- then, we apply those changes; when changes are applied, the operations list is used to plug in custom operations, as defined in a configuration file, this is where we plug in the custom functionality we need to start and stop jobs in the cluster.
+
+
+
