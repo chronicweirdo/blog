@@ -348,33 +348,92 @@ object Change {
 
     def applyChanges(sourceTree: FileTree, destinationTree: FileTree, operations: Seq[Operation], scriptsPath: String) = {
       changes.foreach(change => {
-        // prepare variables
-        //var environment = Map("DESTINATION_FILE" -> destinationTree.getFullPath(change.file))
-        //if ("(new|modified)".r.matches(change.kind)) environment = environment + ("SOURCE_FILE" -> sourceTree.getFullPath(change.file))
-        //println(s"environment: $environment")
         val environment = getEnvironment(sourceTree, destinationTree, change)
-        // find operations, if any
+        
         val aplicableOperations = operations.filter(o => o.matches(change))
+        
         val beforeOperations = aplicableOperations.filter(o => o.when == "before")
-        val afterOperations = aplicableOperations.filter(o => o.when == "after")
-        println(s"executing before operations for change $change")
-        println(beforeOperations)
         beforeOperations.foreach(o => ScriptUtils.executeScript(scriptsPath + o.script, environment))
-        println(s"making change $change")
+        
         destinationTree.write(change.file, sourceTree.read(change.file))
-        println(s"executing after operations for change $change")
-        println(afterOperations)
+        
+        val afterOperations = aplicableOperations.filter(o => o.when == "after")
         afterOperations.foreach(o => ScriptUtils.executeScript(scriptsPath + o.script, environment))
       })
-      // apply "end" operations
+
       changes.foreach(change => {
         val environment = getEnvironment(sourceTree, destinationTree, change)
+        
         val endOperations = operations.filter(o => o.matches(change)).filter(o => o.when == "end")
-        println(s"executing end operations for change $change")
-        println(endOperations)
         endOperations.foreach(o => ScriptUtils.executeScript(scriptsPath + o.script, environment))
       })
     }
   }
 }
 ```
+
+The final part of our code is executing operations and applying changes. For each change, we first need to get some environment variables. These will contain the source file and folder and the destination file and folder. Not all operations will have all these paths available. The paths to destination and source are passed to the scripts which are executed by `Operation` objects.
+
+Once we have the environment, the following steps are executed for each change:
+
+- the aplicable operations for a change are filtered;
+- the "before" operations for that change are found and executed, if there are any;
+- the change is then executed - this means copying the source to the destination;
+- the "after" operations for that change are found and executed, if there are any;
+- after all changes have been processed, we go over the changes again and find the "end" operations for each change and execute them, if there are any.
+
+``` scala
+object ScriptUtils {
+
+  def executeScript(scriptPath: String, environment: Map[String, String]) = {
+    val builder = new ProcessBuilder()
+    builder.command(scriptPath)
+    environment.foreach(e => builder.environment().put(e._1, e._2))
+    val process = builder.start()
+    val gobbler = new StreamGobbler(process.getInputStream, println)
+    val executor = Executors.newSingleThreadExecutor()
+    executor.submit(gobbler)
+    val exitCode = process.waitFor()
+    println("script done: " + exitCode)
+    
+    if (executor.awaitTermination(10, TimeUnit.SECONDS)) {
+      println("task completed")
+    } else {
+      println("forced stop")
+      executor.shutdownNow()
+    }
+  }
+  
+}
+```
+
+The script itself is executed by the method shown above. We create a process, we configure the environment variables, as provided in the `environment` map, then we start the process and wait for a result. If the timeout is exceeded, we force stop the process.
+
+The following is an example shell script that will try to stop an Oozie scheduler. the `DESTINATION_FOLDER` environment variable is used to obtain the scheduler name, afterwards the `oozie jobs` command is invoked to search for that scheduler name and obtain the coordinator ID. With the ID we can kill the Oozie coordinator:
+
+```
+COORD_NAME=`hdfs dfs -cat $DESTINATION_FOLDER/coordinator.xml | sed -n '/name/{s/.*<coordinator-app.*name="\(.*\)".*/\1/p}'`
+COORD_ID=`oozie jobs -jobtype coordinator | grep $COORD_NAME.*RUNNING | sed -n 's/^\([^ \t][^ \t]*\).*/\1/p'`
+oozie job -kill $COORD_ID
+```
+
+The operations CSV for our deployment is the following:
+
+```
+(new|modified|deleted),".*/coordinator\.xml","before","stop_scheduler.sh"
+(new|modified),".*/coordinator\.xml","end","start_oozie_job.sh"
+```
+
+Before any "new", "modified" or "deleted" change on a "coordinator.xml" file, we stop the scheduler. After all changes have been applied, to the coordinator files and all other configuration files in the project, we can run the `start_oozie_job.sh` script that will deploy the new or modified Oozie coordinators.
+
+## Conclusions
+
+With the above project we have achieved what we set out to do, have a one-command declarative deployment setup for our Spark cluster. We hold the desired configuration in a git project and the real configuration in HDFS. Once we want to deploy the changes from git to our cluster, we check out the latest state of the git project and run the following command:
+
+```
+java -cp $(hadoop classpath):orchestration-assembly-0.1.jar com.cacoveanu.orchestration.Console ~/git-source-configuration/config hdfs:///deployment-configuration ~/git-source-configuration/scripts/operations
+```
+
+Our code packages in `orchestration-assembly-0.1.jar`. From this JAR, we execute the main class `Console`. The source folder, containing the desired configuration in git, is at `~/git-source-configuration/config`. The destination folder with the real, active configuration is in HDFS at `hdfs:///deployment-configuration`. Our scripts and operations are also stored in the git configuration folder under `~/git-source-configuration/scripts/operations`.
+
+With just this command, changes between the desired and actual configuration are detected, Oozie schedulers are stopped, the changes to the configuration files are copied in HDFS and then the relevant Oozie schedulers are started. Oozie jobs that did not change are not affected. This tool greatly simplifies our deployment process on the Spark cluster.
