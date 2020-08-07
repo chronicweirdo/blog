@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Caching and Preloading Comic Books</title>
+  <meta name="description" content="About strategies used to make the web comic book reading experience fast and natural.">
+  <meta name="keywords" content="scala, spring boot, javscript, cache, web">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2020.08.07 08:00 / scala / spring boot / javscript / cache / web</p>
+<h1 id="caching-and-preloading-in-comic-books">Caching and Preloading Comic Books</h1>
+<p>This is the second article in the series discussing a new project for running your personal ebook and comic book server, Chronic Reader, available <a href="https://github.com/chronicweirdo/reader">here</a>.</p>
+<p>There are two main time-consuming operations when loading comics for the UI: loading the image data from the comic archive and downloading the image data from the server to the client. Digital comic books are stored in archives under <code>cbz</code> or <code>cbr</code> extensions, corresponding to <code>zip</code> and <code>rar</code> archives. When we want to display pages from a comic book, we must first read the archive, get the files index, identify the images, order them by filename and then extract the pages we need. This is one costly operation in the comic reading process. The other costly operation is sending this image from the server to the client.  For one image, the download will not usually take a long time, but a comic mai have tens or even hundreds of pages. Depending on how fast the user reads those pages, a new page may have to be downloaded fairly often. The road the page takes from archive to user screen can be seconds long, and it would be a bad experience for the user to wait a few seconds for every new page to get displayed. This is why we must look for a a few shortcuts that can optimize the user experience.</p>
+<h2 id="caching-on-the-server-side">Caching on the server side</h2>
+<p>On the server side we load the archive from disk and extract the image files from it. The first improvement we can make is to cache the images in memory. This way, we don't have to read the archive from disk every time we need to load a page, and we don't have to extract the images from the archive, an expand operation that can some time. The backend part of the project is implemented in Scala using the <a href="https://spring.io/projects/spring-boot">Spring Boot</a> framework, which gives us a very simple way to turn on caching for the whole project and enable caching on the method that loads the comic book pages:</p>
+<pre class="hljs"><code><div><span class="hljs-meta">@SpringBootApplication</span>
+<span class="hljs-meta">@EnableCaching</span>
+<span class="hljs-meta">@EnableScheduling</span>
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ReaderApplication</span> </span>{}
+</div></code></pre>
+<pre class="hljs"><code><div><span class="hljs-meta">@Service</span>
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ContentService</span> </span>{
+
+  <span class="hljs-comment">// [...]</span>
+    
+  <span class="hljs-meta">@Cacheable</span>(<span class="hljs-type">Array</span>(<span class="hljs-string">"resources"</span>))
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">loadResources</span></span>(bookId: java.lang.<span class="hljs-type">Long</span>, positions: <span class="hljs-type">Seq</span>[<span class="hljs-type">Int</span>]): <span class="hljs-type">Seq</span>[<span class="hljs-type">Content</span>] = {
+    bookRepository.findById(bookId).asScala <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(book) =&gt; <span class="hljs-type">FileUtil</span>.getExtension(book.path) <span class="hljs-keyword">match</span> {
+
+        <span class="hljs-keyword">case</span> <span class="hljs-type">FileTypes</span>.<span class="hljs-type">CBZ</span> =&gt;
+          <span class="hljs-type">CbzUtil</span>.readPages(book.path, <span class="hljs-type">Some</span>(positions)).getOrElse(<span class="hljs-type">Seq</span>())
+
+        <span class="hljs-keyword">case</span> <span class="hljs-type">FileTypes</span>.<span class="hljs-type">CBR</span> =&gt;
+          <span class="hljs-type">CbrUtil</span>.readPages(book.path, <span class="hljs-type">Some</span>(positions)).getOrElse(<span class="hljs-type">Seq</span>())
+
+        <span class="hljs-keyword">case</span> _ =&gt;
+          <span class="hljs-type">Seq</span>()
+      }
+
+      <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt;
+        <span class="hljs-type">Seq</span>()
+    }
+  }
+  
+  <span class="hljs-comment">// [...]</span>
+ 
+}
+</div></code></pre>
+<p>This approach will work for most comic book files, but some files may be hundreds of megabytes, for comic books with hundreds of pages. Loading several of those files and holding them in memory will fill out a lot of space. To optimize the cache further, we can load pages from disk in batches: load the first X pages of the comic and hold them in cache, after the user read those X pages load the next batch of X pages and holde them in cache.</p>
+<pre class="hljs"><code><div><span class="hljs-meta">@Controller</span>
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ComicController</span> </span>{
+
+  <span class="hljs-comment">// [...]</span>
+  
+  <span class="hljs-meta">@RequestMapping</span>(<span class="hljs-type">Array</span>(<span class="hljs-string">"/imageData"</span>))
+  <span class="hljs-meta">@ResponseBody</span>
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getImageData</span></span>(<span class="hljs-meta">@RequestParam</span>(<span class="hljs-string">"id"</span>) id: java.lang.<span class="hljs-type">Long</span>, <span class="hljs-meta">@RequestParam</span>(<span class="hljs-string">"page"</span>) page: <span class="hljs-type">Int</span>): <span class="hljs-type">String</span> = {
+    contentService
+      .loadResources(id, contentService.getBatchForPosition(page))
+      .find(p =&gt; p.index.isDefined &amp;&amp; p.index.get == page)
+      .map(p =&gt; <span class="hljs-type">WebUtil</span>.toBase64Image(p.mediaType, p.data))
+      .getOrElse(<span class="hljs-string">""</span>)
+  }
+}
+</div></code></pre>
+<pre class="hljs"><code><div><span class="hljs-meta">@Service</span>
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ContentService</span> </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-keyword">val</span> <span class="hljs-type">BATCH_SIZE</span> = <span class="hljs-number">20</span>
+
+  <span class="hljs-comment">// [...]</span>
+  
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getBatchForPosition</span></span>(position: <span class="hljs-type">Int</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Int</span>] = {
+    <span class="hljs-keyword">val</span> part = position / <span class="hljs-type">BATCH_SIZE</span>
+    <span class="hljs-keyword">val</span> positions = (part * <span class="hljs-type">BATCH_SIZE</span>) until (part * <span class="hljs-type">BATCH_SIZE</span> + <span class="hljs-type">BATCH_SIZE</span>)
+    positions
+  }
+  
+  <span class="hljs-comment">// [...]</span>
+  
+}
+
+</div></code></pre>
+<p>As shown above, when the client asks the controller for a specific page, we first compute the batch for that page, then ask the <code>ContentService</code> to load the whole batch. If this batch was loaded before, the <code>ContentService</code> will just load the batch from cache. In practice this approach shows best results, we provide some caching on the server side without loading a whole archive in memory and holding resources occupied.</p>
+<h2 id="preloading-and-caching-on-the-client-side">Preloading and caching on the client side</h2>
+<p>Now that we have caching on the server side, comic pages will load faster on the client once a batch has been loaded in the server cache. However, there is still a small delay when the image for a page gets downloaded to the browser. To hide this delay, we can prelaod pages. We load the previous and next page and save it into a cache in the browser, ready to be displayed as soon as they are required. This preloading takes place while the user is reading the current page, so the time it takes to load pages is hidden except when the comic is opened up and the first page is loaded. Using the preloading will also hide loading of a page from a new batch, which will takes than loading pages from a batch that is already in the server cache.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">displayPage</span>(<span class="hljs-params">page, callback</span>) </span>{
+    <span class="hljs-keyword">var</span> timestamp = + <span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>()
+    showSpinner()
+    <span class="hljs-built_in">document</span>.pageDisplayTimestamp = timestamp
+    <span class="hljs-keyword">var</span> displayPageInternalCallback = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">data</span>) </span>{
+        <span class="hljs-keyword">if</span> (<span class="hljs-built_in">document</span>.pageDisplayTimestamp == timestamp) {
+            hideSpinner()
+            <span class="hljs-keyword">var</span> img = getImage()
+            img.onload = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+            
+                <span class="hljs-comment">// update page position and zoom</span>
+            
+                <span class="hljs-keyword">if</span> (callback != <span class="hljs-literal">null</span>) {
+                    callback()
+                }
+                prefetch(page+<span class="hljs-number">1</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+                    prefetch(page+<span class="hljs-number">2</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+                        prefetch(page+<span class="hljs-number">3</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+                            prefetch(page<span class="hljs-number">-1</span>, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+                                prefetch(page<span class="hljs-number">-2</span>, <span class="hljs-literal">null</span>)
+                            })
+                        })
+                    })
+                })
+            }
+            img.src = data
+        }
+    }
+    <span class="hljs-keyword">var</span> imageData = getFromCache(page)
+    <span class="hljs-keyword">if</span> (imageData != <span class="hljs-literal">null</span>) {
+        displayPageInternalCallback(imageData)
+    } <span class="hljs-keyword">else</span> {
+        downloadImageData(page, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+            displayPageInternalCallback(getFromCache(page))
+        })
+    }
+}
+</div></code></pre>
+<p>At the end of the <code>displayPage</code> method we first try to load the page from cache. If we have the image there, we invoke the <code>displayPageInternalCallback</code>. If the image is not there, we download the image from the server and then call <code>displayPageInternalCallback</code>. This second path is the one that gets executed when a comic if first loaded, and it takes longer. The <code>displayPageInternalCallback</code> will put the image data into the image element on page, then adjust the image position and zoom. At the end there is a series of prefetch method calls. We load, in succession, image data for several pages (three pages forward and two pages back), to make sure we have enough data in the cache to have smooth page to page transitions in the UI.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">prefetch</span>(<span class="hljs-params">page, callback</span>) </span>{
+    <span class="hljs-keyword">if</span> (! cacheContains(page)) {
+        downloadImageData(page, callback)
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> (callback != <span class="hljs-literal">null</span>) {
+            callback()
+        }
+    }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">downloadImageData</span>(<span class="hljs-params">page, callback</span>) </span>{
+    <span class="hljs-keyword">var</span> xhttp = <span class="hljs-keyword">new</span> XMLHttpRequest()
+    xhttp.onreadystatechange = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+        <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.readyState == <span class="hljs-number">4</span> &amp;&amp; <span class="hljs-keyword">this</span>.status == <span class="hljs-number">200</span> &amp;&amp; <span class="hljs-keyword">this</span>.responseText.length &gt; <span class="hljs-number">0</span>) {
+            addToCache(page, <span class="hljs-keyword">this</span>.responseText)
+            <span class="hljs-keyword">if</span> (callback != <span class="hljs-literal">null</span>) {
+                callback()
+            }
+        }
+    }
+    xhttp.open(<span class="hljs-string">"GET"</span>, <span class="hljs-string">"imageData?id="</span> + getComicId() + <span class="hljs-string">"&amp;page="</span> + (page<span class="hljs-number">-1</span>), <span class="hljs-literal">true</span>)
+    xhttp.send()
+}
+</div></code></pre>
+<p>The <code>prefetch</code> method does not always need to load an image from the server, if that image is already in the cache. <code>downloadImageData</code> makes an Ajax request and saves the response to the cache, with the timestamp when the image was loaded from the server.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">cacheContains</span>(<span class="hljs-params">page</span>) </span>{
+    <span class="hljs-keyword">if</span> (<span class="hljs-built_in">document</span>.comicPageCache &amp;&amp; <span class="hljs-built_in">document</span>.comicPageCache[page] &amp;&amp; <span class="hljs-built_in">document</span>.comicPageCache[page] != <span class="hljs-literal">null</span>) {
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">true</span>
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>
+    }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">addToCache</span>(<span class="hljs-params">page, data</span>) </span>{
+    <span class="hljs-keyword">if</span> (! <span class="hljs-built_in">document</span>.comicPageCache) <span class="hljs-built_in">document</span>.comicPageCache = {}
+    <span class="hljs-built_in">document</span>.comicPageCache[page] = {
+        <span class="hljs-string">"timestamp"</span>: + <span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>(),
+        <span class="hljs-string">"data"</span>: data
+    }
+    <span class="hljs-comment">// evict some old data if cache is too large</span>
+    <span class="hljs-keyword">while</span> (getCacheSize() &gt; getMaximumCacheSize()) {
+        evictOldest()
+    }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getMaximumCacheSize</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-number">10</span>
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getCacheSize</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">Object</span>.keys(<span class="hljs-built_in">document</span>.comicPageCache).length
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">evictOldest</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">if</span> (<span class="hljs-built_in">document</span>.comicPageCache) {
+        <span class="hljs-keyword">var</span> oldest = <span class="hljs-literal">null</span>
+        <span class="hljs-keyword">var</span> oldestPage = <span class="hljs-literal">null</span>
+        <span class="hljs-keyword">for</span> (<span class="hljs-keyword">let</span> [key, value] <span class="hljs-keyword">of</span> <span class="hljs-built_in">Object</span>.entries(<span class="hljs-built_in">document</span>.comicPageCache)) {
+            <span class="hljs-keyword">if</span> (oldest == <span class="hljs-literal">null</span>) {
+                oldest = value.timestamp
+                oldestPage = key
+            } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (value.timestamp &lt; oldest) {
+                oldest = value.timestamp
+                oldestPage = key
+            }
+        }
+        <span class="hljs-keyword">delete</span> <span class="hljs-built_in">document</span>.comicPageCache[oldestPage]
+    }
+}
+</div></code></pre>
+<p>The cache is stored in an object in the page, although this could be improved and we could store the cache in the browser local storage in the future. Every time we add something new to the cache, we also check if the chache size is exceeded and if necessary we evict the oldest pages from the cache.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>After implementing these two caching solutions, the loading times for comic books are very small and only noticeable when first opening a comic, an in very rare instances when moving through pages of a comic. The result is a streamlined comic reading experience, with sparse and short waiting times.</p>
+
+</body>
+</html>

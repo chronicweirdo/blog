@@ -10,6 +10,18 @@
         <generator>cacoveanu</generator>
 
         <item>
+            <title>Caching and Preloading Comic Books</title>
+            <description>About strategies used to make the web comic book reading experience fast and natural.</description>
+            <pubDate>2020.08.07T08:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2020/2020.08.07.caching_and_preloading_comic_books.html</link>
+            <category>scala</category>
+            <category>spring boot</category>
+            <category>javscript</category>
+            <category>cache</category>
+            <category>web</category>
+        </item>
+
+        <item>
             <title>Gesture Navigation in Comic Books</title>
             <description>How navigation in comic books is implemented for the Chronic Reader application.</description>
             <pubDate>2020.07.31T14:00:00+02:00</pubDate>
