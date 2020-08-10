@@ -1,4 +1,5 @@
-A configurable spark job for filtering and detecting 
+A configurable spark job for 
+ing and detecting 
 when new data arrives
 
 A spark job thet detects when new data is no longer
@@ -149,3 +150,72 @@ class ArgmapConfiguration(args: Array[String]) {
 ```
 
 The `ArgmapConfiguration` is a class designed to parse our input arguments. On initialization, the input arguments provided in `argumentName1=argumentValue1 argumentName2=argumentValue2` format are parsed into a map of names and values. Then, different `getOrElse` methods are used to both retrieve and parse the argument value from that map. the value data type is defined by the default value provided. More complex is the `getList` method which will attempt to split an argument value into multiple values if those values are separated by `,` or some other separator provided in the method call. The `getList` method only returns a list of strings, but can be mapped to a different data type if desired.
+
+``` scala
+package com.cacoveanu.spark.monitoring
+
+class ConditionNotMetException extends Throwable
+```
+
+The `ConditionNotMetException` is a simple `Throwable` that does not carry any additional information.
+
+## Spark Time-Based Filter
+
+Another monitoring use-case that we must cover is getting notified if we stopped receiving new data. Our system integrates with many external systems, and sometimes our jobs stop pulling data from those systems. The problem may be as trivial as an expired set of credentials that we must update, or maybe the source system has become unavailable. Whatever the case, we must start investigating this failure as soon as possible. For that, we will use a different Spark monitoring job that is very similar to what we already have, starting with a filtering of our data to obtain the "monitored" data, but instead of counting the result and comparing with a threshold, we inspect the latest timestamp we have in our data to see if we have a problem with data download.
+
+``` scala
+package com.cacoveanu.spark.monitoring
+
+import java.net.URLDecoder
+import java.sql.Timestamp
+
+import com.cacoveanu.spark.ArgmapConfiguration
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions.max
+import org.apache.spark.sql.types.TimestampType
+
+object TimestampCheck {
+
+  def main(args: Array[String]): Unit = {
+    val argmapConfiguration = new ArgmapConfiguration(args)
+
+    val local = argmapConfiguration.getOrElse("local", false)
+    val inputLocation = argmapConfiguration.getOrElse("input_location","hdfs://data/raw")
+    val timestampColumn = argmapConfiguration.getOrElse("timestamp_column", "timestamp")
+    val hoursThreshold = argmapConfiguration.getOrElse("hours_threshold", 12d)
+    val filters = argmapConfiguration.keys().diff(Set("input_location", "local", "timestamp_column",
+      "hours_threshold"))
+
+    implicit val spark: SparkSession = (if (local) SparkSession.builder().master("local[*]") else SparkSession.builder())
+      .config("spark.sql.streaming.schemaInference", true)
+      .config("spark.default.parallelism", 8)
+      .config("spark.sql.shuffle.partitions", 12)
+      .getOrCreate()
+
+    var monitoredData = spark.read.parquet(inputLocation)
+
+    for (filter <- filters) {
+      val expectedValues: Seq[String] = argmapConfiguration.getList(filter, "").map(s => URLDecoder.decode(s, "UTF-8"))
+      if (expectedValues.nonEmpty) {
+        monitoredData = monitoredData.filter(col(filter).isin(expectedValues:_*))
+      }
+    }
+
+    val maxTimestamp: Option[Timestamp] = monitoredData.agg(max(timestampColumn).cast(TimestampType))
+      .rdd.map(v => v(0)).collect().headOption.map(v => v.asInstanceOf[Timestamp])
+
+    maxTimestamp match {
+      case Some(ts) =>
+        val diffMilliseconds = System.currentTimeMillis() - ts.getTime
+        val hours: Double = diffMilliseconds.toDouble / 1000 / 60 / 60
+        if (hours > hoursThreshold) throw new ConditionNotMetException
+        println(hours)
+      case None => println("no data")
+    }
+  }
+
+}
+```
+
+As shown above, once we have filtered our data, we get the maximum value from a configurable timestamp column and cast that value to a `java.sql.Timestamp` object. We then compute the hours difference beween when the job is running, "now", and when the last data was received. If this hours difference exceeds a threshold, we throw an exception.
