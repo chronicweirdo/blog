@@ -28,6 +28,39 @@ A solution [reported to work](https://serverfault.com/questions/985191/copy-snyc
 it's important that the attribute values are storeable in both file systems. Of course, sending these files over the internet will lose the metadata as well, and the Linux file
 systems are not easily compatible with Windows.
 
+``` sh
+#apt-get update
+#apt-get install vim
+#apt-get install attr
+#echo "a simple text file used to test metadata, no important information in it" > testfile.txt
+#attr -l testfile.txt
+#attr -s about -V "this is just a test file with some metadata" testfile.txt
+#attr -s description -V "this field is really not that different from the about field" testfile.txt
+
+# attr -l testfile.txt
+Attribute "about" has a 43 byte value for testfile.txt
+Attribute "description" has a 60 byte value for testfile.txt
+
+# attr -g about testfile.txt
+Attribute "about" had a 43 byte value for testfile.txt:
+this is just a test file with some metadata
+
+# attr -g description testfile.txt
+Attribute "description" had a 60 byte value for testfile.txt:
+this field is really not that different from the about field
+
+#tar --xattrs -cvf test.tar testfile.txt
+#cp test.tar /test
+#cd /test
+#tar --xattrs -xvf test.tar
+#attr -l testfile.txt
+Attribute "about" has a 43 byte value for testfile.txt
+Attribute "description" has a 60 byte value for testfile.txt
+# attr -g about testfile.txt
+Attribute "about" had a 43 byte value for testfile.txt:
+this is just a test file with some metadata
+```
+
 MacOS also has support for extended file attributes in its file systems similar to Linux
   
  implementation
