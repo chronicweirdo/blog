@@ -69,3 +69,83 @@ Then, we take all other arguments for our job and treat them as filters that we 
 After filtering all the data we should end up with the actual data we are monitoring. We count what remains in the dataframe and compare that count to the configured `greaterThan` treshold. This jobs' intended use is to monitor and get a notification once data starts appearing in our system for a specific device or a specific configuration. This is why zero is the default value of the threshold, but we can configure it if we want to only start processing data for a device once we have a specific number of recordings.
 
 You will now notice something unusual here. If the threshold is not reached, the Spark job throws a `ConditionNotMetException`. This will fail the job. If the conditions are met, the job does not throw the exception, so the job does not fail. We do this because in Oozie a Spark job ends in two ways, a success or a failure. We can then branch based on the success and failure of the jobs. This is a limitation but we can design our monitoring jobs to work with this and obtain the desired behavior.
+
+``` scala
+package com.cacoveanu.spark
+
+import java.text.SimpleDateFormat
+import java.util.Date
+
+import org.apache.log4j.LogManager
+
+class ArgmapConfiguration(args: Array[String]) {
+
+  @transient lazy val log = LogManager.getLogger(classOf[ArgmapConfiguration])
+
+  val argmap: Map[String, String] = args
+    .map(a => {
+      val firstEq = a.indexOf('=')
+      Seq(a.substring(0, firstEq), a.substring(firstEq+1))
+    })
+    .filter(a => a(0).nonEmpty && a(1).nonEmpty)
+    .map(a => a(0) -> a(1))
+    .toMap
+
+  def keys() = argmap.keySet
+
+  def get(name: String): Option[String] = {
+    argmap.get(name)
+  }
+
+  def getList(name: String, default: String = "", separator: String = ","): Seq[String] = {
+    val result = argmap.getOrElse(name, default)
+    val resultArray: Array[String] = result.split(separator).filter(s => s.nonEmpty)
+    log.info(s"$name: $resultArray")
+    resultArray.toSeq
+  }
+
+  def getOrElse(name: String, default: String): String = {
+    val result = argmap.getOrElse(name, default)
+    log.info(s"$name: $result")
+    result
+  }
+
+  def getOrElse(name: String, default: Int): Int =
+    argmap.get(name) match {
+      case Some(value) => value.toInt
+      case _ => default
+    }
+
+  def getOrElse(name: String, default: Double): Double =
+    argmap.get(name) match {
+      case Some(value) => value.toDouble
+      case _ => default
+    }
+
+  def getOrElse(name: String, default: Boolean): Boolean =
+    argmap.get(name) match {
+      case Some(value) => value.toBoolean
+      case _ => default
+    }
+
+  def getDateOrElse(name: String, dateFormat: String, default: Option[Date]): Option[Date] = {
+    argmap.get(name) match {
+      case Some(value) => try {
+        Some(new SimpleDateFormat(dateFormat).parse(value))
+      } catch {
+        case _: Throwable => None
+      }
+      case None => None
+    }
+  }
+
+  def doWithValue(name: String, func: String => Unit ) = {
+    argmap.get(name) match {
+      case Some(value) => func(value)
+      case _ =>
+    }
+  }
+}
+```
+
+The `ArgmapConfiguration` is a class designed to parse our input arguments. On initialization, the input arguments provided in `argumentName1=argumentValue1 argumentName2=argumentValue2` format are parsed into a map of names and values. Then, different `getOrElse` methods are used to both retrieve and parse the argument value from that map. the value data type is defined by the default value provided. More complex is the `getList` method which will attempt to split an argument value into multiple values if those values are separated by `,` or some other separator provided in the method call. The `getList` method only returns a list of strings, but can be mapped to a different data type if desired.
