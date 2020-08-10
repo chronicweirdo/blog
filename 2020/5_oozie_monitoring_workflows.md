@@ -297,10 +297,10 @@ As shown above, once we have filtered our data, we get the maximum value from a 
 The above workflow will execute the following action graph:
 
 ```
----> monitoring_fork ----> new_data --(ok)----------------------------------------------------> monitoring_join
-                     |              |-(error)--> send_email_no_new_data --(ok)--|           |
-                     |                                                  |-(error)--> fail   |
-                     |---> filter_test_id12 --(ok)--> send_email_id12 --(error)--|          |
-                                            |                         |---(ok)--------------|
-                                            |-(error)---------------------------------------|
+───> monitoring_fork ─┬─> new_data ─┬─(ok)─────────────────────────────────────┬───────────┬─> monitoring_join ───> end
+                      │             └─(error)─> send_email_no_new_data ─┬─(ok)─┘           │
+                      │                                                 └─(error)─┬─> fail │
+                      └─> filter_test_id12 ─┬─(ok)─> send_email_id12 ─┬─(error)───┘        │
+                                            |                         └─(ok)───────────────┤
+                                            └─(error)──────────────────────────────────────┘
 ```
