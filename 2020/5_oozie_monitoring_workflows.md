@@ -304,3 +304,49 @@ The above workflow will execute the following action graph:
                                             |                         └─(ok)───────────────┤
                                             └─(error)──────────────────────────────────────┘
 ```
+
+The `new_data` job will look at everything we have in our raw data folder, so no filters. If we have some data that was recorded in the last 12 hours everything is working well, we continue along the `ok` branch to the `monitoring_join` node. If there was no data in the last 12 hours, this may be a problem, so the `error` branch is triggered and an email is sent to notify us of this specific condition.
+
+The `filter_test_id12` job is taking the raw data folder and applying some filters to select the data we are interested in. The defined filters only look at specific device types and specific content types. Then, we select all of that data with ID "12". If there is any data for that specific device type, device ID and content type, we continue along the `ok` branch this time, and send a notification email that lets us know we have new data, it is time to deploy jobs that can process this data. If no data is found, we contine along the `error` branch to the `monitoring_join` node.
+
+The Oozie workflow fails only if emails can't be sent, because of a problem in our cluster setup or an unavailable email service.
+
+The `monitoring_fork` is used to trigger parallel execution of more than one flow within the workflow and we can have may jobs start from here.
+
+This Oozie workflow can be triggerred periodically with an Oozie coordinator:
+
+``` xml
+<coordinator-app name="monitoring_coordinator" frequency="${frequency}" start="${startTime}" end="${endTime}" timezone="${timezone}" xmlns="uri:oozie:coordinator:0.1">
+  <controls>
+    <timeout>0</timeout>
+    <concurrency>${concurrency}</concurrency>
+    <execution>NONE</execution>
+  </controls>
+  <action>
+    <workflow>
+      <app-path>${appDir}</app-path>
+    </workflow>
+  </action>
+</coordinator-app>
+```
+
+And the `job.properties` file used for both the coordinator and the workflow files contains the following:
+
+```
+nameNode=hdfs://namenode1
+binariesDir=${nameNode}/binaries
+appDir=${nameNode}/deployments/monitoring
+
+frequency=120
+startTime=2020-08-05T00\:10Z
+endTime=2020-08-31T23\:59Z
+timezone=UTC
+concurrency=1
+throttle=1
+
+jobTracker=yarnRM
+oozie.coord.application.path=${appDir}
+oozie.use.system.libpath=true
+```
+
+With this deployed we have a monitoring job that runs every 2 hours, checks our data and sends email notifications when the desired conditions are met. With the configurable Spark jobs described in this article it is easy to extend the monitoring job to keep trach of the many kinds of data we have or expect to have in our system. With this automation tool, keeping a close eye on our system becomes a simple job, and it allows us to quickly become aware of possible issues that may arise in the system and adress them quickly. 
