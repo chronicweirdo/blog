@@ -219,3 +219,77 @@ object TimestampCheck {
 ```
 
 As shown above, once we have filtered our data, we get the maximum value from a configurable timestamp column and cast that value to a `java.sql.Timestamp` object. We then compute the hours difference beween when the job is running, "now", and when the last data was received. If this hours difference exceeds a threshold, we throw an exception.
+
+## The Oozie Workflow
+
+``` xml
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow-app xmlns="uri:oozie:workflow:0.5" name="monitoring">
+  
+    <start to="monitoring_fork"/>
+
+    <fork name="monitoring_fork">
+        <path start="new_data" />
+        <path start="filter_test_id12" />
+    </fork>
+    
+    <action name="new_data">
+        <spark xmlns="uri:oozie:spark-action:0.2">
+            <master>yarn</master>
+            <mode>cluster</mode>
+            <name>new_data</name>
+            <class>com.cacoveanu.spark.monitoring.TimestampCheck</class>
+            <jar>${binariesDir}/spark-assembly.jar</jar>
+            <arg>input_location=hdfs:///data/raw</arg>
+        </spark>
+        <ok to="monitoring_join"/>
+        <error to="send_email_no_new_data"/>
+    </action>
+
+    <action name="send_email_no_new_data">
+        <email xmlns="uri:oozie:email-action:0.2">
+            <to>monitoring@email.org</to>
+            <subject>No new data</subject>
+            <body>No new data in the last 12 hours!</body>
+        </email>
+        <ok to="monitoring_join"/>
+        <error to="fail"/>
+    </action>
+    
+    <action name="filter_test_id12">
+        <spark xmlns="uri:oozie:spark-action:0.2">
+            <master>yarn</master>
+            <mode>cluster</mode>
+            <name>filter_test_id12</name>
+            <class>com.cacoveanu.spark.monitoring.FilterCheck</class>
+            <jar>${binariesDir}/spark-assembly.jar</jar>
+            <arg>input_location=hdfs:///data/raw</arg>
+            <arg>device_type=type1,type7</arg>
+            <arg>content_type=text%2Fcsv,text%2Fjson,text%2Fplain</arg>
+            <arg>device_id=id12</arg>
+            <file>${appDir}/spark-defaults.conf</file>
+        </spark>
+        <ok to="send_email_id12"/>
+        <error to="monitoring_join"/>
+    </action>
+
+    <action name="send_email_id12">
+        <email xmlns="uri:oozie:email-action:0.2">
+            <to>monitoring@email.org</to>
+            <subject>New Data</subject>
+            <body>Device with id 12 has new data</body>
+        </email>
+        <ok to="monitoring_join"/>
+        <error to="fail"/>
+    </action>
+  
+    <join name="monitoring_join" to="end" />
+
+    <kill name="fail">
+        <message>Workflow has failed (failed to send email).</message>
+    </kill>
+
+    <end name="end"/>
+
+</workflow-app>
+```
