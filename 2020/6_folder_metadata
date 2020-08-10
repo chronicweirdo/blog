@@ -1,0 +1,24 @@
+- modern (in-use) file systems don't offer a good solution for storing custom metadata for files - they don't offer a sollution at all
+  - explore and present the current options, if they are viable or not
+- looking for a simple approach for storing this metadata alongside files
+  - a metadata file in the folder, alongside those files
+  - a simple solution, cross-OS, but requires manual management
+  - if files get moved or changed, the metadata file does not move or change with them, and without support from the file-system implementation this is difficult to achieve
+  - it would be possible to achieve this with an OS-service that monitors the file system and handles metadata updates when files change - but this is not a simple solution,
+  it would require significant implementation time, variations in the code for multiple file systems and OS-es, this is not the solution we are looking for
+  - the file solution remains the most sensible one, for a start; that file can be copied on different file systems along with the folder
+  - current use-case: metadata for images that are saved in "cold-storage", archived, so it requires one single write and is then stored in that format forever
+  - the metadata file can be a simple text file that contains the file-names and the metadata, can be opened on all file systems that support text
+  - it could have a more structured format, like json, but that also means more work without many additional benefits; you would need some software to display json in a pretty
+  format
+  - or it could be a local html file, containing the links to the actual files in the folder, alongside the metadata; metadata can be stored in an html table; if the files we are 
+  working with are images, the html file can display them, with the metadata alongside them; can be opened on most OS-es, in web browsers, and you get a pretty display of your
+  files and their metadata; this seems the best approach for our current use case
+  
+ implementation
+ - we need a temporary service/program that can be started and can monitor one or more folders
+ - the service also needs to know what the desired meta-data is
+ - the program checks if there is a metadata html file in the folder and loads data from it, otherwise it creates a new metadata file with the desired meta-data
+ - the program lets the user edit the metatada in the browser, in a table with files in the first column and meta-data in the next colums, with all meta-data columns containing text
+ areas that can be edited
+ - the user can save the edits (or auto-save can be implemented)
