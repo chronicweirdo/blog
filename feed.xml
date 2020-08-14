@@ -6,8 +6,18 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2019.08.09T14:00:00+02:00</pubDate>
+        <pubDate>2020.08.14T07:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Pagination in Ebooks</title>
+            <description>How to split a HTML file into pages that fit the screen with javascript.</description>
+            <pubDate>2020.08.14T07:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2020/2020.08.14.pagination_in_ebooks.html</link>
+            <category>javscript</category>
+            <category>web</category>
+            <category>optimization</category>
+        </item>
 
         <item>
             <title>Caching and Preloading Comic Books</title>

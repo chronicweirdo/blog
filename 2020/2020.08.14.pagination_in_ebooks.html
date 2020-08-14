@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pagination in Ebooks</title>
+  <meta name="description" content="How to split a HTML file into pages that fit the screen with javascript.">
+  <meta name="keywords" content="javscript, web, optimization">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2020.08.14 07:00 / javscript / web / optimization</p>
+<h1 id="pagination-in-ebooks">Pagination in Ebooks</h1>
+<p>This is the third article in the series discussing a new project for running your personal ebook and comic book server, Chronic Reader, available <a href="https://github.com/chronicweirdo/reader">here</a>.</p>
+<p>Reading and displaying ebooks is a very different problem from displaying comic books. Just like comic book files, ebook files, specifically <code>epub</code>, are archives, so the problem of extracting data from them is similar to comic books. But the data in this case is not images but text. For <code>epub</code> it's text in HTML format. Displaying HTML in web browsers is a very simple solution, the quickest approach would be to just extract the HTML file from the ebook archive and send it to the browser for display. But the resulting experience does not resemble a book reading experience. You can't flip pages, you have to scroll through the text. Sometimes the book is split into sections, so after scrolling for many chapters, you have to click to switch to the next section.</p>
+<p>If we want a better user experience, we need to display the book in pages. Then the user can click on the left or right edge of the screen to move between pages. Sometimes, this action will take them to the next page in the current section, at other times, a whole new section needs to be loaded. This is the application I wanted to implement, but to do this I had to find a good way of deciding what goes into a page.</p>
+<p>Finding out how much content out of a HTML document can fit into a page, or screen, can be a very complicated problem. If the content is just a block of text, we can expect roughly the same number of characters to fill a page. But our book may also contain tables and images. The book can have subtitles and different styling rules that change the spaces between lines of text, and how many characters are part of a page when we increase or reduce the text size. What about different devices that have different screen sizes? And finally, different browsers may have slight variations in the rendering code that decides how a HTML document is shown on screen.</p>
+<p>I've looked into ways of approximating on the server side what can fit into a screen, but the reader application is a web application, the intention is to be compatible with any browser which means I have no control on the rendering engine. No control on the rendering engine means that any server side approximation will be irrelevant on the client. The most accurate solution is to compute what fits into a page directly on the client side, where we have access to the rendering engine.</p>
+<p>The idea is simple: load the HTML document on the client and then split the document into pages based on the current client CSS and viewport size. This computation is done by first hiding the document contents, then start adding parts of the document to a page area, and keep adding new document contents until we trigger an overflow in the page area. The document elements that were part of the page area directly before the overflow was triggered are the elements that fit in one page. Continue this algorithm until we have assigned all document elements to pages. Once this is done, we have our page distribution and we can offer users the page reading experience that is the goal of this application.</p>
+<h2 id="computing-the-pagination">Computing the pagination</h2>
+<p>As mentioned above, computing the pagination is done directly on the client, in the browser, with JavaScript. But before we can dive into the algorithm, we must first have a html structure to support this pagination, a place to put the ebook document contents, a page where we add the text and a page container that is used to detect when overflow is trigerred:</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">body</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"content"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"pageContainer"</span> <span class="hljs-attr">style</span>=<span class="hljs-string">"visibility: visible;"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">div</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"page"</span> <span class="hljs-attr">style</span>=<span class="hljs-string">"font-size: 1.44em !important;"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">body</span>&gt;</span>
+</div></code></pre>
+<pre class="hljs"><code><div><span class="hljs-selector-tag">body</span> {
+    <span class="hljs-attribute">overflow</span>: hidden;
+    <span class="hljs-attribute">background-color</span>: white;
+    <span class="hljs-attribute">color</span>: white;
+    <span class="hljs-attribute">padding</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">margin</span>: <span class="hljs-number">0</span>;
+}
+
+<span class="hljs-selector-id">#content</span> {
+    <span class="hljs-attribute">display</span>: none
+}
+
+<span class="hljs-selector-id">#pageContainer</span> {
+    <span class="hljs-attribute">display</span>: block;
+    <span class="hljs-attribute">position</span>: fixed;
+    <span class="hljs-attribute">width</span>: <span class="hljs-number">80vw</span>;
+    <span class="hljs-attribute">left</span>: <span class="hljs-number">10vw</span>;
+    <span class="hljs-attribute">height</span>: <span class="hljs-number">100vh</span>;
+    <span class="hljs-attribute">top</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">overflow</span>: hidden;
+    <span class="hljs-attribute">padding</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">margin</span>: <span class="hljs-number">0</span>;
+}
+
+<span class="hljs-selector-id">#page</span> {
+    <span class="hljs-attribute">color</span>: black;
+    <span class="hljs-attribute">font-family</span>: Georgia, serif;
+}
+</div></code></pre>
+<p>With this structure in place, we first load the ebook document contents and store them in the <code>content</code> div. Then, we can start setting up the pages:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">setup</span>(<span class="hljs-params"></span>) </span>{
+    computeStartPositionsOfElements(<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"content"</span>))
+    findPages()
+    jumpToLocation()
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">computeStartPositionsOfElements</span>(<span class="hljs-params">root</span>) </span>{
+    <span class="hljs-keyword">var</span> positionToElement = []
+    <span class="hljs-keyword">var</span> idPositions = []
+
+    <span class="hljs-keyword">var</span> recursive = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">element, currentPosition</span>) </span>{
+        <span class="hljs-keyword">if</span> (element.nodeType == Node.TEXT_NODE) {
+            positionToElement.push([currentPosition, element])
+            <span class="hljs-keyword">return</span> currentPosition + element.nodeValue.length
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (element.nodeType == Node.ELEMENT_NODE) {
+            <span class="hljs-keyword">if</span> (element.id &amp;&amp; element.id != <span class="hljs-literal">null</span>) {
+                idPositions.push([element.id, currentPosition])
+            }
+            <span class="hljs-keyword">var</span> children = element.childNodes
+            <span class="hljs-keyword">var</span> newCurrentPosition = currentPosition
+            <span class="hljs-keyword">for</span> (<span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>; i &lt; children.length; i++) {
+                newCurrentPosition = recursive(children[i], newCurrentPosition)
+            }
+            <span class="hljs-keyword">return</span> newCurrentPosition
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-keyword">return</span> currentPosition
+        }
+    }
+
+    recursive(root, <span class="hljs-number">0</span>)
+
+    setPositions(positionToElement)
+    setIdPositions(idPositions)
+}
+</div></code></pre>
+<p>We first need a positioning system on our document. We need to know at what position an element starts and how many positions it occupies. If we have this, we can then say page X starts at position Y and has a length of Z positions. Computing this positions for each element is done recursively over the content. Text is a first class citizen in our ebook, so we focus on finding positions of text nodes. For each text node encountered we store its current position, then we increase the current position with the text node length. We also store positions for elements that have an ID. We can later use the positions of IDs to jump withing the book, to specific chapters for example. Once we have computed all positions of interest we store them in memory for later reference.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">findPages</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">var</span> pages = []
+    pages.push(<span class="hljs-number">0</span>)
+    <span class="hljs-keyword">var</span> jump = <span class="hljs-number">100</span>
+    <span class="hljs-keyword">while</span> (pages[pages.length - <span class="hljs-number">1</span>] &lt; getMaxPosition()) {
+        <span class="hljs-keyword">if</span> (pages.length &gt; <span class="hljs-number">2</span>) jump = pages[pages.length - <span class="hljs-number">1</span>] - pages[pages.length - <span class="hljs-number">2</span>]
+        <span class="hljs-keyword">var</span> endPosition = findPage(pages[pages.length - <span class="hljs-number">1</span>], jump)
+        pages.push(endPosition)
+    }
+    clearPage()
+    
+    <span class="hljs-built_in">document</span>.pages = pages
+    <span class="hljs-built_in">document</span>.currentPage = <span class="hljs-number">0</span>
+}
+</div></code></pre>
+<p>When we start looking for pages, we start with position 0, that is where our first page starts. We store the pages into an array where every entry in the array stores the start position of the page at that index. We keep adding pages to our array until we have reached the maximum position in the document. When we search for a page, we start with a &quot;jump&quot; value; this means we assume that the page will have the &quot;jump&quot; number of characters in it. We then adjust around this &quot;jump&quot; number, increasing or decreasing it, to find the optimum size of the page. A good assumption is that most pages will contain roughly the same number of characters, so the initial &quot;jump&quot; for the current page will be the size of the previous page.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">findPage</span>(<span class="hljs-params">startPosition, initialJump</span>) </span>{
+    <span class="hljs-keyword">var</span> previousEndPosition = <span class="hljs-literal">null</span>
+    <span class="hljs-keyword">var</span> endPosition = findNextSpaceForPosition(startPosition + initialJump)
+    copyTextToPage(startPosition, endPosition)
+    <span class="hljs-keyword">while</span> ((! scrollNecessary()) &amp;&amp; (endPosition &lt; getMaxPosition())) {
+        previousEndPosition = endPosition
+        endPosition = findNextSpaceForPosition(endPosition + <span class="hljs-number">1</span>)
+        copyTextToPage(startPosition, endPosition)
+    }
+    <span class="hljs-keyword">while</span> (scrollNecessary() &amp;&amp; (endPosition &gt; startPosition)) {
+        previousEndPosition = endPosition
+        endPosition = findPreviousSpaceForPosition(endPosition - <span class="hljs-number">1</span>)
+        copyTextToPage(startPosition, endPosition)
+    }
+    <span class="hljs-keyword">if</span> (endPosition == startPosition) <span class="hljs-keyword">return</span> previousEndPosition
+    <span class="hljs-keyword">return</span> endPosition
+}
+</div></code></pre>
+<p>Adjusting and validating the size of the page is done in the <code>findPage</code> method. We don't want our page to cut words in half, so only positions that contain a space character are considered valid end positions. To find the optimum size of the current page, we keep increasing the page size by adding whole words to it until we trigger a scroll. After triggerring a scroll, we start going back, by removing words. This secondary loop will most of the time get executed only once, on the ocasion when we have overflowed the page by adding a word and now we need to remove that single word to get the correct page size. But sometimes, if the initial jump value is too high, we must remove more than one word to get the right page size. This will most likely happen when the current page includes an image or a table, these structures use up a lot more space than words, so from our positioning system point of view the current page will be a lot smaller than the previous page. At the end of the method, we return the end position we have found.</p>
+<p>In some very few cases we may try to add a single element to the page that triggers the overflow. This may happen with an issue with CSS styles that prevent an image from correctly scaling to the page, for example. In this special case we could end up with an infinite amout of zero-sized pages, so the last <code>if</code> in the method above is there to handle this situation. A page size must be larger then zero, and if a single element can't be displayed correctly on that page we accept this defect but try our best to continue with the algorithm.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">findNextSpaceForPosition</span>(<span class="hljs-params">position</span>) </span>{
+    <span class="hljs-keyword">var</span> positions = getPositions()
+    <span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>
+    <span class="hljs-keyword">while</span> (i &lt; positions.length<span class="hljs-number">-1</span> &amp;&amp; positions[i+<span class="hljs-number">1</span>][<span class="hljs-number">0</span>] &lt; position) i = i + <span class="hljs-number">1</span>
+
+    <span class="hljs-keyword">var</span> el = positions[i][<span class="hljs-number">1</span>]
+    <span class="hljs-keyword">var</span> p = position - positions[i][<span class="hljs-number">0</span>]
+    <span class="hljs-keyword">var</span> str = el.nodeValue
+    <span class="hljs-keyword">while</span> (p &lt; str.length &amp;&amp; str.charAt(p) != <span class="hljs-string">' '</span>) p = p + <span class="hljs-number">1</span>
+
+    <span class="hljs-keyword">if</span> (p &gt;= str.length) {
+        <span class="hljs-keyword">if</span> (i == positions.length - <span class="hljs-number">1</span>) <span class="hljs-keyword">return</span> getMaxPosition()
+        <span class="hljs-keyword">else</span> <span class="hljs-keyword">return</span> positions[i+<span class="hljs-number">1</span>][<span class="hljs-number">0</span>]
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> positions[i][<span class="hljs-number">0</span>] + p
+    }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">findPreviousSpaceForPosition</span>(<span class="hljs-params">position</span>) </span>{
+    <span class="hljs-keyword">var</span> positions = getPositions()
+    <span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>
+    <span class="hljs-keyword">while</span> (i &lt; positions.length<span class="hljs-number">-1</span> &amp;&amp; positions[i+<span class="hljs-number">1</span>][<span class="hljs-number">0</span>] &lt; position) i = i + <span class="hljs-number">1</span>
+
+    <span class="hljs-keyword">var</span> el = positions[i][<span class="hljs-number">1</span>]
+    <span class="hljs-keyword">var</span> p = position - positions[i][<span class="hljs-number">0</span>]
+    <span class="hljs-keyword">if</span> (p == el.nodeValue.length) <span class="hljs-keyword">return</span> positions[i][<span class="hljs-number">0</span>] + p
+    <span class="hljs-keyword">while</span> (p &gt; <span class="hljs-number">0</span> &amp;&amp; el.nodeValue.charAt(p) != <span class="hljs-string">' '</span>) p = p - <span class="hljs-number">1</span>
+
+    <span class="hljs-keyword">return</span> positions[i][<span class="hljs-number">0</span>] + p
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">scrollNecessary</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">document</span>.pageContainer.scrollHeight &gt; <span class="hljs-built_in">document</span>.pageContainer.offsetHeight || <span class="hljs-built_in">document</span>.pageContainer.scrollWidth &gt; <span class="hljs-built_in">document</span>.pageContainer.offsetWidth
+}
+</div></code></pre>
+<p>I have added a reference to the helping methods used to find previous and next space positions, as well as the method that checks if we have triggered the overflow. A mention on the space finding methods is that these methods will consider positions between elements as spaces.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">copyTextToPage</span>(<span class="hljs-params">from, to</span>) </span>{
+    <span class="hljs-keyword">var</span> positions = getPositions()
+    <span class="hljs-keyword">var</span> range = <span class="hljs-built_in">document</span>.createRange()
+
+    <span class="hljs-keyword">var</span> startEl = getElementForPosition(positions, <span class="hljs-keyword">from</span>)
+    <span class="hljs-keyword">var</span> startElement = startEl[<span class="hljs-number">1</span>]
+    <span class="hljs-keyword">var</span> locationInStartEl = <span class="hljs-keyword">from</span> - startEl[<span class="hljs-number">0</span>]
+    range.setStart(startElement, locationInStartEl)
+
+    <span class="hljs-keyword">var</span> endEl = getElementForPosition(positions, to)
+    <span class="hljs-keyword">var</span> locationInEndEl = to - endEl[<span class="hljs-number">0</span>]
+    range.setEnd(endEl[<span class="hljs-number">1</span>], locationInEndEl)
+
+    <span class="hljs-keyword">var</span> page = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"page"</span>)
+    page.innerHTML = <span class="hljs-string">""</span>
+    page.appendChild(range.cloneContents())
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">clearPage</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"page"</span>).innerHTML = <span class="hljs-string">""</span>
+}
+</div></code></pre>
+<p>The <code>copyTextToPage</code> method moves text and elements from the <code>content</code> storage DIV to the <code>page</code> DIV. This method uses the versatile <code>Range</code> JavaScript object, supported by all modern browsers, to copy that text along with the HTML structure that contain it. This way, our page will maintain paragraphs, lists, headers, spans that were present in the original ebook document. The <code>clearPage</code> method will remove everything from the <code>page</code> DIV, to make way for displaying a new page.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getPageForId</span>(<span class="hljs-params">id</span>) </span>{
+    <span class="hljs-keyword">return</span> getPageForPosition(getPositionForId(id))
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getPositionForId</span>(<span class="hljs-params">id</span>) </span>{
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>; i &lt; <span class="hljs-built_in">document</span>.idPositions.length; i++) {
+        <span class="hljs-keyword">if</span> (<span class="hljs-built_in">document</span>.idPositions[i][<span class="hljs-number">0</span>] == id) <span class="hljs-keyword">return</span> <span class="hljs-built_in">document</span>.idPositions[i][<span class="hljs-number">1</span>]
+    }
+    <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getPageForPosition</span>(<span class="hljs-params">position</span>) </span>{
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">var</span> i = <span class="hljs-number">1</span>; i &lt; <span class="hljs-built_in">document</span>.pages.length - <span class="hljs-number">1</span>; i++) {
+        <span class="hljs-keyword">if</span> (<span class="hljs-built_in">document</span>.pages[i] &gt; position) <span class="hljs-keyword">return</span> i<span class="hljs-number">-1</span>
+    }
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">document</span>.pages.length - <span class="hljs-number">2</span>
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">jumpToLocation</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">var</span> url = <span class="hljs-keyword">new</span> URL(<span class="hljs-built_in">window</span>.location.href)
+    <span class="hljs-keyword">if</span> (url.href.lastIndexOf(<span class="hljs-string">"#"</span>) &gt; <span class="hljs-number">0</span>) {
+        <span class="hljs-keyword">var</span> id = url.href.substring(url.href.lastIndexOf(<span class="hljs-string">"#"</span>) + <span class="hljs-number">1</span>, url.href.length)
+        displayPage(getPageForId(id))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.searchParams.get(<span class="hljs-string">"position"</span>)) {
+        <span class="hljs-keyword">var</span> pos = <span class="hljs-built_in">parseInt</span>(url.searchParams.get(<span class="hljs-string">"position"</span>))
+        displayPage(getPageForPosition(pos))
+    } <span class="hljs-keyword">else</span> {
+        displayPage(<span class="hljs-number">0</span>)
+    }
+}
+</div></code></pre>
+<p>Once we have the pages, we can display the desired page with the <code>jumpToLocation</code> method. This method will decide on the location based on the URL fragment or URL parameter <code>position</code>. We already have all the information necessary to find the right page, computed in the <code>computeStartPositionsOfElements</code> method.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">displayPage</span>(<span class="hljs-params">page</span>) </span>{
+    <span class="hljs-keyword">if</span> (page &gt;= <span class="hljs-number">0</span> &amp;&amp; page &lt; <span class="hljs-built_in">document</span>.pages.length - <span class="hljs-number">1</span>) {
+        <span class="hljs-built_in">document</span>.currentPage = page
+        <span class="hljs-keyword">var</span> startPosition = <span class="hljs-built_in">document</span>.pages[page]
+        copyTextToPage(startPosition, <span class="hljs-built_in">document</span>.pages[page + <span class="hljs-number">1</span>])
+        reportPosition(startPosition)
+    }
+}
+</div></code></pre>
+<p>And the <code>displayPage</code> method finds the start and end positions of the page, based on our pages array, then copies text to the page using the <code>copyTextToPage</code> method. Another step we do here is to report the current position in the book back to the server. We do this on every page flip, to store the progress in the book and be able to open the book at the same location the next time the user wants to continue reading it.</p>
+<p>This is the whole algorithm for computing and displaying ebook pages in the browser. It's a versatile alorithm, it gives good results most of the time, you can change the styling of the ebook web page (increase margins, paddings) without having to change the algorithm, and the algorithm will work well across browsers, both desktop and mobile (with one small exception, I had to add a special css rule to display a page correctly on the very small screen of an iPhone SE I tested my application on, but no changes to the algorithm were necessary). There are still improvements that can be made, two things that come to my mind at this time is optimizing the jumps in the <code>findPage</code> method, only moving one word at a time may be too slow, we may get better results doubling and halving the number of words we add to / remove from the page until we find the optimum page size; the second would be to compute pages in an element with <code>visibility: hidden</code> CSS and display the current page as soon as we have it, before the computation of all the pages in the document is complete.</p>
+<h2 id="a-small-optimization">A small optimization</h2>
+<p>Besides the improvements I suggested just now, there is one small thing we can do to improve the performance of the application. Computing the ebook pagination on the client, as soon as the ebook content is loaded, can be a lengthy process. For small ebook sections, pagination computation is not noticeable, but there are some ebooks that are organized into very large sections, one section being an HTML file containg tens of chapters. When the pagination for such a section is computed, the algorithm may take a longer time and the browser may even complain and ask the user if they want to stop the backgroung javascript. Going through this algorithm every time the user opens the book on their device will lead to a bad experience for them. But we can use a little trick to limit the amount of times this algorithm has to run: store the pagination results in the browser local storage.</p>
+<p>Pagination information depends on the book and the section, but also on the viewport size (resizing the browser on desktop will require recomputing the pagination) and the zoom value, which is what determines the text size in the application. Since these are the variables that pagination depends on, all of them must be part of the key we use for storing the pagination result in the local storage of the browser. With this in mind, the actual <code>findPages</code> method looks like:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">findPages</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">var</span> pagesKey = getBookId() + <span class="hljs-string">"_"</span> + getCurrentSection() + <span class="hljs-string">"_"</span> + getViewportWidth() + <span class="hljs-string">"_"</span> + getViewportHeight() + <span class="hljs-string">"_"</span> + getZoom()
+    <span class="hljs-keyword">var</span> savedPages = <span class="hljs-built_in">window</span>.localStorage.getItem(pagesKey)
+    <span class="hljs-keyword">if</span> (savedPages) {
+        <span class="hljs-keyword">var</span> stringPages = savedPages.split(<span class="hljs-string">","</span>)
+        <span class="hljs-keyword">var</span> parsedSavedPages = []
+        <span class="hljs-keyword">for</span> (<span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>; i &lt; stringPages.length; i++) {
+            parsedSavedPages[i] = <span class="hljs-built_in">parseInt</span>(stringPages[i])
+        }
+        <span class="hljs-built_in">document</span>.pages = parsedSavedPages
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">var</span> pages = []
+        pages.push(<span class="hljs-number">0</span>)
+        <span class="hljs-keyword">var</span> jump = <span class="hljs-number">100</span>
+        <span class="hljs-keyword">while</span> (pages[pages.length - <span class="hljs-number">1</span>] &lt; getMaxPosition()) {
+            <span class="hljs-keyword">if</span> (pages.length &gt; <span class="hljs-number">2</span>) jump = pages[pages.length - <span class="hljs-number">1</span>] - pages[pages.length - <span class="hljs-number">2</span>]
+            <span class="hljs-keyword">var</span> endPosition = findPage(pages[pages.length - <span class="hljs-number">1</span>], jump)
+            pages.push(endPosition)
+        }
+        clearPage()
+        <span class="hljs-built_in">document</span>.pages = pages
+        <span class="hljs-built_in">window</span>.localStorage.setItem(pagesKey, pages)
+    }
+
+    <span class="hljs-built_in">document</span>.currentPage = <span class="hljs-number">0</span>
+}
+</div></code></pre>
+<p>We start by constructing the <code>pagesKey</code>, then check local storage to see if we have already computed the pages for the current book, section, screen size and zoom value. If we have an entry in local storage we must parse the pages array; data stored in local storage is primitive key-values, so the pages array we stored before was stored as a string. If parsing was successful we now have the pagination information and we can display the book. If we don't have an entry in local storage, we must compute the pages and make sure we store the result to local storage.</p>
+<p><video src="pagination_optimization.mp4" controls></video></p>
+<p>With this improvement, the experience of our users is improved, they only have to wait once, on a device, for the pagination to be computed. When reopening the book in a future section, the book will be displayed almost instantaneously because the pagination computation can be skipped.</p>
+
+</body>
+</html>
