@@ -1,7 +1,7 @@
 # Orchestration Tool (rethink name)
 
-Part of my current work I am handling the implementation and deployment of several big data pipelines. The particular challenges of our big data setup is not the amount of data
-handled, but the aount of variation in our data, a large number of different projects, with the originating devices having different setups, resulting in very different labels and
+As part of my current work I am handling the implementation and deployment of several big data pipelines. The particular challenges of our big data setup is not the amount of data
+handled, but the amount of variation in our data, a large number of different projects, with the originating devices having different setups, resulting in very different labels and
 data types for similar signals that we have to eventually unify and process in a uniform manner. For this purspose we have implemented configurable jobs in out pipeline, but
 the large variation in source configuration results in the need to have a lot of projects, configured and deployed separately. Our pipeline jobs are implemented in 
 [Apache Spark](https://spark.apache.org/)
