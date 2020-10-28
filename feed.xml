@@ -13,7 +13,7 @@
             <title>Spark Cluster Orchestration Tool</title>
             <description>How to automate deployments in a Spark cluster by implementing a declarative configuration management tool.</description>
             <pubDate>2020.10.28T09:00:00+02:00</pubDate>
-            <link>https://blog.cacoveanu.com/2020/2020/2020.10.28.spark_cluster_orchestration_tool.html</link>
+            <link>https://blog.cacoveanu.com/2020/2020.10.28.spark_cluster_orchestration_tool.html</link>
             <category>spark</category>
             <category>cluster</category>
             <category>orchestration</category>
