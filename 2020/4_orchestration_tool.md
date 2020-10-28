@@ -1,4 +1,4 @@
-# Spark Cluster Orchestration Tool (rethink name)
+# Spark Cluster Orchestration Tool
 
 As part of my current work I am handling the implementation and deployment of several big data pipelines. The particular challenges of our big data setup is not the amount of data handled, but the amount of variation in our data. We have a large number of different projects, with the originating devices having different setups, resulting in very different labels and data types for similar signals that we have to eventually unify and process in a uniform manner. For this purspose we have implemented configurable jobs in our pipeline, but the large variation in source configuration results in the need to have a lot of projects, configured and deployed separately. Our pipeline jobs are implemented in [Apache Spark](https://spark.apache.org/) and the data is saved in [Hadoop HDFS](https://hadoop.apache.org/) and in databases on top of HDFS, mainly [Apache Hive](http://hive.apache.org/). Our deployment cluster is a [Cloudera CDH](https://docs.cloudera.com/documentation/enterprise/6/release-notes/topics/rg_cdh_6_download.html) cluster, which comes with [Oozie](https://oozie.apache.org/), a tool made for deployment configuration that we use successfully in our setup.
 
@@ -222,7 +222,7 @@ object HdfsFileSystemOperations extends FileSystemOperations {
 
 With the `HdfsFileSystemOperations` we must use the `org.apache.hadoop.hadoop-client` and `org.apache.hadoop.hadoop-hdfs-client` libraries to access HDFS.
 
-As seen in the code sequences abote, the file tree obtained from our file systems is a sequence of sequences of strings. Every file path for each file in the interest subfolder is relativized to the root path we provided, then the path elements are split and stored in a sequence of strings. We do this so we don't have to take into account different file
+As seen in the code sequences above, the file tree obtained from our file systems is a sequence of sequences of strings. Every file path for each file in the interest subfolder is relativized to the root path we provided, then the path elements are split and stored in a sequence of strings. We do this so we don't have to take into account different file
 separators for different files systems when comparing file paths. A file tree is just a list of the paths of files in our interest folders.
 
 ``` scala

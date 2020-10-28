@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pagination in Ebooks</title>
+  <meta name="description" content="How to automate deployments in a Spark cluster by implementing a declarative configuration management tool.">
+  <meta name="keywords" content="spark, cluster, orchestration, scala, oozie">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2020.10.28 09:00 / spark / cluster / orchestration / scala / oozie</p>
+<h1 id="spark-cluster-orchestration-tool">Spark Cluster Orchestration Tool</h1>
+<p>As part of my current work I am handling the implementation and deployment of several big data pipelines. The particular challenges of our big data setup is not the amount of data handled, but the amount of variation in our data. We have a large number of different projects, with the originating devices having different setups, resulting in very different labels and data types for similar signals that we have to eventually unify and process in a uniform manner. For this purspose we have implemented configurable jobs in our pipeline, but the large variation in source configuration results in the need to have a lot of projects, configured and deployed separately. Our pipeline jobs are implemented in <a href="https://spark.apache.org/">Apache Spark</a> and the data is saved in <a href="https://hadoop.apache.org/">Hadoop HDFS</a> and in databases on top of HDFS, mainly <a href="http://hive.apache.org/">Apache Hive</a>. Our deployment cluster is a <a href="https://docs.cloudera.com/documentation/enterprise/6/release-notes/topics/rg_cdh_6_download.html">Cloudera CDH</a> cluster, which comes with <a href="https://oozie.apache.org/">Oozie</a>, a tool made for deployment configuration that we use successfully in our setup.</p>
+<p>But there is still a missing link in this setup. Oozie can handle the deployment and scheduling of a large number of projects and jobs, but we still have a problem with frequent changes in our setup. Our project is constantly growing, we add new functionality to process new signals, and this results in the need to change our deployment setup almost weekly. This means that we very often need to stop Oozie schedules and workflows, change their configuration and restart them. This step is not automated in the CDH cluster, and in this article I will go over a general concept that can be used, and we are already using successfully, to handle configuration redeployment in our cluster.</p>
+<h2 id="the-concept">The concept</h2>
+<p>The problem we are looking to solve is to automate an often-changing configuration for a large number of projects. The solution we are looking for is inspired from the <a href="https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/">declarative management of Kubernetes objects</a>. With Kubernetes, it is very easy to keep the configuration of your deployments in a version control system, like Git, which reliably keeps track of the history of your deployments. Then, as changes are necessary for your deployment, you can add those changes to your version control system and then run a simple <code>kubectl apply</code> command to make Kubernetes aware of the new deployment configuration. After this, Kubernetes takes over and handles all the necessary changes so the deployed services state matches the current state of the deplyment as defined
+by you in the version control system. Kubernetes can compare the current deployment with the new desired state and stop, change and redeploy only the services where this is necessary, without disrupting the operation of the other services.</p>
+<p>This is the functinality we are looking for on our Spark cluster, we want to hold our configuration in version control, and once we have a new desired configuration, we want to run a single command that will check the deployment status in Oozie, stop the services that need to be changed, apply the configuration changes, then restart those services.</p>
+<p>But a tool like this can be implemented in a very generic manner. It does not have to be tightly-coupled to Oozie or a Spark cluster. Our approach was to identify the basic characteristic such a system must have, implement them, and then link the system to our cluster with a few custom scripts. With a powerful concept, it's easy to reason about the problem and develop a versatile solution.</p>
+<p>The basic features of the system are:</p>
+<ul>
+<li>we have two main locations, a place where the current configuration is stored and a place where the new desired configuration is stored;</li>
+<li>we have a comparison tool that can look at the two locations and identify what needs to change to bring the system to the desired configuration;</li>
+<li>based on the changes and the type of changes, an action list is developed: these are the necessary actions to bring the system to the desired state;</li>
+<li>finally, the action list is applied, and the system is brought to the desired state.</li>
+</ul>
+<p>Once we have these basic features, we must look for what part of the system can be generic, and where we need to leave the possibility to plug in custom functionality that will be tailored to our cluster but can be configured for a very different ecosystem. We have:</p>
+<ul>
+<li>plug in different ways to obtain file trees, where a file tree will consist of both the file names and a checksum value that can be used to see if file contents differ;</li>
+<li>a generic implementation of two file trees comparison, that results in a list of changes, with change types, like <code>deleted</code>, <code>modified</code>, <code>new</code>;</li>
+<li>a way to plug in the actions that must be executed on the changes list to bring the current system to the desired state.</li>
+</ul>
+<p>Next, I will go over the current implementation of these features, with the plug in functionality only described for our current HDFS cluster.</p>
+<h2 id="the-implementation">The implementation</h2>
+<p>The tool is implemented in Scala and compiled into a JAR that we can run on one of our cluster edge nodes.</p>
+<p>Since this is a console application, the main steps that the tool executes when invoked is defined in a <code>Console</code> object:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">Console</span> </span>{
+
+  <span class="hljs-comment">// [...]</span>
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">if</span> (args.length &lt; <span class="hljs-number">2</span> || args.length &gt; <span class="hljs-number">3</span>) {
+      println(instructions)
+      <span class="hljs-keyword">return</span>
+    }
+
+    <span class="hljs-keyword">val</span> source = args(<span class="hljs-number">0</span>)
+    <span class="hljs-keyword">val</span> destination = args(<span class="hljs-number">1</span>)
+    <span class="hljs-keyword">val</span> configuration = <span class="hljs-keyword">if</span> (args.length == <span class="hljs-number">3</span>) args(<span class="hljs-number">2</span>) <span class="hljs-keyword">else</span> <span class="hljs-string">"config"</span>
+
+    <span class="hljs-keyword">val</span> operations = <span class="hljs-type">Operation</span>.readOperations(configuration)
+    <span class="hljs-keyword">val</span> scriptsPath = <span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(configuration).getParentFile.getAbsolutePath + <span class="hljs-type">File</span>.separator
+    <span class="hljs-keyword">val</span> sourceTree = <span class="hljs-keyword">new</span> <span class="hljs-type">FileTree</span>(source)
+    <span class="hljs-keyword">val</span> destinationTree = <span class="hljs-keyword">new</span> <span class="hljs-type">FileTree</span>(destination)
+
+    <span class="hljs-keyword">val</span> changes = sourceTree.compare(destinationTree)
+    println(changes)
+    changes.applyChanges(sourceTree, destinationTree, operations, scriptsPath)
+    println(<span class="hljs-string">"done"</span>)
+  }
+}
+</div></code></pre>
+<p>As seen above, the application performs the following steps:</p>
+<ul>
+<li>it expects two or three arguments, this is the way we can provide the location of the configuration trees, the current configurationa and the desired configuration; the third argument can be a path to a configuration file;</li>
+<li>from the configuration file we read a list of operations;</li>
+<li>we use the source (desired configuration) and destination (current configuration) paths to get the source and destination trees; these trees can be read from different file systems but are stored in a uniform internal class structure that can be easily compared;</li>
+<li>we compare the two trees to obtain the list of changes that need to be applied to the destination path to bring it to the same state as the source path;</li>
+<li>then, we apply those changes; when changes are applied, the operations list is used to plug in custom operations, as defined in a configuration file, this is where we plug in the custom functionality we need to start and stop jobs in the cluster.</li>
+</ul>
+<h3 id="the-file-tree">The file tree</h3>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">FileTree</span>(<span class="hljs-params">root: <span class="hljs-type">String</span></span>) </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-keyword">val</span> ops: <span class="hljs-type">FileSystemOperations</span> = <span class="hljs-type">FileSystemOperations</span>.getFileSystemOperations(root)
+  
+  <span class="hljs-comment">// [...]</span>
+}
+</div></code></pre>
+<p>The file tree class is initialized with a root path. Once we know the root path, we use it to first obtain a <code>FileSystemOperations</code> object. This is a different object depending on the file system we want to access. In our current tool, we have a file system object for a normal Windows or Linux file system, implemented using standard Java functionality to
+access these kinds of file systems, and another file system object that helps us access HDFS, implemented using Java libraries for HDFS access.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">trait</span> <span class="hljs-title">FileSystemOperations</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getInputStream</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">InputStream</span>
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">write</span></span>(path: <span class="hljs-type">String</span>, input: <span class="hljs-type">InputStream</span>)
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getChecksum</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">String</span>
+  
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getTree</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]]
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getFileSeparator</span></span>(): <span class="hljs-type">String</span>
+}
+</div></code></pre>
+<p>The <code>FileSystemOperations</code> interface defines methods for obtaining the input stream of a file, which allows us to read that file, another method that lets us write to a file path; these two methods being used to copy files from the desired configuration tree to the current configuration tree. We also have functionality for obtaining the checksum of a file, scanning the whole file tree of a folder, and getting the file separator for that file system.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">LocalFileSystemOperations</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">FileSystemOperations</span> </span>{
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getInputStream</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">InputStream</span> = <span class="hljs-keyword">new</span> <span class="hljs-type">FileInputStream</span>(path)
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">write</span></span>(path: <span class="hljs-type">String</span>, input: <span class="hljs-type">InputStream</span>): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> output = <span class="hljs-keyword">new</span> <span class="hljs-type">FileOutputStream</span>(path)
+    <span class="hljs-type">Iterator</span>
+      .continually (input.read)
+      .takeWhile (<span class="hljs-number">-1</span> !=)
+      .foreach (output.write)
+    output.close()
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getChecksum</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">String</span> = {
+    <span class="hljs-keyword">val</span> in = getInputStream(path)
+    <span class="hljs-keyword">val</span> checksum = <span class="hljs-type">FilesystemUtils</span>.getInputStreamChecksum(in)
+    <span class="hljs-type">IOUtils</span>.closeStream(in)
+    checksum
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getLocalTree</span></span>(current: <span class="hljs-type">String</span>, relativePath: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], withFolders: <span class="hljs-type">Boolean</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]] = {
+    <span class="hljs-keyword">val</span> f = <span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(current)
+    f.listFiles().flatMap(e =&gt; {
+      <span class="hljs-keyword">val</span> currentPath = relativePath ++ <span class="hljs-type">Seq</span>(e.getName)
+      <span class="hljs-keyword">if</span> (e.isDirectory) {
+        (<span class="hljs-keyword">if</span> (withFolders) <span class="hljs-type">Seq</span>(currentPath) <span class="hljs-keyword">else</span> <span class="hljs-type">Seq</span>()) ++ getLocalTree(e.getPath, currentPath, withFolders)
+      } <span class="hljs-keyword">else</span> {
+        <span class="hljs-type">Seq</span>(currentPath)
+      }
+    })
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getLocalTree</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]] = getLocalTree(path, <span class="hljs-type">Seq</span>(), <span class="hljs-literal">false</span>)
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getTree</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]] = {
+    getLocalTree(path)
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getFileSeparator</span></span>(): <span class="hljs-type">String</span> = <span class="hljs-type">File</span>.separator
+}
+</div></code></pre>
+<p>Above is the implementation of the <code>LocalFileSystemOperations</code> object which can work with local file systems, standard file systems used in Linux, Windows operating systems that can be handled out of the box by the JVM. Computing the checksum is deferred to a utility function that can read the byte content of any input stream and compute a checksum based on those bytes:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">FilesystemUtils</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getInputStreamChecksum</span></span>(in: <span class="hljs-type">InputStream</span>) = {
+    <span class="hljs-keyword">val</span> barr = <span class="hljs-type">Iterator</span>.continually(in.read).takeWhile(_ != <span class="hljs-number">-1</span>).map(_.toByte).toArray
+    <span class="hljs-keyword">val</span> md: <span class="hljs-type">Array</span>[<span class="hljs-type">Byte</span>] = <span class="hljs-type">MessageDigest</span>.getInstance(<span class="hljs-string">"MD5"</span>).digest(barr)
+    <span class="hljs-keyword">new</span> <span class="hljs-type">String</span>(<span class="hljs-type">Base64</span>.getEncoder.encode(md))
+  }
+  
+  <span class="hljs-comment">// [...]</span>
+}
+</div></code></pre>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">HdfsFileSystemOperations</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">FileSystemOperations</span> </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getHdfs</span></span>(path: <span class="hljs-type">String</span>) = {
+    <span class="hljs-keyword">val</span> conf = <span class="hljs-keyword">new</span> <span class="hljs-type">Configuration</span>()
+    <span class="hljs-keyword">import</span> org.apache.hadoop.security.<span class="hljs-type">UserGroupInformation</span>
+    <span class="hljs-type">UserGroupInformation</span>.setConfiguration(conf)
+    <span class="hljs-type">UserGroupInformation</span>.loginUserFromSubject(<span class="hljs-literal">null</span>)
+
+    <span class="hljs-type">FileSystem</span>.get(conf)
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getInputStream</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">InputStream</span> = {
+    <span class="hljs-keyword">val</span> hdfs = getHdfs(path)
+    hdfs.open(<span class="hljs-keyword">new</span> <span class="hljs-type">Path</span>(path))
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">write</span></span>(path: <span class="hljs-type">String</span>, input: <span class="hljs-type">InputStream</span>): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> hdfs = getHdfs(path)
+    <span class="hljs-keyword">val</span> p = <span class="hljs-keyword">new</span> <span class="hljs-type">Path</span>(path)
+    <span class="hljs-keyword">if</span> (hdfs.exists(p)) hdfs.delete(p, <span class="hljs-literal">true</span>)
+    <span class="hljs-keyword">val</span> output = hdfs.create(p)
+    <span class="hljs-type">Iterator</span>
+      .continually (input.read)
+      .takeWhile (<span class="hljs-number">-1</span> !=)
+      .foreach (output.write)
+    output.close()
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getChecksum</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">String</span> = {
+    <span class="hljs-keyword">val</span> in = getInputStream(path)
+    <span class="hljs-keyword">val</span> checksum = <span class="hljs-type">FilesystemUtils</span>.getInputStreamChecksum(in)
+    <span class="hljs-type">IOUtils</span>.closeStream(in)
+    checksum
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getHdfsTree</span></span>(fs: <span class="hljs-type">FileSystem</span>, current: <span class="hljs-type">String</span>, relativePath: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>], withFolders: <span class="hljs-type">Boolean</span> = <span class="hljs-literal">false</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]] = {
+    <span class="hljs-keyword">val</span> fileStatus = fs.listStatus(<span class="hljs-keyword">new</span> <span class="hljs-type">Path</span>(current))
+    fileStatus.flatMap(s =&gt; {
+      <span class="hljs-keyword">val</span> currentPath = relativePath ++ <span class="hljs-type">Seq</span>(s.getPath.getName)
+      <span class="hljs-keyword">if</span> (s.isDirectory) {
+        (<span class="hljs-keyword">if</span> (withFolders) <span class="hljs-type">Seq</span>(currentPath) <span class="hljs-keyword">else</span> <span class="hljs-type">Seq</span>()) ++ getHdfsTree(fs, s.getPath.toString, currentPath, withFolders)
+      } <span class="hljs-keyword">else</span> {
+        <span class="hljs-type">Seq</span>(currentPath)
+      }
+    })
+  }
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getHdfsTree</span></span>(uri: <span class="hljs-type">String</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]] = {
+    <span class="hljs-keyword">val</span> fs: <span class="hljs-type">FileSystem</span> = getHdfs(uri)
+    getHdfsTree(fs, uri, <span class="hljs-type">Seq</span>(), <span class="hljs-literal">false</span>)
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getTree</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]] = {
+    getHdfsTree(path)
+  }
+
+  <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getFileSeparator</span></span>(): <span class="hljs-type">String</span> = <span class="hljs-string">"/"</span>
+}
+</div></code></pre>
+<p>With the <code>HdfsFileSystemOperations</code> we must use the <code>org.apache.hadoop.hadoop-client</code> and <code>org.apache.hadoop.hadoop-hdfs-client</code> libraries to access HDFS.</p>
+<p>As seen in the code sequences above, the file tree obtained from our file systems is a sequence of sequences of strings. Every file path for each file in the interest subfolder is relativized to the root path we provided, then the path elements are split and stored in a sequence of strings. We do this so we don't have to take into account different file
+separators for different files systems when comparing file paths. A file tree is just a list of the paths of files in our interest folders.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">FileTree</span>(<span class="hljs-params">root: <span class="hljs-type">String</span></span>) </span>{
+
+  <span class="hljs-comment">// [...]</span>
+  
+  <span class="hljs-keyword">private</span> <span class="hljs-keyword">val</span> tree = ops.getTree(root)
+  
+  <span class="hljs-comment">// [...]</span>
+  
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">compare</span></span>(other: <span class="hljs-type">FileTree</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Change</span>] = {
+    <span class="hljs-comment">// check which files are new: files in source that are missing in the destination</span>
+    <span class="hljs-keyword">val</span> newFiles = tree.filter(sf =&gt; !other.tree.contains(sf)).map(f =&gt; <span class="hljs-type">Change</span>(<span class="hljs-string">"new"</span>, f))
+    
+    <span class="hljs-comment">// check which files are deleted: files in destination that are missing in the source</span>
+    <span class="hljs-keyword">val</span> deletedFiles = other.tree.filter(df =&gt; !tree.contains(df)).map(f =&gt; <span class="hljs-type">Change</span>(<span class="hljs-string">"deleted"</span>, f))
+    
+    <span class="hljs-comment">// check which files have been modified: files that are in source and destination but have different checksums</span>
+    <span class="hljs-keyword">val</span> modifiedFiles = tree.filter(sf =&gt; other.tree.contains(sf))
+      .filter(f =&gt; ops.getChecksum(getFullPath(f)) != other.ops.getChecksum(other.getFullPath(f)))
+      .map(f =&gt; <span class="hljs-type">Change</span>(<span class="hljs-string">"modified"</span>, f))
+      
+    newFiles ++ deletedFiles ++ modifiedFiles
+  }
+}
+</div></code></pre>
+<p>The <code>FileTree</code> class also has a method for comparing file trees. From this comparison we obtain three classes of files: new files, deleted files and modified files. These are different classes of changes, and are stored into a <code>Change</code> class, which contains a kind of change and the file that change refers to:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">case</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Change</span>(<span class="hljs-params">kind: <span class="hljs-type">String</span>, file: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]</span>)</span>
+</div></code></pre>
+<h3 id="the-operations">The operations</h3>
+<p>The next part we will look over is the operations that permit us to customize a general tool for a particular use case. An operation is encoded in the following class:</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">case</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Operation</span>(<span class="hljs-params">kind: <span class="hljs-type">String</span>, file: <span class="hljs-type">String</span>, when: <span class="hljs-type">String</span>, script: <span class="hljs-type">String</span></span>)</span>
+</div></code></pre>
+<p>Each operation has a <code>kind</code>, which correspond to the kind of change that this opperation will be triggered by. We also have a file that will trigger the change, but in this particular case the value stored in the <code>file</code> field can be an exact file path, or a regex that can match on multiple files. We also have a <code>when</code> field, which will define when we want to run this operation: before the change has been applied to the destination folder, after the change has been applied to the destination folder, or at the end, after all changes have been applied to the destination folder. This granularity will allow us to control when scripts are run, and this is the way we can ensure that we have the desired environment set up before we run our scripts. Finally, the operation contains the path to a <code>script</code> that will be triggered when necessary.</p>
+<p>Operations are defined in a simple CSV file, in the following manner:</p>
+<pre class="hljs"><code><div>(new|modified),&quot;.*\\.csv&quot;,&quot;after&quot;,&quot;D:\\orchestration\\diffscripts\\modifiedCsvScript.bat&quot;
+&quot;new&quot;, &quot;.*\\.txt&quot;, &quot;end&quot;, &quot;D:\\orchestration\\diffscripts\\addedTextScript.bat&quot;
+</div></code></pre>
+<p>We see above two operations:</p>
+<ul>
+<li>the first one is run on CSV files only, and only when a CSV file has been added or modified to the configuration; the operation will run after the added/modified CSV file has been copied from the source folder to the destination folder; and this operation will execute the <code>modifiedCsvScript.bat</code> script;</li>
+<li>the second operation is run only on TXT files when a file was added to our configuration; the operation will execute the <code>addedTextScript.bat</code> script only after all the changes have been applied on the destination folder.</li>
+</ul>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">Operation</span> </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">parseLine</span></span>(line: <span class="hljs-type">String</span>): <span class="hljs-type">Option</span>[<span class="hljs-type">Operation</span>] = {
+    <span class="hljs-keyword">val</span> tokens = line.split(<span class="hljs-string">",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"</span>)
+    <span class="hljs-keyword">if</span> (tokens.length == <span class="hljs-number">4</span>) {
+      <span class="hljs-keyword">val</span> t = tokens
+        .map(t =&gt; t.trim)
+        .map(t =&gt; <span class="hljs-keyword">if</span> (t.startsWith(<span class="hljs-string">"\""</span>) &amp;&amp; t.endsWith(<span class="hljs-string">"\""</span>)) t.substring(<span class="hljs-number">1</span>, t.length - <span class="hljs-number">1</span>) <span class="hljs-keyword">else</span> t)
+      <span class="hljs-type">Some</span>(<span class="hljs-type">Operation</span>(t(<span class="hljs-number">0</span>), t(<span class="hljs-number">1</span>), t(<span class="hljs-number">2</span>), t(<span class="hljs-number">3</span>)))
+    } <span class="hljs-keyword">else</span> {
+      <span class="hljs-type">None</span>
+    }
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">readOperations</span></span>(path: <span class="hljs-type">String</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">Operation</span>] = {
+    <span class="hljs-keyword">val</span> input = <span class="hljs-type">FileSystemOperations</span>.getFileSystemOperations(path).getInputStream(path)
+    <span class="hljs-keyword">val</span> lines: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>] = <span class="hljs-keyword">new</span> <span class="hljs-type">BufferedReader</span>(<span class="hljs-keyword">new</span> <span class="hljs-type">InputStreamReader</span>(input, <span class="hljs-type">StandardCharsets</span>.<span class="hljs-type">UTF_8</span>)).lines().collect(<span class="hljs-type">Collectors</span>.toList()).asScala.toList
+    lines.map(parseLine).filter(o =&gt; o.isDefined).map(o =&gt; o.get)
+  }
+
+  <span class="hljs-keyword">implicit</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">OperationExtensions</span>(<span class="hljs-params">operation: <span class="hljs-type">Operation</span></span>) </span>{
+    <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">mergePath</span></span>(file: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>]) = file.mkString(<span class="hljs-string">"/"</span>)
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">matches</span></span>(change: <span class="hljs-type">Change</span>) = {
+      operation.kind.r.matches(change.kind) &amp;&amp; operation.file.r.matches(mergePath(change.file))
+    }
+  }
+}
+</div></code></pre>
+<p>The <code>Operation</code> object parses the lines of the configuration file and extracts <code>Operation</code> class entities from each line, if possible. In the <code>Operation</code> object we also have an implicit class that adds a <code>matches</code> functionality for each operation. This method is used to extract all the changes that an operation can apply to.</p>
+<h3 id="applying-the-changes-and-operations">Applying the changes and operations</h3>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">Change</span> </span>{
+  <span class="hljs-keyword">implicit</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ChangeSeqExtensions</span>(<span class="hljs-params">changes: <span class="hljs-type">Seq</span>[<span class="hljs-type">Change</span>]</span>) </span>{
+    <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getEnvironment</span></span>(sourceTree: <span class="hljs-type">FileTree</span>, destinationTree: <span class="hljs-type">FileTree</span>, change: <span class="hljs-type">Change</span>): <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] =
+      <span class="hljs-type">Map</span>(
+        <span class="hljs-string">"DESTINATION_FILE"</span> -&gt; destinationTree.getFullPath(change.file),
+        <span class="hljs-string">"DESTINATION_FOLDER"</span> -&gt; destinationTree.getFullPath(change.file.slice(<span class="hljs-number">0</span>, change.file.length - <span class="hljs-number">1</span>))
+      ) ++ (<span class="hljs-keyword">if</span> (<span class="hljs-string">"(new|modified)"</span>.r.matches(change.kind))
+        <span class="hljs-type">Map</span>(
+          <span class="hljs-string">"SOURCE_FILE"</span> -&gt; sourceTree.getFullPath(change.file),
+          <span class="hljs-string">"SOURCE_FOLDER"</span> -&gt; sourceTree.getFullPath(change.file.slice(<span class="hljs-number">0</span>, change.file.length - <span class="hljs-number">1</span>))
+        ) <span class="hljs-keyword">else</span> <span class="hljs-type">Map</span>())
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">applyChanges</span></span>(sourceTree: <span class="hljs-type">FileTree</span>, destinationTree: <span class="hljs-type">FileTree</span>, operations: <span class="hljs-type">Seq</span>[<span class="hljs-type">Operation</span>], scriptsPath: <span class="hljs-type">String</span>) = {
+      changes.foreach(change =&gt; {
+        <span class="hljs-keyword">val</span> environment = getEnvironment(sourceTree, destinationTree, change)
+        
+        <span class="hljs-keyword">val</span> aplicableOperations = operations.filter(o =&gt; o.matches(change))
+        
+        <span class="hljs-keyword">val</span> beforeOperations = aplicableOperations.filter(o =&gt; o.when == <span class="hljs-string">"before"</span>)
+        beforeOperations.foreach(o =&gt; <span class="hljs-type">ScriptUtils</span>.executeScript(scriptsPath + o.script, environment))
+        
+        destinationTree.write(change.file, sourceTree.read(change.file))
+        
+        <span class="hljs-keyword">val</span> afterOperations = aplicableOperations.filter(o =&gt; o.when == <span class="hljs-string">"after"</span>)
+        afterOperations.foreach(o =&gt; <span class="hljs-type">ScriptUtils</span>.executeScript(scriptsPath + o.script, environment))
+      })
+
+      changes.foreach(change =&gt; {
+        <span class="hljs-keyword">val</span> environment = getEnvironment(sourceTree, destinationTree, change)
+        
+        <span class="hljs-keyword">val</span> endOperations = operations.filter(o =&gt; o.matches(change)).filter(o =&gt; o.when == <span class="hljs-string">"end"</span>)
+        endOperations.foreach(o =&gt; <span class="hljs-type">ScriptUtils</span>.executeScript(scriptsPath + o.script, environment))
+      })
+    }
+  }
+}
+</div></code></pre>
+<p>The final part of our code is executing operations and applying changes. For each change, we first need to get some environment variables. These will contain the source file and folder and the destination file and folder. Not all operations will have all these paths available. The paths to destination and source are passed to the scripts which are executed by <code>Operation</code> objects.</p>
+<p>Once we have the environment, the following steps are executed for each change:</p>
+<ul>
+<li>the aplicable operations for a change are filtered;</li>
+<li>the &quot;before&quot; operations for that change are found and executed, if there are any;</li>
+<li>the change is then executed - this means copying the source to the destination;</li>
+<li>the &quot;after&quot; operations for that change are found and executed, if there are any;</li>
+<li>after all changes have been processed, we go over the changes again and find the &quot;end&quot; operations for each change and execute them, if there are any.</li>
+</ul>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">ScriptUtils</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">executeScript</span></span>(scriptPath: <span class="hljs-type">String</span>, environment: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>]) = {
+    <span class="hljs-keyword">val</span> builder = <span class="hljs-keyword">new</span> <span class="hljs-type">ProcessBuilder</span>()
+    builder.command(scriptPath)
+    environment.foreach(e =&gt; builder.environment().put(e._1, e._2))
+    <span class="hljs-keyword">val</span> process = builder.start()
+    <span class="hljs-keyword">val</span> gobbler = <span class="hljs-keyword">new</span> <span class="hljs-type">StreamGobbler</span>(process.getInputStream, println)
+    <span class="hljs-keyword">val</span> executor = <span class="hljs-type">Executors</span>.newSingleThreadExecutor()
+    executor.submit(gobbler)
+    <span class="hljs-keyword">val</span> exitCode = process.waitFor()
+    println(<span class="hljs-string">"script done: "</span> + exitCode)
+    
+    <span class="hljs-keyword">if</span> (executor.awaitTermination(<span class="hljs-number">10</span>, <span class="hljs-type">TimeUnit</span>.<span class="hljs-type">SECONDS</span>)) {
+      println(<span class="hljs-string">"task completed"</span>)
+    } <span class="hljs-keyword">else</span> {
+      println(<span class="hljs-string">"forced stop"</span>)
+      executor.shutdownNow()
+    }
+  }
+  
+}
+</div></code></pre>
+<p>The script itself is executed by the method shown above. We create a process, we configure the environment variables, as provided in the <code>environment</code> map, then we start the process and wait for a result. If the timeout is exceeded, we force stop the process.</p>
+<p>The following is an example shell script that will try to stop an Oozie scheduler. the <code>DESTINATION_FOLDER</code> environment variable is used to obtain the scheduler name, afterwards the <code>oozie jobs</code> command is invoked to search for that scheduler name and obtain the coordinator ID. With the ID we can kill the Oozie coordinator:</p>
+<pre class="hljs"><code><div>COORD_NAME=`hdfs dfs -cat $DESTINATION_FOLDER/coordinator.xml | sed -n '/name/{s/.*&lt;coordinator-app.*name=&quot;\(.*\)&quot;.*/\1/p}'`
+COORD_ID=`oozie jobs -jobtype coordinator | grep $COORD_NAME.*RUNNING | sed -n 's/^\([^ \t][^ \t]*\).*/\1/p'`
+oozie job -kill $COORD_ID
+</div></code></pre>
+<p>The operations CSV for our deployment is the following:</p>
+<pre class="hljs"><code><div>(new|modified|deleted),&quot;.*/coordinator\.xml&quot;,&quot;before&quot;,&quot;stop_scheduler.sh&quot;
+(new|modified),&quot;.*/coordinator\.xml&quot;,&quot;end&quot;,&quot;start_oozie_job.sh&quot;
+</div></code></pre>
+<p>Before any &quot;new&quot;, &quot;modified&quot; or &quot;deleted&quot; change on a &quot;coordinator.xml&quot; file, we stop the scheduler. After all changes have been applied, to the coordinator files and all other configuration files in the project, we can run the <code>start_oozie_job.sh</code> script that will deploy the new or modified Oozie coordinators.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>With the above project we have achieved what we set out to do, have a one-command declarative deployment setup for our Spark cluster. We hold the desired configuration in a git project and the real configuration in HDFS. Once we want to deploy the changes from git to our cluster, we check out the latest state of the git project and run the following command:</p>
+<pre class="hljs"><code><div>java -cp $(hadoop classpath):orchestration-assembly-0.1.jar com.cacoveanu.orchestration.Console ~/git-source-configuration/config hdfs:///deployment-configuration ~/git-source-configuration/scripts/operations
+</div></code></pre>
+<p>Our code packages in <code>orchestration-assembly-0.1.jar</code>. From this JAR, we execute the main class <code>Console</code>. The source folder, containing the desired configuration in git, is at <code>~/git-source-configuration/config</code>. The destination folder with the real, active configuration is in HDFS at <code>hdfs:///deployment-configuration</code>. Our scripts and operations are also stored in the git configuration folder under <code>~/git-source-configuration/scripts/operations</code>.</p>
+<p>With just this command, changes between the desired and actual configuration are detected, Oozie schedulers are stopped, the changes to the configuration files are copied in HDFS and then the relevant Oozie schedulers are started. Oozie jobs that did not change are not affected. This tool greatly simplifies our deployment process on the Spark cluster.</p>
+
+</body>
+</html>
