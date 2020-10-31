@@ -6,9 +6,20 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2020.10.28T09:00:00+02:00</pubDate>
+        <pubDate>2020.10.31T10:45:00+02:00</pubDate>
         <generator>cacoveanu</generator>
 
+        <item>
+            <title>Oozie Monitoring Workflows</title>
+            <description>Configurable Spark jobs that help you create monitoring setups in Oozie.</description>
+            <pubDate>2020.10.31T10:45:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2020/2020.10.31.oozie_monitoring_workflows.html</link>
+            <category>spark</category>
+            <category>cluster</category>
+            <category>oozie</category>
+            <category>scala</category>
+        </item>
+        
         <item>
             <title>Spark Cluster Orchestration Tool</title>
             <description>How to automate deployments in a Spark cluster by implementing a declarative configuration management tool.</description>

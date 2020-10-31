@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oozie Monitoring Workflows</title>
+  <meta name="description" content="Configurable Spark jobs that help you create monitoring setups in Oozie.">
+  <meta name="keywords" content="spark, cluster, oozie, scala">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2020.10.31 10:45 / spark / cluster / oozie / scala</p>
+<h1 id="oozie-monitoring-workflows">Oozie Monitoring Workflows</h1>
+<p>In our current big data system we load data from many devices with very different configurations. When a new device configuration becomes known to us, we adapt our jobs as well as possible in preparation for the new data, but no amount of preparation can account for possible unexpected changes in the setup. Because we have so much variation and so many things can go wrong, it is impossible for a person to keep an eye on all the data we load. This means we need to automate the process. In this article, I will present a more complex Oozie workflow that can run some configurable Spark jobs designed to identify specific conditions in our data and notify us by email if those conditions are met.</p>
+<h2 id="spark-filter-and-check">Spark Filter and Check</h2>
+<p>This will be a simple but powerful Spark job that will load data from a configurable location containing Parquet files, filter that data based on a configurable array of filters and values, then count the remaining data entries. If the count is larger than a configurable amount, the job triggers the notification.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark.monitoring
+
+<span class="hljs-keyword">import</span> java.net.<span class="hljs-type">URLDecoder</span>
+
+<span class="hljs-keyword">import</span> com.cacoveanu.spark.<span class="hljs-type">ArgmapConfiguration</span>
+<span class="hljs-keyword">import</span> org.apache.spark.sql.<span class="hljs-type">SparkSession</span>
+<span class="hljs-keyword">import</span> org.apache.spark.sql.functions.col
+
+<span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">FilterCheck</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> argmapConfiguration = <span class="hljs-keyword">new</span> <span class="hljs-type">ArgmapConfiguration</span>(args)
+
+    <span class="hljs-keyword">val</span> local = argmapConfiguration.getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-literal">false</span>)
+    <span class="hljs-keyword">val</span> inputLocation = argmapConfiguration.getOrElse(<span class="hljs-string">"input_location"</span>,<span class="hljs-string">"hdfs://data/raw"</span>)
+    <span class="hljs-keyword">val</span> greaterThan = argmapConfiguration.getOrElse(<span class="hljs-string">"greater_than"</span>, <span class="hljs-number">0</span>)
+    <span class="hljs-keyword">val</span> filters = argmapConfiguration.keys().diff(<span class="hljs-type">Set</span>(<span class="hljs-string">"input_location"</span>, <span class="hljs-string">"greater_than"</span>, <span class="hljs-string">"local"</span>))
+
+    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = (<span class="hljs-keyword">if</span> (local) <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>) <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder())
+      .config(<span class="hljs-string">"spark.sql.streaming.schemaInference"</span>, <span class="hljs-literal">true</span>)
+      .config(<span class="hljs-string">"spark.default.parallelism"</span>, <span class="hljs-number">8</span>)
+      .config(<span class="hljs-string">"spark.sql.shuffle.partitions"</span>, <span class="hljs-number">12</span>)
+      .getOrCreate()
+
+    <span class="hljs-keyword">var</span> monitoredData = spark.read.parquet(inputLocation)
+
+    <span class="hljs-keyword">for</span> (filter &lt;- filters) {
+      <span class="hljs-keyword">val</span> expectedValues: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>] = argmapConfiguration.getList(filter, <span class="hljs-string">""</span>).map(s =&gt; <span class="hljs-type">URLDecoder</span>.decode(s, <span class="hljs-string">"UTF-8"</span>))
+      <span class="hljs-keyword">if</span> (expectedValues.nonEmpty) {
+        monitoredData = monitoredData.filter(col(filter).isin(expectedValues:_*))
+      }
+    }
+
+    <span class="hljs-keyword">val</span> count: <span class="hljs-type">Long</span> = monitoredData.count()
+
+    <span class="hljs-keyword">if</span> (count &lt;= greaterThan) {
+      <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">ConditionNotMetException</span>
+    }
+  }
+}
+</div></code></pre>
+<p>First thing you will notice is that we are using an <code>ArgmapConfiguration</code> to parse our input arguments, which will be presented below. We are first loading a few variables from our args:</p>
+<ul>
+<li><code>local</code>, a setting telling Spark if it should run in local mode or not;</li>
+<li><code>inputLocation</code>, where our data is loaded from;</li>
+<li><code>greaterThat</code>, this will be the threshold that needs to be exceeded for the email notification to get triggerred.</li>
+</ul>
+<p>Then, we take all other arguments for our job and treat them as filters that we need to apply to our data. Once we have all our configuration, we initialize the Spark session, where we include schema inference and some sensible defaults regarding partitions and parallelism. Then, we load the monitored data from the input location. Next, we take every filter value from the input arguments and we filter our data. Here, the <code>ArgmapConfiguration</code> again comes to our aid, parsing a list of desired values from an input argument.</p>
+<p>After filtering all the data we should end up with the actual data we are monitoring. We count what remains in the dataframe and compare that count to the configured <code>greaterThan</code> treshold. This jobs' intended use is to monitor and get a notification once data starts appearing in our system for a specific device or a specific configuration. This is why zero is the default value of the threshold, but we can configure it if we want to only start processing data for a device once we have a specific number of recordings.</p>
+<p>You will now notice something unusual here. If the threshold is not reached, the Spark job throws a <code>ConditionNotMetException</code>. This will fail the job. If the conditions are met, the job does not throw the exception, so the job does not fail. We do this because in Oozie a Spark job ends in two ways, a success or a failure. We can then branch based on the success and failure of the jobs. This is a limitation but we can design our monitoring jobs to work with this and obtain the desired behavior.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark
+
+<span class="hljs-keyword">import</span> java.text.<span class="hljs-type">SimpleDateFormat</span>
+<span class="hljs-keyword">import</span> java.util.<span class="hljs-type">Date</span>
+
+<span class="hljs-keyword">import</span> org.apache.log4j.<span class="hljs-type">LogManager</span>
+
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ArgmapConfiguration</span>(<span class="hljs-params">args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]</span>) </span>{
+
+  <span class="hljs-meta">@transient</span> <span class="hljs-keyword">lazy</span> <span class="hljs-keyword">val</span> log = <span class="hljs-type">LogManager</span>.getLogger(classOf[<span class="hljs-type">ArgmapConfiguration</span>])
+
+  <span class="hljs-keyword">val</span> argmap: <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] = args
+    .map(a =&gt; {
+      <span class="hljs-keyword">val</span> firstEq = a.indexOf('=')
+      <span class="hljs-type">Seq</span>(a.substring(<span class="hljs-number">0</span>, firstEq), a.substring(firstEq+<span class="hljs-number">1</span>))
+    })
+    .filter(a =&gt; a(<span class="hljs-number">0</span>).nonEmpty &amp;&amp; a(<span class="hljs-number">1</span>).nonEmpty)
+    .map(a =&gt; a(<span class="hljs-number">0</span>) -&gt; a(<span class="hljs-number">1</span>))
+    .toMap
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">keys</span></span>() = argmap.keySet
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">get</span></span>(name: <span class="hljs-type">String</span>): <span class="hljs-type">Option</span>[<span class="hljs-type">String</span>] = {
+    argmap.get(name)
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getList</span></span>(name: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">String</span> = <span class="hljs-string">""</span>, separator: <span class="hljs-type">String</span> = <span class="hljs-string">","</span>): <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>] = {
+    <span class="hljs-keyword">val</span> result = argmap.getOrElse(name, <span class="hljs-keyword">default</span>)
+    <span class="hljs-keyword">val</span> resultArray: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>] = result.split(separator).filter(s =&gt; s.nonEmpty)
+    log.info(<span class="hljs-string">s"<span class="hljs-subst">$name</span>: <span class="hljs-subst">$resultArray</span>"</span>)
+    resultArray.toSeq
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(name: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">String</span>): <span class="hljs-type">String</span> = {
+    <span class="hljs-keyword">val</span> result = argmap.getOrElse(name, <span class="hljs-keyword">default</span>)
+    log.info(<span class="hljs-string">s"<span class="hljs-subst">$name</span>: <span class="hljs-subst">$result</span>"</span>)
+    result
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(name: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">Int</span>): <span class="hljs-type">Int</span> =
+    argmap.get(name) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value) =&gt; value.toInt
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(name: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">Double</span>): <span class="hljs-type">Double</span> =
+    argmap.get(name) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value) =&gt; value.toDouble
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getOrElse</span></span>(name: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">Boolean</span>): <span class="hljs-type">Boolean</span> =
+    argmap.get(name) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value) =&gt; value.toBoolean
+      <span class="hljs-keyword">case</span> _ =&gt; <span class="hljs-keyword">default</span>
+    }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getDateOrElse</span></span>(name: <span class="hljs-type">String</span>, dateFormat: <span class="hljs-type">String</span>, <span class="hljs-keyword">default</span>: <span class="hljs-type">Option</span>[<span class="hljs-type">Date</span>]): <span class="hljs-type">Option</span>[<span class="hljs-type">Date</span>] = {
+    argmap.get(name) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value) =&gt; <span class="hljs-keyword">try</span> {
+        <span class="hljs-type">Some</span>(<span class="hljs-keyword">new</span> <span class="hljs-type">SimpleDateFormat</span>(dateFormat).parse(value))
+      } <span class="hljs-keyword">catch</span> {
+        <span class="hljs-keyword">case</span> _: <span class="hljs-type">Throwable</span> =&gt; <span class="hljs-type">None</span>
+      }
+      <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt; <span class="hljs-type">None</span>
+    }
+  }
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">doWithValue</span></span>(name: <span class="hljs-type">String</span>, func: <span class="hljs-type">String</span> =&gt; <span class="hljs-type">Unit</span> ) = {
+    argmap.get(name) <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(value) =&gt; func(value)
+      <span class="hljs-keyword">case</span> _ =&gt;
+    }
+  }
+}
+</div></code></pre>
+<p>The <code>ArgmapConfiguration</code> is a class designed to parse our input arguments. On initialization, the input arguments provided in <code>argumentName1=argumentValue1 argumentName2=argumentValue2</code> format are parsed into a map of names and values. Then, different <code>getOrElse</code> methods are used to both retrieve and parse the argument value from that map. the value data type is defined by the default value provided. More complex is the <code>getList</code> method which will attempt to split an argument value into multiple values if those values are separated by <code>,</code> or some other separator provided in the method call. The <code>getList</code> method only returns a list of strings, but can be mapped to a different data type if desired.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark.monitoring
+
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ConditionNotMetException</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">Throwable</span></span>
+</div></code></pre>
+<p>The <code>ConditionNotMetException</code> is a simple <code>Throwable</code> that does not carry any additional information.</p>
+<h2 id="spark-time-based-filter">Spark Time-Based Filter</h2>
+<p>Another monitoring use-case that we must cover is getting notified if we stopped receiving new data. Our system integrates with many external systems, and sometimes our jobs stop pulling data from those systems. The problem may be as trivial as an expired set of credentials that we must update, or maybe the source system has become unavailable. Whatever the case, we must start investigating this failure as soon as possible. For that, we will use a different Spark monitoring job that is very similar to what we already have, starting with a filtering of our data to obtain the &quot;monitored&quot; data, but instead of counting the result and comparing with a threshold, we inspect the latest timestamp we have in our data to see if we have a problem with data download.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">package</span> com.cacoveanu.spark.monitoring
+
+<span class="hljs-keyword">import</span> java.net.<span class="hljs-type">URLDecoder</span>
+<span class="hljs-keyword">import</span> java.sql.<span class="hljs-type">Timestamp</span>
+
+<span class="hljs-keyword">import</span> com.cacoveanu.spark.<span class="hljs-type">ArgmapConfiguration</span>
+<span class="hljs-keyword">import</span> org.apache.spark.sql.<span class="hljs-type">SparkSession</span>
+<span class="hljs-keyword">import</span> org.apache.spark.sql.functions.col
+<span class="hljs-keyword">import</span> org.apache.spark.sql.functions.max
+<span class="hljs-keyword">import</span> org.apache.spark.sql.types.<span class="hljs-type">TimestampType</span>
+
+<span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">TimestampCheck</span> </span>{
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">val</span> argmapConfiguration = <span class="hljs-keyword">new</span> <span class="hljs-type">ArgmapConfiguration</span>(args)
+
+    <span class="hljs-keyword">val</span> local = argmapConfiguration.getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-literal">false</span>)
+    <span class="hljs-keyword">val</span> inputLocation = argmapConfiguration.getOrElse(<span class="hljs-string">"input_location"</span>,<span class="hljs-string">"hdfs://data/raw"</span>)
+    <span class="hljs-keyword">val</span> timestampColumn = argmapConfiguration.getOrElse(<span class="hljs-string">"timestamp_column"</span>, <span class="hljs-string">"timestamp"</span>)
+    <span class="hljs-keyword">val</span> hoursThreshold = argmapConfiguration.getOrElse(<span class="hljs-string">"hours_threshold"</span>, <span class="hljs-number">12</span>d)
+    <span class="hljs-keyword">val</span> filters = argmapConfiguration.keys().diff(<span class="hljs-type">Set</span>(<span class="hljs-string">"input_location"</span>, <span class="hljs-string">"local"</span>, <span class="hljs-string">"timestamp_column"</span>,
+      <span class="hljs-string">"hours_threshold"</span>))
+
+    <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = (<span class="hljs-keyword">if</span> (local) <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>) <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder())
+      .config(<span class="hljs-string">"spark.sql.streaming.schemaInference"</span>, <span class="hljs-literal">true</span>)
+      .config(<span class="hljs-string">"spark.default.parallelism"</span>, <span class="hljs-number">8</span>)
+      .config(<span class="hljs-string">"spark.sql.shuffle.partitions"</span>, <span class="hljs-number">12</span>)
+      .getOrCreate()
+
+    <span class="hljs-keyword">var</span> monitoredData = spark.read.parquet(inputLocation)
+
+    <span class="hljs-keyword">for</span> (filter &lt;- filters) {
+      <span class="hljs-keyword">val</span> expectedValues: <span class="hljs-type">Seq</span>[<span class="hljs-type">String</span>] = argmapConfiguration.getList(filter, <span class="hljs-string">""</span>).map(s =&gt; <span class="hljs-type">URLDecoder</span>.decode(s, <span class="hljs-string">"UTF-8"</span>))
+      <span class="hljs-keyword">if</span> (expectedValues.nonEmpty) {
+        monitoredData = monitoredData.filter(col(filter).isin(expectedValues:_*))
+      }
+    }
+
+    <span class="hljs-keyword">val</span> maxTimestamp: <span class="hljs-type">Option</span>[<span class="hljs-type">Timestamp</span>] = monitoredData.agg(max(timestampColumn).cast(<span class="hljs-type">TimestampType</span>))
+      .rdd.map(v =&gt; v(<span class="hljs-number">0</span>)).collect().headOption.map(v =&gt; v.asInstanceOf[<span class="hljs-type">Timestamp</span>])
+
+    maxTimestamp <span class="hljs-keyword">match</span> {
+      <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(ts) =&gt;
+        <span class="hljs-keyword">val</span> diffMilliseconds = <span class="hljs-type">System</span>.currentTimeMillis() - ts.getTime
+        <span class="hljs-keyword">val</span> hours: <span class="hljs-type">Double</span> = diffMilliseconds.toDouble / <span class="hljs-number">1000</span> / <span class="hljs-number">60</span> / <span class="hljs-number">60</span>
+        <span class="hljs-keyword">if</span> (hours &gt; hoursThreshold) <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">ConditionNotMetException</span>
+        println(hours)
+      <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt; println(<span class="hljs-string">"no data"</span>)
+    }
+  }
+
+}
+</div></code></pre>
+<p>As shown above, once we have filtered our data, we get the maximum value from a configurable timestamp column and cast that value to a <code>java.sql.Timestamp</code> object. We then compute the hours difference beween when the job is running, &quot;now&quot;, and when the last data was received. If this hours difference exceeds a threshold, we throw an exception.</p>
+<h2 id="the-oozie-workflow">The Oozie Workflow</h2>
+<pre class="hljs"><code><div><span class="hljs-meta">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">workflow-app</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"uri:oozie:workflow:0.5"</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"monitoring"</span>&gt;</span>
+  
+    <span class="hljs-tag">&lt;<span class="hljs-name">start</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"monitoring_fork"</span>/&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">fork</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"monitoring_fork"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">path</span> <span class="hljs-attr">start</span>=<span class="hljs-string">"new_data"</span> /&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">path</span> <span class="hljs-attr">start</span>=<span class="hljs-string">"filter_test_id12"</span> /&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">fork</span>&gt;</span>
+    
+    <span class="hljs-tag">&lt;<span class="hljs-name">action</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"new_data"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">spark</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"uri:oozie:spark-action:0.2"</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">master</span>&gt;</span>yarn<span class="hljs-tag">&lt;/<span class="hljs-name">master</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">mode</span>&gt;</span>cluster<span class="hljs-tag">&lt;/<span class="hljs-name">mode</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">name</span>&gt;</span>new_data<span class="hljs-tag">&lt;/<span class="hljs-name">name</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">class</span>&gt;</span>com.cacoveanu.spark.monitoring.TimestampCheck<span class="hljs-tag">&lt;/<span class="hljs-name">class</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">jar</span>&gt;</span>${binariesDir}/spark-assembly.jar<span class="hljs-tag">&lt;/<span class="hljs-name">jar</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">arg</span>&gt;</span>input_location=hdfs:///data/raw<span class="hljs-tag">&lt;/<span class="hljs-name">arg</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">spark</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">ok</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"monitoring_join"</span>/&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">error</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"send_email_no_new_data"</span>/&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">action</span>&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">action</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"send_email_no_new_data"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">email</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"uri:oozie:email-action:0.2"</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">to</span>&gt;</span>monitoring@email.org<span class="hljs-tag">&lt;/<span class="hljs-name">to</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">subject</span>&gt;</span>No new data<span class="hljs-tag">&lt;/<span class="hljs-name">subject</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">body</span>&gt;</span>No new data in the last 12 hours!<span class="hljs-tag">&lt;/<span class="hljs-name">body</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">email</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">ok</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"monitoring_join"</span>/&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">error</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"fail"</span>/&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">action</span>&gt;</span>
+    
+    <span class="hljs-tag">&lt;<span class="hljs-name">action</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"filter_test_id12"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">spark</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"uri:oozie:spark-action:0.2"</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">master</span>&gt;</span>yarn<span class="hljs-tag">&lt;/<span class="hljs-name">master</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">mode</span>&gt;</span>cluster<span class="hljs-tag">&lt;/<span class="hljs-name">mode</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">name</span>&gt;</span>filter_test_id12<span class="hljs-tag">&lt;/<span class="hljs-name">name</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">class</span>&gt;</span>com.cacoveanu.spark.monitoring.FilterCheck<span class="hljs-tag">&lt;/<span class="hljs-name">class</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">jar</span>&gt;</span>${binariesDir}/spark-assembly.jar<span class="hljs-tag">&lt;/<span class="hljs-name">jar</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">arg</span>&gt;</span>input_location=hdfs:///data/raw<span class="hljs-tag">&lt;/<span class="hljs-name">arg</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">arg</span>&gt;</span>device_type=type1,type7<span class="hljs-tag">&lt;/<span class="hljs-name">arg</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">arg</span>&gt;</span>content_type=text%2Fcsv,text%2Fjson,text%2Fplain<span class="hljs-tag">&lt;/<span class="hljs-name">arg</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">arg</span>&gt;</span>device_id=id12<span class="hljs-tag">&lt;/<span class="hljs-name">arg</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">file</span>&gt;</span>${appDir}/spark-defaults.conf<span class="hljs-tag">&lt;/<span class="hljs-name">file</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">spark</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">ok</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"send_email_id12"</span>/&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">error</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"monitoring_join"</span>/&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">action</span>&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">action</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"send_email_id12"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">email</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"uri:oozie:email-action:0.2"</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">to</span>&gt;</span>monitoring@email.org<span class="hljs-tag">&lt;/<span class="hljs-name">to</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">subject</span>&gt;</span>New Data<span class="hljs-tag">&lt;/<span class="hljs-name">subject</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">body</span>&gt;</span>Device with id 12 has new data<span class="hljs-tag">&lt;/<span class="hljs-name">body</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">email</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">ok</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"monitoring_join"</span>/&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">error</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"fail"</span>/&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">action</span>&gt;</span>
+  
+    <span class="hljs-tag">&lt;<span class="hljs-name">join</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"monitoring_join"</span> <span class="hljs-attr">to</span>=<span class="hljs-string">"end"</span> /&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">kill</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"fail"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">message</span>&gt;</span>Workflow has failed (failed to send email).<span class="hljs-tag">&lt;/<span class="hljs-name">message</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">kill</span>&gt;</span>
+
+    <span class="hljs-tag">&lt;<span class="hljs-name">end</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"end"</span>/&gt;</span>
+
+<span class="hljs-tag">&lt;/<span class="hljs-name">workflow-app</span>&gt;</span>
+</div></code></pre>
+<p>The above workflow will execute the following action graph:</p>
+<p><img src="oozie_monitoring_workflows.png" alt="oozie monitoring workflow"></p>
+<p>The <code>new_data</code> job will look at everything we have in our raw data folder, so no filters. If we have some data that was recorded in the last 12 hours everything is working well, we continue along the <code>ok</code> branch to the <code>monitoring_join</code> node. If there was no data in the last 12 hours, this may be a problem, so the <code>error</code> branch is triggered and an email is sent to notify us of this specific condition.</p>
+<p>The <code>filter_test_id12</code> job is taking the raw data folder and applying some filters to select the data we are interested in. The defined filters only look at specific device types and specific content types. Then, we select all of that data with ID &quot;12&quot;. If there is any data for that specific device type, device ID and content type, we continue along the <code>ok</code> branch this time, and send a notification email that lets us know we have new data, it is time to deploy jobs that can process this data. If no data is found, we contine along the <code>error</code> branch to the <code>monitoring_join</code> node.</p>
+<p>The Oozie workflow fails only if emails can't be sent, because of a problem in our cluster setup or an unavailable email service.</p>
+<p>The <code>monitoring_fork</code> is used to trigger parallel execution of more than one flow within the workflow and we can have may jobs start from here.</p>
+<p>This Oozie workflow can be triggerred periodically with an Oozie coordinator:</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">coordinator-app</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"monitoring_coordinator"</span> <span class="hljs-attr">frequency</span>=<span class="hljs-string">"${frequency}"</span> <span class="hljs-attr">start</span>=<span class="hljs-string">"${startTime}"</span> <span class="hljs-attr">end</span>=<span class="hljs-string">"${endTime}"</span> <span class="hljs-attr">timezone</span>=<span class="hljs-string">"${timezone}"</span> <span class="hljs-attr">xmlns</span>=<span class="hljs-string">"uri:oozie:coordinator:0.1"</span>&gt;</span>
+  <span class="hljs-tag">&lt;<span class="hljs-name">controls</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">timeout</span>&gt;</span>0<span class="hljs-tag">&lt;/<span class="hljs-name">timeout</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">concurrency</span>&gt;</span>${concurrency}<span class="hljs-tag">&lt;/<span class="hljs-name">concurrency</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">execution</span>&gt;</span>NONE<span class="hljs-tag">&lt;/<span class="hljs-name">execution</span>&gt;</span>
+  <span class="hljs-tag">&lt;/<span class="hljs-name">controls</span>&gt;</span>
+  <span class="hljs-tag">&lt;<span class="hljs-name">action</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">workflow</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">app-path</span>&gt;</span>${appDir}<span class="hljs-tag">&lt;/<span class="hljs-name">app-path</span>&gt;</span>
+    <span class="hljs-tag">&lt;/<span class="hljs-name">workflow</span>&gt;</span>
+  <span class="hljs-tag">&lt;/<span class="hljs-name">action</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">coordinator-app</span>&gt;</span>
+</div></code></pre>
+<p>And the <code>job.properties</code> file used for both the coordinator and the workflow files contains the following:</p>
+<pre class="hljs"><code><div>nameNode=hdfs://namenode1
+binariesDir=${nameNode}/binaries
+appDir=${nameNode}/deployments/monitoring
+
+frequency=120
+startTime=2020-08-05T00\:10Z
+endTime=2020-08-31T23\:59Z
+timezone=UTC
+concurrency=1
+throttle=1
+
+jobTracker=yarnRM
+oozie.coord.application.path=${appDir}
+oozie.use.system.libpath=true
+</div></code></pre>
+<p>With this deployed we have a monitoring job that runs every 2 hours, checks our data and sends email notifications when the desired conditions are met. With the configurable Spark jobs described in this article it is easy to extend the monitoring job to keep trach of the many kinds of data we have or expect to have in our system. With this automation tool, keeping a close eye on our system becomes a simple job, and it allows us to quickly become aware of possible issues that may arise in the system and adress them quickly.</p>
+
+</body>
+</html>

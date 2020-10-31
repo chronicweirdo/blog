@@ -1,16 +1,6 @@
-A configurable spark job for 
-ing and detecting 
-when new data arrives
-
-A spark job thet detects when new data is no longer
-arriving
-
-A complex oozie job to monitor for multiple
-conditions and email with relevant information
-
 # Oozie Monitoring Workflows
 
-In our current big data system we load data from many devices with very different configurations. When a new device configuration becomes known to us, we prepare adapt our jobs as well as possible in preparation for the new data, but no amount of preparation can account for possible changes in the setup that we were not expecting. Because we have so much variation and so many things can go wrong, it is impossible for a person to keep an eye on all the data we load. This means we need to automate the process. In this article, I will present a more complex Oozie workflow that can run some configurable Spark jobs designed to identify specific conditions in our data and notify us by email if those conditions are met.
+In our current big data system we load data from many devices with very different configurations. When a new device configuration becomes known to us, we adapt our jobs as well as possible in preparation for the new data, but no amount of preparation can account for possible unexpected changes in the setup. Because we have so much variation and so many things can go wrong, it is impossible for a person to keep an eye on all the data we load. This means we need to automate the process. In this article, I will present a more complex Oozie workflow that can run some configurable Spark jobs designed to identify specific conditions in our data and notify us by email if those conditions are met.
 
 ## Spark Filter and Check
 
