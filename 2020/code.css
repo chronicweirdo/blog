@@ -11,10 +11,12 @@ pre {
   white-space: -o-pre-wrap;
   word-wrap: break-word;
   font-family: 'Roboto Mono', monospace;
+  font-size: 20px;
 }
 
 code {
   font-family: 'Roboto Mono', monospace;
+  font-size: 20px;
 }
 
 .hljs-comment,
