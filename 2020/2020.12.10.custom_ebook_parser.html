@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Custom Ebook Parser</title>
+  <meta name="description" content="A custom ebook parser that solves the inconsistent position computation problems between server-side and UI code.">
+  <meta name="keywords" content="scala, html, tree, epub, javascript">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2020.12.10 12:00 / scala / html / tree / epub / javascript</p>
+<h1 id="custom-ebook-parser">Custom Ebook Parser</h1>
+<p>This summer, I worked on developing a web-based comic-book reading application, and after everything was running well with comic books, I decided to extend the functionality to reading e-books. This proved to be a more complicated problem. The format I focused on was EPUB, which are archives containing html/xhtml files. To create a good e-book reading experience, I needed to split the book into pages, but how much would fit into a page depends on a lot of things: the size of the viewport, font-sizes, margins; and these limitations meant we have to split the book into pages directly on the UI side. But in this first implementation, I still needed to parse the book on the server side as well, in order to compute the number of positions in the book.</p>
+<p>A position, in this case, would be one character. To compute the number of positions in a book stored as html files, I would only need to extract the text (without tags) from the html file and compute its size. Html-parsing libraries for Java and the Javascript DOM parser in the browser both have this functionality. The problem, however, is that they never give the same results. This meant that the book size computed on the server was almost always different that the size computed on the UI. This translated to the UI reporting book progress reached a certan position that was completely meaningless for the positions recorded on the server. And this is completely ignoring more complex cases where, for the logic in the page computation algorithm, certain elements like images and tables should be considered as occupying a single position. To elaborate on that, when deciding how much content fits into a page, from position X to position Y, we can't split an image or a table between two pages, so these elements must be considered as a single position. That image or table either fits in the current page, or it will be displayed in the next page.</p>
+<p>For the original implementation I found a hacky implementation to sortof make this work, with the progress in the book being just an approximation, but it didn't really work well. I couldn't really let this go, especially now that the reading season is upon us (December holidays), so I went back and rewrote everything related to EPUB parsing. And the necessary approach was clear: to get the same results for both the backend and the UI I had to write my own parser, implemented in both Scala and Javascript. These parser implementations would have to treat spaces the same way, compute positions in book sections the same way, treat special one-position elements like images and tables the same way.</p>
+<h2 id="the-ideal-position">The Ideal Position</h2>
+<p>A position in the book represents one displayable element in that book. In most cases, this is a character, a letter or a space. In some special cases, this can be a more complex element, like an image. Positions are important in our algorithm because they are used to split the book into pages. Every page in the book has a start position and an end position. When computing a page, we start with the element at the start position and keep adding elements to the page until no more elements fit in the page. If those elements are characters, we just keep adding characters to the page until the page is filled. If those elements take more space, like images, less of them will fit in a page. A page may fit 1000 characters, or 500 characters and an image.</p>
+<p>An ideal parsing algorithm, which would put us in an ideal position to deliver the best performance and accuracy for parsing e-books, would need the following functionaliy:</p>
+<ul>
+<li>parse and HTML document into a tree of nodes</li>
+<li>compute and store start and end positions for each node in the tree</li>
+<li>let us extract content (structured) from the node tree between specified positions X and Y - for extracting pages</li>
+<li>not lose any data - extracting content from position 0 to maximum position should return the original HTML file (current implementation does not strictly adhere to this rule with regards to HTML comments)</li>
+<li>be able to find the next and previous space starting at position X - this is to facilitate us to split the book only at spaces, and avoid splitting a word between pages</li>
+</ul>
+<p>The data structure for this algorithm will look as follows:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-meta">@BeanProperty</span>
+  <span class="hljs-keyword">var</span> name: <span class="hljs-type">String</span> = _
+
+  <span class="hljs-meta">@JsonBackReference</span>
+  <span class="hljs-meta">@BeanProperty</span>
+  <span class="hljs-keyword">var</span> parent: <span class="hljs-type">BookNode</span> = _
+
+  <span class="hljs-keyword">var</span> children: <span class="hljs-type">Seq</span>[<span class="hljs-type">BookNode</span>] = <span class="hljs-type">Seq</span>()
+
+  <span class="hljs-meta">@BeanProperty</span>
+  <span class="hljs-keyword">var</span> content: <span class="hljs-type">String</span> = _
+  
+  <span class="hljs-meta">@BeanProperty</span>
+  <span class="hljs-keyword">var</span> start: <span class="hljs-type">Long</span> = _
+  
+  <span class="hljs-meta">@BeanProperty</span>
+  <span class="hljs-keyword">var</span> end: <span class="hljs-type">Long</span> = _
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<p>The <code>name</code> holds the element type. <code>content</code> will hold the actual text for text elements, but it will hold the entire opening tag, with all attributes, for other nodes. <code>start</code> and <code>end</code> represent the start and end positions for the node. Every node has a reference to its parent and may contain children.</p>
+<h2 id="parsing-the-html">Parsing the HTML</h2>
+<p>To parse an HTML string we have a companion object for the <code>BookNode</code> class with the main parsing code:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">parseBody</span></span>(body: <span class="hljs-type">String</span>, entrancePosition: <span class="hljs-type">Long</span>): <span class="hljs-type">Option</span>[<span class="hljs-type">BookNode</span>] = {
+    <span class="hljs-keyword">val</span> bodyNode = <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-string">"body"</span>, <span class="hljs-string">""</span>)
+    <span class="hljs-keyword">var</span> current: <span class="hljs-type">BookNode</span> = bodyNode
+
+    <span class="hljs-keyword">var</span> content = <span class="hljs-string">""</span>
+
+    <span class="hljs-keyword">for</span> (i &lt;- <span class="hljs-number">0</span> until body.length) {
+      <span class="hljs-keyword">val</span> c = body(i)
+
+      <span class="hljs-keyword">if</span> (c == '&lt;') {
+        <span class="hljs-comment">// starting a new tag</span>
+        <span class="hljs-comment">// save what we have in content</span>
+        <span class="hljs-keyword">if</span> (isTag(content)) <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">Throwable</span>(<span class="hljs-string">"this should not happen"</span>)
+        <span class="hljs-keyword">else</span> {
+          <span class="hljs-comment">// can only be a text node or nothing</span>
+          <span class="hljs-keyword">if</span> (content.length &gt; <span class="hljs-number">0</span>) {
+            current.addChild(<span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-string">"text"</span>, content))
+            content = <span class="hljs-string">""</span>
+          }
+        }
+      }
+
+      <span class="hljs-comment">// accumulate content</span>
+      content += c
+
+      <span class="hljs-keyword">if</span> (c == '&gt;') {
+        <span class="hljs-comment">// ending a tag</span>
+        <span class="hljs-keyword">if</span> (isTag(content)) {
+          <span class="hljs-keyword">val</span> name = getTagName(content)
+          <span class="hljs-comment">// if it's comment, ignore</span>
+          <span class="hljs-keyword">if</span> (isComment(content)) {
+            <span class="hljs-comment">// ignoring comment</span>
+          } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (isEndTag(content)) {
+            <span class="hljs-comment">// we check that this tag closes the current node correctly</span>
+            <span class="hljs-keyword">if</span> (isVoidElement(name)) {
+              <span class="hljs-comment">// the last child should have the correct name</span>
+              <span class="hljs-keyword">if</span> (name != current.children.last.name) <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">Throwable</span>(<span class="hljs-string">"incompatible end for void tag"</span>)
+              <span class="hljs-keyword">else</span> {
+                current.children.last.content += content
+              }
+            } <span class="hljs-keyword">else</span> {
+              <span class="hljs-comment">// the current node should have the correct name, and it is getting closed</span>
+              <span class="hljs-keyword">if</span> (name != current.name) <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">Throwable</span>(<span class="hljs-string">"incompatible end tag "</span> + current.name)
+              <span class="hljs-comment">// move current node up</span>
+              current = current.parent
+            }
+          } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (isBothTag(content) || isVoidElement(name)) {
+            <span class="hljs-comment">// just add this tag without content</span>
+            current.addChild(<span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(name, content))
+          } <span class="hljs-keyword">else</span> {
+            <span class="hljs-comment">// a start tag</span>
+            <span class="hljs-keyword">val</span> newNode = <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(name, content)
+            current.addChild(newNode)
+            current = newNode
+          }
+          <span class="hljs-comment">// reset content</span>
+          content = <span class="hljs-string">""</span>
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">Throwable</span>(<span class="hljs-string">"wild &gt; encountered"</span>)
+      }
+    }
+    <span class="hljs-comment">// add the last text node, if there is still such a thing remaining</span>
+    <span class="hljs-keyword">if</span> (content.nonEmpty) {
+      <span class="hljs-keyword">if</span> (isTag(content)) <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-type">Throwable</span>(<span class="hljs-string">"this should not happen"</span>)
+      <span class="hljs-keyword">else</span> {
+        <span class="hljs-comment">// can only be a text node or nothing</span>
+        current.addChild(<span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-string">"text"</span>, content))
+      }
+    }
+    bodyNode.collapseLeaves()
+    bodyNode.updatePositions(entrancePosition)
+    <span class="hljs-type">Some</span>(bodyNode)
+  }
+
+  <span class="hljs-comment">// ...</span>
+}
+</div></code></pre>
+<p>The <code>parseBody</code> method receives the HTML body contents as string, and a start position. This start position is the start position of the book section, and it is used to compute the absolute positions in the entire book. The algorithm start by creating the book section root node of type <code>body</code> which it uses as the current node. It then starts going over the text iteratively, performing the following actions:</p>
+<ul>
+<li>when it encounters character <code>&lt;</code> it starts a new tag and, if there is accumulated content, which should be a text node, it creates a leaf node for this text content and adds it as a child to the current node;</li>
+<li>it adds the current character to the current content;</li>
+<li>when it encounters character '&gt;' it handles tag ending, which, after making sure we have a valid tag in the current content, can be treated in several ways:
+<ul>
+<li>if this is a comment, we just ignore it (this also means that comments will be lost when we extract content from the node tree)</li>
+<li>if we have an end tag:
+<ul>
+<li>we check that the end tag name matches the current node name and switch the current node to the current node parent (move back up in the tree)</li>
+<li>we have a special case for void elements; these are elements that should not have content, they are always leaves, when a new void element is added the current node does not change to reference it</li>
+</ul>
+</li>
+<li>if we have a &quot;both&quot; tag, a tag that both opens and closes an element, or a void element, an element that does not have to be closed and should never have content, we just make a new leaf node for the current content and add it to the current node</li>
+<li>and the last case, if this is a start tag we create a new node for it and switch the current node to this new node (move down the tree hierarchy)</li>
+</ul>
+</li>
+</ul>
+<p>There is also a special case to handle remaining text content at the end of a HTML file, followed by some cleanup work and computing the positions in this tree.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">collapseLeaves</span></span>(): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">if</span> (shouldBeLeafElement(<span class="hljs-keyword">this</span>.name) &amp;&amp; <span class="hljs-keyword">this</span>.children.nonEmpty) {
+      <span class="hljs-comment">// extract content from children</span>
+      <span class="hljs-keyword">this</span>.content = <span class="hljs-keyword">this</span>.extractContent()
+      <span class="hljs-keyword">this</span>.children = <span class="hljs-type">Seq</span>()
+    } <span class="hljs-keyword">else</span> {
+      <span class="hljs-keyword">this</span>.children.foreach(_.collapseLeaves())
+    }
+  }
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<p>The <code>collapseLeaves</code> method will go over the tree recursively and transform some structures into leaf elements. This is done to ensure that some structures in the HTML document are treated as a single position when pagination is done. At the current implementation of this algorithm, images <code>IMG</code> and table rows <code>TR</code> are the structures which are considered single-position for pagination. This allows us to split a long table between pages, but not clip a row of that table.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">updatePositions</span></span>(entrancePosition: <span class="hljs-type">Long</span>): <span class="hljs-type">Unit</span> = {
+    <span class="hljs-keyword">var</span> position = entrancePosition
+    <span class="hljs-keyword">this</span>.start = position
+    <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.name == <span class="hljs-string">"text"</span>) {
+      <span class="hljs-keyword">this</span>.end = <span class="hljs-keyword">this</span>.start + <span class="hljs-keyword">this</span>.content.length - <span class="hljs-number">1</span>
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (shouldBeLeafElement(<span class="hljs-keyword">this</span>.name)) {
+      <span class="hljs-comment">// occupies a single position</span>
+      <span class="hljs-keyword">this</span>.end = <span class="hljs-keyword">this</span>.start
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.children.isEmpty) {
+      <span class="hljs-comment">// an element without children, maybe used for spacing, should occupy a single position</span>
+      <span class="hljs-keyword">this</span>.end = <span class="hljs-keyword">this</span>.start
+    } <span class="hljs-keyword">else</span> {
+      <span class="hljs-comment">// compute for children and update</span>
+      <span class="hljs-keyword">for</span> (i &lt;- <span class="hljs-keyword">this</span>.children.indices) {
+        <span class="hljs-keyword">val</span> child = <span class="hljs-keyword">this</span>.children(i)
+        child.updatePositions(position)
+        position = child.end + <span class="hljs-number">1</span>
+      }
+      <span class="hljs-keyword">this</span>.end = <span class="hljs-keyword">this</span>.children.last.end
+    }
+  }
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<p>The <code>updatePositions</code> method will also recursively traverse the tree and it will update the <code>start</code> and <code>end</code> fields for each node as following:</p>
+<ul>
+<li>for any node, the <code>start</code> position will be the <code>entrancePosition</code></li>
+<li>for a text node, its length is the length of its content, so the <code>end</code> position will be the <code>start</code> position plus that length;</li>
+<li>for any leaf node, image and table row, the <code>end</code> position will be the <code>start</code> position plus one, since leaf nodes that are not text are treated as taking a single position;</li>
+<li>for nodes that are not leaves, the <code>end</code> position is computed by computing <code>start</code> and <code>end</code> positions for their children, with every child starting at the previous child <code>end</code> position plus one.</li>
+</ul>
+<p>As a final part of code to detail in this section, utility methods that find out the tag type, tag name, and extract information from tags, are implemented using regex:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-keyword">private</span> <span class="hljs-keyword">val</span> <span class="hljs-type">VOID_ELEMENTS</span> = <span class="hljs-type">Seq</span>(<span class="hljs-string">"area"</span>,<span class="hljs-string">"base"</span>,<span class="hljs-string">"br"</span>,<span class="hljs-string">"col"</span>,<span class="hljs-string">"hr"</span>,<span class="hljs-string">"img"</span>,<span class="hljs-string">"input"</span>,<span class="hljs-string">"link"</span>,<span class="hljs-string">"meta"</span>,<span class="hljs-string">"param"</span>,<span class="hljs-string">"keygen"</span>,<span class="hljs-string">"source"</span>)
+  <span class="hljs-keyword">private</span> <span class="hljs-keyword">val</span> <span class="hljs-type">LEAF_ELEMENTS</span> = <span class="hljs-type">Seq</span>(<span class="hljs-string">"img"</span>, <span class="hljs-string">"tr"</span>)
+
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">isTag</span></span>(str: <span class="hljs-type">String</span>) = <span class="hljs-string">"^&lt;/?[^&gt;]+&gt;$"</span>.r matches str
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">isComment</span></span>(str: <span class="hljs-type">String</span>) = <span class="hljs-string">"^&lt;!\\-\\-[^&gt;]+\\-\\-&gt;$"</span>.r matches str
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">isEndTag</span></span>(str: <span class="hljs-type">String</span>) = <span class="hljs-string">"^&lt;/[^&gt;]+&gt;$"</span>.r matches str
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">isBothTag</span></span>(str: <span class="hljs-type">String</span>) = <span class="hljs-string">"^&lt;[^&gt;/]+/&gt;$"</span>.r matches str
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getTagName</span></span>(str: <span class="hljs-type">String</span>) = <span class="hljs-string">"&lt;/?([^&gt;\\s]+)"</span>.r findFirstMatchIn str <span class="hljs-keyword">match</span> {
+    <span class="hljs-keyword">case</span> <span class="hljs-type">Some</span>(m) =&gt;
+      m.group(<span class="hljs-number">1</span>)
+    <span class="hljs-keyword">case</span> <span class="hljs-type">None</span> =&gt; <span class="hljs-literal">null</span>
+  }
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">isVoidElement</span></span>(tagName: <span class="hljs-type">String</span>) = <span class="hljs-type">VOID_ELEMENTS</span>.contains(tagName.toLowerCase())
+  <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">shouldBeLeafElement</span></span>(tagName: <span class="hljs-type">String</span>) = <span class="hljs-type">LEAF_ELEMENTS</span>.contains(tagName.toLowerCase())
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<h2 id="tree-algorithms-for-leaves">Tree algorithms for leaves</h2>
+<p>Now that we have our book in the correct structure, we need two more functions to build our page computing algorithm: find the next space after a given position and extract book content between given positions.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">findSpaceAfter</span></span>(position: <span class="hljs-type">Long</span>): <span class="hljs-type">Long</span> = {
+    <span class="hljs-keyword">val</span> spacePattern = <span class="hljs-string">"\\s"</span>.r
+    <span class="hljs-comment">// first get leaf at position</span>
+    <span class="hljs-keyword">var</span> leaf = leafAtPosition(position)
+    <span class="hljs-comment">// for a text node, next space may be in the text node, next space character after position</span>
+    <span class="hljs-comment">// if other kind of node, next space is the start of next leaf</span>
+    <span class="hljs-keyword">if</span> (leaf != <span class="hljs-literal">null</span> &amp;&amp; leaf.end == position) {
+      <span class="hljs-comment">// we need to look in the next node</span>
+      leaf = leaf.nextLeaf()
+    }
+    <span class="hljs-keyword">if</span> (leaf != <span class="hljs-literal">null</span> &amp;&amp; leaf.name == <span class="hljs-string">"text"</span>) {
+      <span class="hljs-keyword">val</span> searchStartPosition = <span class="hljs-keyword">if</span> (position - leaf.start + <span class="hljs-number">1</span> &gt; <span class="hljs-number">0</span>) position - leaf.start + <span class="hljs-number">1</span> <span class="hljs-keyword">else</span> <span class="hljs-number">0</span>
+      <span class="hljs-keyword">val</span> m = spacePattern.findFirstMatchIn(leaf.content.substring(searchStartPosition.toInt))
+      <span class="hljs-keyword">if</span> (m.isDefined) {
+        <span class="hljs-keyword">return</span> m.get.start + position + <span class="hljs-number">1</span>
+      }
+    }
+    <span class="hljs-keyword">if</span> (leaf != <span class="hljs-literal">null</span>) leaf.end
+    <span class="hljs-keyword">else</span> getDocumentEnd()
+  }
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<p>All content is always in leaves, so the space we are looking for, if it exists, will be in a leaf. Our first task is to find the leaf that may contain our desired space. This is either the current leaf, if the current leaf is a text node and we are not at the end of the current text node, or the next leaf. Once we have the correct leaf, we search for the next space in that leaf. If the leaf is a text node, the next space is the first space after the current position or the end of the leaf. If the leaf is not a text node, so it is some other kind of structured node that is always treated as occupying a single position, the next space is the end of this leaf. And the last case, if there is no valid leaf where we can search for the next space we are at the end of the document, so we return the document end position.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">nextLeaf</span></span>(): <span class="hljs-type">BookNode</span> = {
+    <span class="hljs-comment">// is this a leaf?</span>
+    <span class="hljs-keyword">var</span> current = <span class="hljs-keyword">this</span>
+    <span class="hljs-keyword">if</span> (current.children.isEmpty) {
+      <span class="hljs-comment">// go up the parent line until we find next sibling</span>
+      <span class="hljs-keyword">var</span> parent = current.parent
+      <span class="hljs-keyword">while</span> (parent != <span class="hljs-literal">null</span> &amp;&amp; parent.children.indexOf(current) == parent.children.size - <span class="hljs-number">1</span>) {
+        current = parent
+        parent = current.parent
+      }
+      <span class="hljs-keyword">if</span> (parent != <span class="hljs-literal">null</span>) {
+        <span class="hljs-comment">// we have the next sibling in current, must find first leaf</span>
+        current = parent.children(parent.children.indexOf(current) + <span class="hljs-number">1</span>)
+      } <span class="hljs-keyword">else</span> {
+        <span class="hljs-comment">// we have reached root, this was the last leaf, there is no other</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">null</span>
+      }
+    }
+    <span class="hljs-comment">// find first child of the current node</span>
+    <span class="hljs-keyword">while</span> (current.children.nonEmpty) {
+      current = current.children.head
+    }
+    current
+  }
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<p>I am also including the code for finding the next leaf in a tree, a standard tree algorithm which we can implement without recursion because we have references to both the children and the parent of a node.</p>
+<p>The code also contains method for finding the previous space and previous leaves, but in the final page computation algorithm this is never used, so I am not including it in this article.</p>
+<p>With the current code, it becomes easy to compute pages in a section, and I will go over that algorithm in the next article. But once we have those pages, we need to extract the content from the section, while preserving the content structure. This is not referring only to relative structure, but to the full structure starting at the root. For example, if we have a paragraph <code>P</code> node containing a child text node starting at position 0 and ending at position 1000, and we want to extract the page from position 100 to position 200, we don't want only the text between those two positions. The result should contain the text between those two positions wrapped in correcnt paragraph <code>P</code> tags, a partial paragraph keeping the full structure of the document. This should apply to all complect nested structures in our document, quotes, spans, links, tables.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+  
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">copy</span></span>(from: <span class="hljs-type">Long</span>, to: <span class="hljs-type">Long</span>): <span class="hljs-type">BookNode</span> = {
+    <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.name == <span class="hljs-string">"text"</span>) {
+      <span class="hljs-keyword">if</span> (from &lt;= <span class="hljs-keyword">this</span>.start &amp;&amp; <span class="hljs-keyword">this</span>.end &lt;= to) {
+        <span class="hljs-comment">// this node is copied whole</span>
+        <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-string">"text"</span>, <span class="hljs-keyword">this</span>.content, <span class="hljs-keyword">this</span>.start, <span class="hljs-keyword">this</span>.end)
+      } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (from &lt;= <span class="hljs-keyword">this</span>.start &amp;&amp; <span class="hljs-keyword">this</span>.start &lt;= to &amp;&amp; to&lt;= <span class="hljs-keyword">this</span>.end) {
+        <span class="hljs-comment">// copy ends at this node</span>
+        <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-keyword">this</span>.name, <span class="hljs-keyword">this</span>.content.substring(<span class="hljs-number">0</span>, (to - <span class="hljs-keyword">this</span>.start + <span class="hljs-number">1</span>).toInt), <span class="hljs-keyword">this</span>.start, to)
+      } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.start &lt;= from &amp;&amp; from &lt;= <span class="hljs-keyword">this</span>.end &amp;&amp; <span class="hljs-keyword">this</span>.end &lt;= to) {
+        <span class="hljs-comment">// copy starts at this node</span>
+        <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-keyword">this</span>.name, <span class="hljs-keyword">this</span>.content.substring((from - <span class="hljs-keyword">this</span>.start).toInt), from, <span class="hljs-keyword">this</span>.end)
+      } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.start &lt;= from &amp;&amp; to &lt; <span class="hljs-keyword">this</span>.end) {
+        <span class="hljs-comment">// we only copy part of this node</span>
+        <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-keyword">this</span>.name, <span class="hljs-keyword">this</span>.content.substring((from - <span class="hljs-keyword">this</span>.start).toInt, (to - <span class="hljs-keyword">this</span>.start + <span class="hljs-number">1</span>).toInt), from, to)
+      } <span class="hljs-keyword">else</span> {
+        <span class="hljs-literal">null</span>
+      }
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (shouldBeLeafElement(<span class="hljs-keyword">this</span>.name)) {
+      <span class="hljs-keyword">if</span> (from &lt;= <span class="hljs-keyword">this</span>.start &amp;&amp; <span class="hljs-keyword">this</span>.end &lt;= to) {
+        <span class="hljs-comment">// include element in selection</span>
+        <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-keyword">this</span>.name, <span class="hljs-keyword">this</span>.content, <span class="hljs-keyword">this</span>.start, <span class="hljs-keyword">this</span>.end)
+      } <span class="hljs-keyword">else</span> {
+        <span class="hljs-literal">null</span>
+      }
+    } <span class="hljs-keyword">else</span> {
+      <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.end &lt; from || <span class="hljs-keyword">this</span>.start &gt; to) {
+        <span class="hljs-comment">// this node is outside the range and should not be copied</span>
+        <span class="hljs-literal">null</span>
+      } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">val</span> newNode = <span class="hljs-keyword">new</span> <span class="hljs-type">BookNode</span>(<span class="hljs-keyword">this</span>.name, <span class="hljs-keyword">this</span>.content)
+        newNode.children = <span class="hljs-keyword">this</span>.children
+          .map(_.copy(from, to))
+          .filter(_ != <span class="hljs-literal">null</span>)
+        newNode.children.foreach(_.parent = newNode)
+        <span class="hljs-keyword">if</span> (newNode.children.isEmpty) {
+          newNode.start = <span class="hljs-keyword">this</span>.start
+          newNode.end = <span class="hljs-keyword">this</span>.end
+        } <span class="hljs-keyword">else</span> {
+          newNode.start = newNode.children.head.start
+          newNode.end = newNode.children.last.end
+        }
+        newNode
+      }
+    }
+  }
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<p>The desired functionality will be achieved with the <code>copy</code> method, which gives us a new <code>BookNode</code> structure representing a part of the original tree. The recursive algorithm handles different kinds of nodes in different ways:</p>
+<ul>
+<li>if the current node is a text node, we look at the text node start and end positions and the <code>from</code> and <code>to</code> positions in the <code>copy</code> method and based on this we decide if we return a copy of the full text node, a partial copy, or <code>null</code> if this text node is not included in the selection at all;</li>
+<li>for leaf nodes that are not text, since they represent a single position, they are either included in the selection and we return a copy of the leaf node, or are not included so we return <code>null</code>;</li>
+<li>and for nodes with children we again check if the current node is within the <code>from</code> and <code>to</code> limits:
+<ul>
+<li>if it isn't, we return a <code>null</code></li>
+<li>if it is, we make a copy of the current node that will contain copies of the current node children that respect the <code>from</code> and <code>to</code> limits; and after we know the new children we can compute the start and end positions of the new parent node.</li>
+</ul>
+</li>
+</ul>
+<p>This method will effectively give us a copy of the tree that contains the content between positions <code>from</code> and <code>to</code> while keeping all the structure for the leaves included in those limits. And once we have this subtree, we can use the <code>extractContent</code> method to get the HTML for the page:</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">BookNode</span> </span>{
+
+  <span class="hljs-comment">// ...</span>
+
+  <span class="hljs-meta">@JsonIgnore</span>
+  <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">extractContent</span></span>(): <span class="hljs-type">String</span> = {
+    <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.name == <span class="hljs-string">"text"</span>) <span class="hljs-keyword">this</span>.content
+    <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (<span class="hljs-keyword">this</span>.name == <span class="hljs-string">"body"</span>) <span class="hljs-keyword">this</span>.children.map(_.extractContent()).mkString(<span class="hljs-string">""</span>)
+    <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (shouldBeLeafElement(<span class="hljs-keyword">this</span>.name) &amp;&amp; <span class="hljs-keyword">this</span>.children.isEmpty) <span class="hljs-keyword">this</span>.content
+    <span class="hljs-keyword">else</span> <span class="hljs-keyword">this</span>.content + <span class="hljs-keyword">this</span>.children.map(_.extractContent()).mkString(<span class="hljs-string">""</span>) + <span class="hljs-string">"&lt;/"</span> + <span class="hljs-keyword">this</span>.name + <span class="hljs-string">"&gt;"</span>
+  }
+
+  <span class="hljs-comment">// ...</span>
+
+}
+</div></code></pre>
+<h2 id="conclusion">Conclusion</h2>
+<p>The <a href="https://github.com/chronicweirdo/reader/blob/master/src/main/scala/com/cacoveanu/reader/util/BookNode.scala">full implementation</a> for this class can be viewed on the project repository. There is more functionality included there. One use-case that is not discussed here is keeping links inside a book functional by replacing paths inside the EPUB archive with book positions. There is also code for scanning the entire book, parsing it and computing the length of a book before saving it to the database.</p>
+<p>The repository also contains the <a href="https://github.com/chronicweirdo/reader/blob/master/src/main/resources/static/bookNode.js">Javascript implementation</a> of the Scala algorithms which are used on the UI side. With this custom parser implementation we can now guarantee consistent results on both the server side and the UI side when navigating the book based on positions, when saving and displaying read progress and for detecting when a book has been read.</p>
+
+</body>
+</html>

@@ -8,7 +8,7 @@ body {
     border: 0;
     color: #222;
     background-color: #fff;
-    font-family: Georgia, serif
+    font-family: 'Merriweather', serif;
 }
 
 @media print{    
@@ -31,5 +31,5 @@ img, video {
 }
 
 p.header {
-    font-family: monospace
+    font-family: 'Roboto Mono', monospace
 }
