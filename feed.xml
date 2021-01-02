@@ -6,8 +6,18 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2020.10.10T12:00:00+02:00</pubDate>
+        <pubDate>2021.01.02T10:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Asynchronous Ebook UI</title>
+            <description>Implementing asynchronous UI code for computing and displaying pages in ebooks without blocking the single Javascript UI thread.</description>
+            <pubDate>2021.01.02T10:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2021/2021.01.02.asynchronous_ebook_ui.html</link>
+            <category>javascript</category>
+            <category>asynchronous</category>
+            <category>html</category>
+        </item>
 
         <item>
             <title>Custom Ebook Parser</title>
