@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline Mode for Web Application</title>
+  <meta name="description" content="Adding offline functionality to the Chronic Reader web application.">
+  <meta name="keywords" content="javascript, service worker, indexed db">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2021.05.17 10:00 / javascript / service worker / indexed db</p>
+<h1 id="offline-web-app">Offline Mode for Web Application</h1>
+<p>The next step in improving the <a href="https://github.com/chronicweirdo/reader">Chronic Reader app</a> will consist of making it work offline. This is necessary for a reliable book reading app, because you will want to keep reading on the tube or during your flight, when your internet connection stops working.</p>
+<p>To achieve this we will use a <a href="https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API">service worker</a> which will get installed in the user's browser and act as a proxy between the application UI and the server. This approach will let us introduce functionality for offline usage of the app with very few changes to the UI. Our service worker will intercept all calls the UI is making to the server and it will add additional processing. It will save all resources required for the UI in an in-browser cache and also in an in-browser database. We will be using both these resources for different types of resources, with the resources saved to the database meant to be stored indefinitely by the browser.</p>
+<p><img src="latest_read_setting.png" alt="latest read setting"></p>
+<p>From a purely functional consideration I have experimented with multiple approaches and decided the best way to add this functionality is to keep it as simple as possible. There are no settings to turn it on or off, or to choose which books are stored on your device. All books that are displayed in the latest read section of the library page will automatically get stored on the device. The default number of books in the latest read section used to be six, but to give some control to users over how much data is stored on their device, I have added a new option to change the number of books displayed in the latest read section. This option can go from zero up to 12 books, with the zero setting equivalent to turning off the offline mode.</p>
+<h2 id="installing-the-service-worker">Installing the service worker</h2>
+<p>The first step when adding a service worker: you need a javascript file to hold all your code. I have added a new file in my server resources named <code>serviceworker.js</code>.</p>
+<pre class="hljs"><code><div><span class="hljs-built_in">window</span>.onload = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">if</span>(<span class="hljs-string">'serviceWorker'</span> <span class="hljs-keyword">in</span> navigator) {
+        navigator.serviceWorker.register(<span class="hljs-string">'/serviceworker.js'</span>)
+            .then(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">registration</span>) </span>{
+                registration.update()
+            }, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">error</span>) </span>{
+                <span class="hljs-built_in">console</span>.log(<span class="hljs-string">"service worker registration failed: "</span>, error)
+            })
+    }
+}
+</div></code></pre>
+<p>The next step is to install that service worker. We do this when one of our application pages loads and runs some javascript code to let the browser know we want to install a script as service worker. Not all browsers will have this functionality (old ones don't have it), so we should check if we can install before we actually do it.</p>
+<h2 id="initializing-the-service-worker">Initializing the service worker</h2>
+<p>On the service worker side, everything is handled through events. An event is triggered when a message is sent from javascript on the UI to the service worker. The first event that will be triggered will be the <code>install</code> event.</p>
+<pre class="hljs"><code><div>self.addEventListener(<span class="hljs-string">'install'</span>, e =&gt; {
+    e.waitUntil(initCache())
+    e.waitUntil(
+        caches.keys().then(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">cacheNames</span>) </span>{
+            <span class="hljs-keyword">return</span> <span class="hljs-built_in">Promise</span>.all(
+                cacheNames.filter(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">cacheName</span>) </span>{
+                    <span class="hljs-keyword">return</span> cacheName != CACHE_NAME
+                }).map(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">cacheName</span>) </span>{
+                    <span class="hljs-keyword">return</span> caches.delete(cacheName)
+                })
+            )
+        })
+    )
+})
+</div></code></pre>
+<p>Our service worker will initialize the cache when detecting the <code>install</code> event.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">var</span> filesToCache = [
+    <span class="hljs-string">'/book.css'</span>,
+    <span class="hljs-string">'/book.js'</span>,
+    <span class="hljs-string">'/bookNode.js'</span>,
+    ...
+]
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">initCache</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> caches.open(CACHE_NAME).then(<span class="hljs-function"><span class="hljs-params">cache</span> =&gt;</span> {
+        cache.addAll(filesToCache)
+    })
+}
+</div></code></pre>
+<p>Cache initialization will consist of downloading and storing resource files (css, js, images and fonts) to the browser cache. These files will then be available when the browser does not have access to the backend server.</p>
+<pre class="hljs"><code><div>self.addEventListener(<span class="hljs-string">'activate'</span>, e =&gt; {
+    self.clients.claim()
+})
+</div></code></pre>
+<p>The second event usually triggered when installing a service worker is the <code>activate</code> event. When this happens, we just make sure the service worker is aware of all client tabs in the current browser and monitoring events that may originate there.</p>
+<h2 id="initializing-the-database">Initializing the database</h2>
+<p>The <a href="https://developer.mozilla.org/en-US/docs/Glossary/IndexedDB">browser database</a> will also have to be initialized before we can use it. The initialization step will create all necessary tables, and we need to define the table key name when we do this. We can also add indexes to limit the data we can push in the database.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">var</span> db
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getDb</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        <span class="hljs-keyword">if</span> (! db) {
+            <span class="hljs-keyword">const</span> request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION)
+            request.onerror = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+                reject()
+            }
+            request.onsuccess = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+                db = event.target.result
+                resolve(event.target.result)
+            }
+            request.onupgradeneeded = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+                <span class="hljs-keyword">let</span> localDb = event.target.result
+                <span class="hljs-keyword">var</span> requestsStore = localDb.createObjectStore(REQUESTS_TABLE, {
+                    <span class="hljs-attr">keyPath</span>: <span class="hljs-string">'url'</span>
+                })
+                requestsStore.createIndex(ID_INDEX, ID_INDEX, { <span class="hljs-attr">unique</span>: <span class="hljs-literal">false</span> })
+                <span class="hljs-keyword">var</span> progressStore = localDb.createObjectStore(PROGRESS_TABLE, {
+                    <span class="hljs-attr">keyPath</span>: <span class="hljs-string">'id'</span>
+                })
+                <span class="hljs-keyword">var</span> booksStore = localDb.createObjectStore(BOOKS_TABLE, {
+                    <span class="hljs-attr">keyPath</span>: <span class="hljs-string">'id'</span>
+                })
+                <span class="hljs-keyword">var</span> workerStore = localDb.createObjectStore(WORKER_TABLE, {
+                    <span class="hljs-attr">keyPath</span>: <span class="hljs-string">'id'</span>
+                })
+            }
+        } <span class="hljs-keyword">else</span> {
+            resolve(db)
+        }
+    })
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">deleteDb</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        <span class="hljs-keyword">var</span> req = indexedDB.deleteDatabase(DATABASE_NAME)
+        req.onsuccess = <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params"></span>) </span>{
+            <span class="hljs-built_in">console</span>.log(<span class="hljs-string">"Deleted database successfully"</span>)
+            resolve()
+        }
+        req.onerror = <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params"></span>) </span>{
+            <span class="hljs-built_in">console</span>.log(<span class="hljs-string">"Couldn't delete database"</span>)
+            reject()
+        }
+        req.onblocked = <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params"></span>) </span>{
+            <span class="hljs-built_in">console</span>.log(<span class="hljs-string">"Couldn't delete database - operation blocked"</span>)
+            reject()
+        }
+    })
+}
+
+getDb()
+</div></code></pre>
+<p>The approach used keeps the database load and initialization inside the accessor method. Sometimes, after the application has not been used for a while, the <code>db</code> variable will lose its value. This is why we should always get access to the database through the <code>getDb()</code> method, which will reinitialize the <code>db</code> variable if necessary. We also have functionality for deleting the whole database, which we need to resetting the application. On this database delete method you can see we are using a <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a> when executing code. Most of the code in the service worker is based on promises, because we want most of these operations to be executed asynchronously.</p>
+<h2 id="intercepting-communication">Intercepting communication</h2>
+<p>The service worked interacts with the UI by intercepting messages and events sent from the UI. The main event we are interested in is the <code>fetch</code> event, which is triggered every time the UI is sending a request to the (a) server.</p>
+<pre class="hljs"><code><div>self.addEventListener(<span class="hljs-string">'fetch'</span>, e =&gt; {
+    <span class="hljs-keyword">var</span> url = <span class="hljs-keyword">new</span> URL(e.request.url)
+
+    <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/markProgress'</span>) {
+        e.respondWith(handleMarkProgress(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/loadProgress'</span>) {
+        e.respondWith(handleLoadProgress(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/latestRead'</span>) {
+        e.respondWith(handleLatestReadRequest(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/imageData'</span> 
+        || url.pathname === <span class="hljs-string">'/comic'</span> 
+        || url.pathname === <span class="hljs-string">'/bookResource'</span> 
+        || url.pathname === <span class="hljs-string">'/book'</span>) {
+        e.respondWith(handleDataRequest(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/bookSection'</span>) {
+        e.respondWith(handleBookSectionRequest(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/'</span>) {
+        e.respondWith(handleRootRequest(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (url.pathname === <span class="hljs-string">'/search'</span>) {
+        e.respondWith(handleSearchRequest(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> ((url.pathname === <span class="hljs-string">'/login'</span> &amp;&amp; e.request.method == <span class="hljs-string">'POST'</span>) 
+        || (url.pathname === <span class="hljs-string">'/logout'</span>)) {
+        e.respondWith(handleLoginLogout(e.request))
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (filesToCache.includes(url.pathname)) {
+        e.respondWith(handleWebResourceRequest(e.request))
+    } <span class="hljs-keyword">else</span> {
+        e.respondWith(fetch(e.request))
+    }
+})
+</div></code></pre>
+<p>We will handle different requests to our servers in different ways. The main distinction is between a database-first or a server-first behavior. More exactly, with database-first requests we will try to load data from the browser database or cache and provide that data to the UI. Only if data is not available there will we send the request to the server. Server-first requests will be handled in the opposite way, we will first try to load data from the server, and only if this fails will we get the data we may have in the browser database or cache.</p>
+<p>We will use the database-first approach for large book resource data. If we have the book or comic book contents in the database already, the book is present on device, we don't need to send that call to the server and waste time, we can return the response from the database. This approach will enable the offline behavior of the application, but it will also function as an on-device cache. Even if you have internet connection, the book will be served from the device, the pages will load faster and the reading experience will be better, with reduced to non-existent loading times.</p>
+<p>The server-first approach is used with application resources: style sheets, javascript files. These resources may change as we update the backend. We want to always get the latest version of these resources from the server, if possible. These resources will only be loaded from the browser cache when there is no internet connection, to keep the application running.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">handleDataRequest</span>(<span class="hljs-params">request</span>) </span>{
+    <span class="hljs-keyword">let</span> databaseResponse = <span class="hljs-keyword">await</span> databaseLoad(REQUESTS_TABLE, request.url)
+
+    <span class="hljs-keyword">if</span> (databaseResponse) {
+        <span class="hljs-keyword">return</span> databaseEntityToResponse(databaseResponse)
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> fetch(request)
+    }
+}
+</div></code></pre>
+<p>An example of the database-first approach, the <code>handleDataRequest</code> method will try to load some book resource for the UI. The first thing we do is try to load the response from the <code>REQUESTS_TABLE</code> in the database, using the <code>request.url</code>. If we have a response available, we can just return it. If we don't we'll try to load that response from the server by calling the <code>fetch</code> method.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">handleLoadProgress</span>(<span class="hljs-params">request</span>) </span>{
+    <span class="hljs-keyword">await</span> syncProgressInDatabase()
+
+    <span class="hljs-keyword">let</span> url = <span class="hljs-keyword">new</span> URL(request.url)
+    <span class="hljs-keyword">let</span> id = <span class="hljs-built_in">parseInt</span>(url.searchParams.get(<span class="hljs-string">"id"</span>))
+
+    <span class="hljs-keyword">let</span> serverProgress
+    <span class="hljs-keyword">try</span> {
+        serverProgress = <span class="hljs-keyword">await</span> fetch(request)
+    } <span class="hljs-keyword">catch</span> (error) {
+        serverProgress = <span class="hljs-literal">undefined</span>
+    }
+
+    <span class="hljs-keyword">if</span> (serverProgress) {
+        <span class="hljs-keyword">return</span> serverProgress
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">let</span> databaseProgress = <span class="hljs-keyword">await</span> databaseLoad(PROGRESS_TABLE, id)
+        <span class="hljs-keyword">let</span> databaseResponse = <span class="hljs-keyword">new</span> Response(databaseProgress.position, {
+            <span class="hljs-attr">headers</span>: {<span class="hljs-string">'Content-Type'</span>: <span class="hljs-string">'application/json'</span>}
+        })
+        <span class="hljs-keyword">return</span> databaseResponse
+    }
+}
+</div></code></pre>
+<p>A more complex scenario is necessary for handling progress save and load. Progress is the user's position in a book. This position gets saved every time a user flips a page. The latest position needs to be saved on the server, so that the user's position in a book is synchronized across multiple devices. But when a user is reading a book in offline mode, the position update can't make it to the server. So we save that position in our device database. But once internet connection is available again, we must send the latest position to the server. All this logic is handled in the <code>handleLoadProgress</code> method. The first thing we do is try to sync on-device progress with the server. Then we try to load the latest progress from the server. If this fails, we load the latest progress from the browser database.</p>
+<h2 id="custom-messages">Custom messages</h2>
+<p>Our service worker can also listen for custom messages sent by the UI through the <code>message</code> event. In our application we use these for special functionality, to request that a book gets stored on the device, to reset the application.</p>
+<pre class="hljs"><code><div>self.addEventListener(<span class="hljs-string">'message'</span>, event =&gt; {
+    <span class="hljs-keyword">if</span> (event.data.type === <span class="hljs-string">'storeBook'</span>) {
+        <span class="hljs-keyword">var</span> id = <span class="hljs-built_in">parseInt</span>(event.data.bookId)
+        <span class="hljs-keyword">var</span> size = <span class="hljs-built_in">parseInt</span>(event.data.maxPositions)
+        triggerStoreBook(id, event.data.kind, size)
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (event.data.type === <span class="hljs-string">'deleteBook'</span>) {
+        deleteBookFromDatabase(event.data.bookId)
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (event.data.type === <span class="hljs-string">'reset'</span>) {
+        resetApplication()
+    }
+})
+
+<span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">resetApplication</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-comment">// delete all data from cache</span>
+    <span class="hljs-keyword">await</span> caches.delete(CACHE_NAME)
+
+    <span class="hljs-comment">// delete all data from database</span>
+    <span class="hljs-keyword">await</span> databaseDeleteAll(REQUESTS_TABLE)
+    <span class="hljs-keyword">await</span> databaseDeleteAll(BOOKS_TABLE)
+    <span class="hljs-keyword">await</span> databaseDeleteAll(PROGRESS_TABLE)
+    <span class="hljs-keyword">await</span> databaseDeleteAll(WORKER_TABLE)
+    <span class="hljs-comment">//await deleteDb()</span>
+
+    <span class="hljs-comment">// unregister service worker</span>
+    <span class="hljs-keyword">await</span> self.registration.unregister()
+}
+</div></code></pre>
+<p>Book storing will be discussed in the next article. For resetting the application, we delet all cache contents and delete the dabase, then unregister the service worker. This is always done on logout, we don't want to keep book and user data in the browser if the user is no longer logged in. This reset can also be requested by the user from the UI, to fix issues that may arise when the application is used.</p>
+<h2 id="database-utility-methods">Database utility methods</h2>
+<p>I will also add here a set of database utility methods, which can be used with all tables to perform some common database operations we need in our application.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">databaseSave</span>(<span class="hljs-params">table, value</span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        getDb().then(<span class="hljs-function"><span class="hljs-params">db</span> =&gt;</span> {
+            <span class="hljs-keyword">let</span> transaction = db.transaction([table], <span class="hljs-string">"readwrite"</span>)
+            transaction.oncomplete = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+                resolve(value)
+            }
+            <span class="hljs-keyword">let</span> objectStore = transaction.objectStore(table)
+            value[<span class="hljs-string">'date'</span>] = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>()
+            <span class="hljs-keyword">let</span> addRequest = objectStore.put(value)
+        })
+    })
+}
+</div></code></pre>
+<p>We save data to the database in a transaction. We always add a <code>date</code> field to the object that contains the latest moment the object was saved. If an object with that key exists in the database, it will be overwritten, and the <code>date</code> will reflect this.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">databaseLoad</span>(<span class="hljs-params">table, key</span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        getDb().then(<span class="hljs-function"><span class="hljs-params">db</span> =&gt;</span> {
+            <span class="hljs-keyword">let</span> transaction = db.transaction([table])
+            <span class="hljs-keyword">let</span> objectStore = transaction.objectStore(table)
+            <span class="hljs-keyword">let</span> dbRequest = objectStore.get(key)
+            dbRequest.onsuccess = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+                resolve(event.target.result)
+            }
+        })
+    })
+}
+</div></code></pre>
+<p>Loading from the database by key is a very simple operation, and the result should be a single object.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">databaseDeleteAll</span>(<span class="hljs-params">table</span>) </span>{
+     <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        getDb().then(<span class="hljs-function"><span class="hljs-params">db</span> =&gt;</span> {
+            <span class="hljs-keyword">let</span> transaction = db.transaction([table], <span class="hljs-string">"readwrite"</span>)
+            <span class="hljs-keyword">let</span> objectStore = transaction.objectStore(table)
+            <span class="hljs-keyword">let</span> deleteRequest = objectStore.clear()
+            deleteRequest.onsuccess = <span class="hljs-function"><span class="hljs-params">event</span> =&gt;</span> {
+                resolve()
+            }
+        })
+    })
+}
+</div></code></pre>
+<p>Deleting all objects in a table is also a simple operation achieved by calling the <code>clear</code> method on the object store.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">databaseDelete</span>(<span class="hljs-params">matchFunction, table, indexName = undefined, 
+                        indexValue = undefined</span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        getDb().then(<span class="hljs-function"><span class="hljs-params">db</span> =&gt;</span> {
+            <span class="hljs-keyword">let</span> transaction = db.transaction([table], <span class="hljs-string">"readwrite"</span>)
+            <span class="hljs-keyword">let</span> objectStore = transaction.objectStore(table)
+
+            <span class="hljs-keyword">let</span> cursorRequest
+            <span class="hljs-keyword">if</span> (indexName) {
+                <span class="hljs-keyword">let</span> index = objectStore.index(indexName)
+                cursorRequest = index.openCursor(IDBKeyRange.only(indexValue))
+            } <span class="hljs-keyword">else</span> {
+                cursorRequest = objectStore.openCursor()
+            }
+
+            <span class="hljs-keyword">let</span> deletedCount = <span class="hljs-number">0</span>
+            cursorRequest.onsuccess = <span class="hljs-function"><span class="hljs-params">event</span> =&gt;</span> {
+                <span class="hljs-keyword">let</span> cursor = event.target.result
+                <span class="hljs-keyword">if</span> (cursor) {
+                    <span class="hljs-keyword">if</span> (matchFunction(cursor.value)) {
+                        objectStore.delete(cursor.primaryKey)
+                        deletedCount += <span class="hljs-number">1</span>
+                    }
+                    cursor.continue()
+                } <span class="hljs-keyword">else</span> {
+                    resolve(deletedCount)
+                }
+            }
+        })
+    })
+}
+</div></code></pre>
+<p>The <code>databaseDelete</code> method introduces more complex functinoality. We usually delete information from the database in bulk, all data for a book gets deleted at once when the book is no longer part of the latest read section. To do this, we must match all objects that have the correct book ID and delete them. We do this by opening a cursor on the target table, then applying the provided <code>matchFunction</code> to every entry in the table and deleting that entry if the <code>matchFunction</code> returned <code>true</code>. This is further optimized if we provide an <code>indexName</code> and an <code>indexValue</code> parameter. In this case, a cursor will be opened only on that index and only database entries matching the <code>indexValue</code> will be traversed and processed with the <code>matchFunction</code>. However, at the time of writing, this optimization does not work on the Safari browser on iOS because of a bug related to accessing database entries through the cursor.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">databaseFindFirst</span>(<span class="hljs-params">matchFunction, table, indexName = undefined,
+                           indexValue = undefined</span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        getDb().then(<span class="hljs-function"><span class="hljs-params">db</span> =&gt;</span> {
+            <span class="hljs-keyword">let</span> transaction = db.transaction(table)
+            <span class="hljs-keyword">let</span> objectStore = transaction.objectStore(table)
+            <span class="hljs-keyword">let</span> cursorRequest
+            <span class="hljs-keyword">if</span> (indexName) {
+                <span class="hljs-keyword">let</span> index = objectStore.index(indexName)
+                cursorRequest = index.openCursor(IDBKeyRange.only(indexValue))
+            } <span class="hljs-keyword">else</span> {
+                cursorRequest = objectStore.openCursor()
+            }
+            cursorRequest.onsuccess = <span class="hljs-function"><span class="hljs-params">event</span> =&gt;</span> {
+                <span class="hljs-keyword">let</span> cursor = event.target.result
+                <span class="hljs-keyword">if</span> (cursor) {
+                    <span class="hljs-keyword">if</span> (matchFunction(cursor.value)) {
+                        resolve(cursor.value)
+                    } <span class="hljs-keyword">else</span> {
+                        cursor.continue()
+                    }
+                } <span class="hljs-keyword">else</span> {
+                    resolve()
+                }
+            }
+        })
+    })
+}
+</div></code></pre>
+<p>The <code>databaseFindFirst</code> method will similarly use a <code>matchFunction</code> to identify the desired database entry, but it will return the first value that matches that function.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">databaseLoadDistinct</span>(<span class="hljs-params">table, column</span>) </span>{
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Promise</span>(<span class="hljs-function">(<span class="hljs-params">resolve, reject</span>) =&gt;</span> {
+        getDb().then(<span class="hljs-function"><span class="hljs-params">db</span> =&gt;</span> {
+            <span class="hljs-keyword">let</span> transaction = db.transaction([table])
+            <span class="hljs-keyword">let</span> objectStore = transaction.objectStore(table)
+            <span class="hljs-keyword">let</span> cursorRequest = objectStore.openCursor()
+            <span class="hljs-keyword">let</span> distinctValues = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Set</span>()
+            cursorRequest.onsuccess = <span class="hljs-function"><span class="hljs-params">event</span> =&gt;</span> {
+                <span class="hljs-keyword">let</span> cursor = event.target.result
+                <span class="hljs-keyword">if</span> (cursor) {
+                    distinctValues.add(cursor.value[column])
+                    cursor.continue()
+                } <span class="hljs-keyword">else</span> {
+                    resolve(distinctValues)
+                }
+            }
+            cursorRequest.onerror = <span class="hljs-function"><span class="hljs-params">event</span> =&gt;</span> reject()
+        })
+    })
+}
+</div></code></pre>
+<p>We also need a <code>loadDistinct</code> function to understand what books we have in the database currently. For this we again open a cursor and go over all entries in the database, collect in a <code>Set</code> object all values for the desired column. We then return this set which will contain every distinct value once.</p>
+<h2 id="other-considerations">Other considerations</h2>
+<p>As already mentioned, one thing we must ensure is that one user's data is not available for another user. We must also make sure that if a user logs out, their data does not remain on the device. To do this, we reset the service worker on every logout (also when login is detected), which will delete all the data stored in the browser for our application. The data relevant for the current user will be downloaded to the device after login. This reset option can also be triggered by the user, to be used if problems in how the application is functioning arise.</p>
+<p>Downloading books to the device will required some additional engineering. Books and comic books have different kinds of resources, so their download processes will be different. Every time the latest read books are loaded, we need to check and make sure all of them are available on the device, and for those that are not we must download them. And when downloading books to the device, we must throttle this process and make sure we don't try to load all pages for all books from the server at once. Ideally our client should only download one resource at a time, and for this we need a method to control how the download requests are handled by the service worker even when multiple UI clients may request different book downloads at once from the service worker. All these aspects will be discussed in the next article.</p>
+<p>You can find the full code for the service worker in <a href="https://github.com/chronicweirdo/reader">the Chronic Reader repository</a>.</p>
+
+</body>
+</html>
