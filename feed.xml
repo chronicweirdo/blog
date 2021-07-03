@@ -6,8 +6,18 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2021.05.17T10:00:00+02:00</pubDate>
+        <pubDate>2021.07.03T12:30:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Single Executor for Download Throttling</title>
+            <description>Designing a synchronization mechanism for download throttling inside service worker.</description>
+            <pubDate>2021.07.03T12:30:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2021/2021.07.03.single_executor_download_throttling.html</link>
+            <category>javascript</category>
+            <category>service worker</category>
+            <category>synchronization</category>
+        </item>
 
         <item>
             <title>Offline Mode for Web Application</title>

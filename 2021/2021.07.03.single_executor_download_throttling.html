@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Single Executor for Download Throttling</title>
+  <meta name="description" content="Designing a synchronization mechanism for download throttling inside service worker.">
+  <meta name="keywords" content="javascript, service worker, synchronization">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2021.07.03 12:30 / javascript / service worker / synchronization</p>
+<h1 id="single-executor-for-download-throttling">Single Executor for Download Throttling</h1>
+<p>This article will be focused on a very specific use case, mainly looking for a way to throttle requests made by the UI
+to the server. Now that the Chronic Reader web application <a href="2021.05.17.offline_mode_web_app.html">has an offline mode</a>,
+we need to download the data necessary to display books and comics onto the client. We need to check as often as
+possible if new books need to be downloaded to the device, in order to ensure the necessary data is on the device and
+the device can go offline anytime. This mechanism for downloading everything in latest read as soon as possible will
+result in bursts of download activity, but in order to reduce the network bandwidth and the load on the server, we need
+to control these bursts. This means that, instead of asking to download six books at the same time when the user logs
+into the app, we want to download those books in order, one at a time, and each resource necessary to display a book
+(a comic book page, or a book section) needs to be downloaded one at a time as well, in sequence.</p>
+<p>All the logic handling the download of books will be in the service worker of our website. The high-level design of our
+solution will use a stack, which will have multiple producers and a single consumer. The producers will be
+methods/actions that will add download requests to the stack, and the consumer will be a method that will be responsible
+with the actual download process. We are using a stack instead of a queue because we always use prioritary download
+tasks and these would always be added to the front of the queue, but a stack is a perfect data structure for exactly
+that &quot;push to top&quot; behavior we need. The tricky part is to make sure that we only have a single consumer, and for that
+we will need some form of synchronization.</p>
+<h2 id="the-stack">The Stack</h2>
+<p>First we will set up the stack and the operations on this stack, some simpler work to get us started.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">var</span> downloadStack = []
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">pushToDownloadStack</span>(<span class="hljs-params">o</span>) </span>{
+    <span class="hljs-keyword">let</span> existingIndex = downloadStack.findIndex(<span class="hljs-function"><span class="hljs-params">u</span> =&gt;</span> {
+        <span class="hljs-keyword">return</span> u.id == o.id &amp;&amp; u.kind == o.kind &amp;&amp; u.position == o.position &amp;&amp; u.size == o.size &amp;&amp; u.url == o.url
+    })
+    <span class="hljs-keyword">if</span> (existingIndex &gt;= <span class="hljs-number">0</span>) {
+        downloadStack.splice(existingIndex, <span class="hljs-number">1</span>)
+    }
+    downloadStack.unshift(o)
+}
+</div></code></pre>
+<p>A stack task object will have the following fields:</p>
+<ul>
+<li><code>id</code> - the ID of the book or comic book</li>
+<li><code>kind</code> - the kind of resource, either book or comic</li>
+<li><code>position</code> - the position in that resource that we must download</li>
+<li><code>size</code> - the total size of the resource, so we know when we are done with the download</li>
+<li><code>url</code> - this field is necessary for book resources that don't have a position, like images in the book</li>
+<li><code>prioritary</code> - we can have this field set to <code>true</code> when we have urgent download tasks that must be prioritized</li>
+</ul>
+<p>When we push an object of this kind to the download stack, we always check if it does not already exist there. If
+the task is in the stack, we remove it and add it again to the top of the stack, we prioritize it.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">popFromDownloadStack</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">let</span> prioIndex = downloadStack.findIndex(<span class="hljs-function"><span class="hljs-params">e</span> =&gt;</span> e.prioritary)
+    <span class="hljs-keyword">if</span> (prioIndex &gt;= <span class="hljs-number">0</span>) {
+        <span class="hljs-keyword">let</span> result = downloadStack[prioIndex]
+        downloadStack.splice(prioIndex, <span class="hljs-number">1</span>)
+        <span class="hljs-keyword">return</span> result
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> downloadStack.shift()
+    }
+}
+</div></code></pre>
+<p>When we grab the next download task from the stack, we alway look for the first prioritary task in the stack. If there
+is no prioritary task, we just return the task at the top of the stack.</p>
+<h2 id="the-producers">The Producers</h2>
+<p>Producers are the parts in our code that call the <code>pushToDownloadStack</code> function. They publish download tasks/requests.
+We have several in our code.</p>
+<p>First, we can store download a book when the user requests it by clicking on it in the UI.</p>
+<pre class="hljs"><code><div>self.addEventListener(<span class="hljs-string">'message'</span>, event =&gt; {
+    <span class="hljs-keyword">if</span> (event.data.type === <span class="hljs-string">'storeBook'</span>) {
+        <span class="hljs-keyword">var</span> id = <span class="hljs-built_in">parseInt</span>(event.data.bookId)
+        <span class="hljs-keyword">var</span> size = <span class="hljs-built_in">parseInt</span>(event.data.maxPositions)
+        triggerStoreBook(id, event.data.kind, size)
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (event.data.type === <span class="hljs-string">'deleteBook'</span>) {
+        deleteBookFromDatabase(event.data.bookId)
+    } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (event.data.type === <span class="hljs-string">'reset'</span>) {
+        resetApplication()
+    }
+})
+
+<span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">triggerStoreBook</span>(<span class="hljs-params">id, kind, size</span>) </span>{
+    <span class="hljs-keyword">let</span> storedBook = <span class="hljs-keyword">await</span> databaseLoad(BOOKS_TABLE, id)
+    <span class="hljs-keyword">if</span> (! storedBook) {
+        pushToDownloadStack({
+            <span class="hljs-string">'kind'</span>: kind,
+            <span class="hljs-string">'id'</span>: id,
+            <span class="hljs-string">'size'</span>: size,
+            <span class="hljs-string">'prioritary'</span>: <span class="hljs-literal">true</span>
+        })
+    }
+}
+</div></code></pre>
+<p>If the service worker receives a message of type <code>storeBook</code>, it will add the download request for that book only if the
+book is not in the database alread. This is a generic download task that contains the book kind, id and size. This
+task is also prioritary. This is because the <code>storeBook</code> message is sent by the UI when the user opens that book. Even
+if the service worker is already in the process of downloading other books, it must set aside the previous download
+tasks and focus on getting this current book to the user as quickly as possible.</p>
+<p>Another producer is the code that ensures all books in the latest read section are stored on the device.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">queueNextDownload</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-comment">// load books in latest read</span>
+    <span class="hljs-keyword">let</span> latestReadMatchFunction = <span class="hljs-function">(<span class="hljs-params">response</span>) =&gt;</span> {
+        <span class="hljs-keyword">return</span> response.url.includes(self.registration.scope + <span class="hljs-string">"latestRead"</span>)
+    }
+    <span class="hljs-keyword">let</span> databaseResponse = <span class="hljs-keyword">await</span> databaseFindFirst(latestReadMatchFunction, REQUESTS_TABLE)
+    <span class="hljs-keyword">if</span> (databaseResponse) {
+        <span class="hljs-keyword">let</span> responseText = <span class="hljs-keyword">await</span> databaseResponse.response.text()
+        <span class="hljs-keyword">let</span> responseJson = <span class="hljs-built_in">JSON</span>.parse(responseText)
+        <span class="hljs-comment">// load books table</span>
+        <span class="hljs-keyword">let</span> completelyDownloadedBooks = <span class="hljs-keyword">await</span> databaseLoadDistinct(BOOKS_TABLE, <span class="hljs-string">"id"</span>)
+        <span class="hljs-comment">// find first book id that is not in books table</span>
+        <span class="hljs-keyword">for</span> (<span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>; i &lt; responseJson.length; i++) {
+            <span class="hljs-keyword">let</span> book = responseJson[i]
+            <span class="hljs-keyword">if</span> (! completelyDownloadedBooks.has(book.id)) {
+                <span class="hljs-keyword">await</span> triggerStoreBook(book.id, book.type, <span class="hljs-built_in">parseInt</span>(book.pages))
+                <span class="hljs-keyword">return</span>
+            }
+        }
+    }
+}
+</div></code></pre>
+<p>This method will check if the server response containing the latest read books is already stored in the database. If we
+have the latest read books, we look for the first book in the list of latest read that is not on the device and create
+a download task for it through the <code>triggerStoreBook</code> function.</p>
+<p>The <code>queueNextDownload</code> function is called in two situations:</p>
+<ul>
+<li>when we have just downloaded the latest read books on the library page, and we must check and dowload everything on
+the device</li>
+<li>once a book has finished downloading, so we move on and start downloading the next book in the latest read list</li>
+</ul>
+<p>The last kind of producer of download tasks are the functions that handle book and comic book downloads. When
+downloading a comic book, we download it one page at a time, until the last page has been downloaded. This page
+download process is handled completely through the download stack.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">downloadComic</span>(<span class="hljs-params">o</span>) </span>{
+    <span class="hljs-keyword">if</span> (! o.kind === <span class="hljs-string">'comic'</span>)  <span class="hljs-keyword">return</span>
+
+    <span class="hljs-keyword">let</span> url = self.registration.scope + <span class="hljs-string">'comic?id='</span> + o.id
+    <span class="hljs-keyword">let</span> entity = <span class="hljs-keyword">await</span> databaseLoad(REQUESTS_TABLE, url)
+    <span class="hljs-keyword">if</span> (! entity) {
+        <span class="hljs-keyword">let</span> response = <span class="hljs-keyword">await</span> fetch(url)
+        <span class="hljs-keyword">let</span> savedResponse = <span class="hljs-keyword">await</span> saveActualResponseToDatabase(response)
+    }
+    pushToDownloadStack({
+        <span class="hljs-string">'kind'</span>: <span class="hljs-string">'imageData'</span>,
+        <span class="hljs-string">'id'</span>: o.id,
+        <span class="hljs-string">'size'</span>: o.size,
+        <span class="hljs-string">'position'</span>: <span class="hljs-number">0</span>
+    })
+}
+</div></code></pre>
+<p>When we start downloading a comic, we must first store the comic book UI page, containing the controls for navigating
+the comic. Once this is done in the <code>downloadComic</code> function, we generate a download task for the first page of the
+comic book, of kind <code>imageData</code>.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">downloadImageData</span>(<span class="hljs-params">o</span>) </span>{
+    <span class="hljs-keyword">if</span> (! o.kind === <span class="hljs-string">'imageData'</span>) <span class="hljs-keyword">return</span>
+
+    <span class="hljs-keyword">let</span> url = self.registration.scope + <span class="hljs-string">'imageData?id='</span> + o.id + <span class="hljs-string">'&amp;page='</span> + o.position
+    <span class="hljs-keyword">let</span> entity = <span class="hljs-keyword">await</span> databaseLoad(REQUESTS_TABLE, url)
+    <span class="hljs-keyword">if</span> (! entity) {
+        <span class="hljs-keyword">let</span> response = <span class="hljs-keyword">await</span> fetch(url)
+        <span class="hljs-keyword">let</span> savedResponse = <span class="hljs-keyword">await</span> saveActualResponseToDatabase(response)
+    }
+
+    <span class="hljs-keyword">let</span> nextPosition = o.position + <span class="hljs-number">1</span>
+    <span class="hljs-keyword">if</span> (nextPosition &lt; o.size) {
+        pushToDownloadStack({
+            <span class="hljs-string">'kind'</span>: <span class="hljs-string">'imageData'</span>,
+            <span class="hljs-string">'id'</span>: o.id,
+            <span class="hljs-string">'size'</span>: o.size,
+            <span class="hljs-string">'position'</span>: nextPosition
+        })
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">let</span> savedBook = <span class="hljs-keyword">await</span> databaseSave(BOOKS_TABLE, {<span class="hljs-string">'id'</span>: o.id})
+        <span class="hljs-keyword">await</span> queueNextDownload()
+    }
+}
+</div></code></pre>
+<p>The <code>downloadImageData</code> function is responsible with the actual download process for a comic book page, and it is
+triggerred by the download stack consumer. We always check to see if we don't already have the page in our local
+database, added there by a previous intrerupted download process. Once we have downloaded and saved the comic book page,
+we check if there are any more pages left in this comic. If there are, we add a download task for the next page to the
+top of the download stack. If we have reached the end of the comic book, we mark it as downloaded in our database and
+trigger the download of the next book in latest read through the <code>queueNextDownload</code> function.</p>
+<p>Downloading books is a little more complicated, because a book is composed of two kinds of parts that need to be
+downloaded, book sections and book resources. But the principle behind that download process is the same, we download
+one part at a time, at the end we trigger the download for the next part by creating a download task for it and pushing
+it to the download stack, repeat until we have downloaded the full book.</p>
+<h2 id="the-consumer">The Consumer</h2>
+<p>The most complex part of this process is the consumer which must, somehow, be synchronized in such a manner that only
+one consumer function/code part is running at a time. This consumer will then take download tasks from the stack and
+handle them one at a time, ensuring that a single download stream exists between client and server. This throttling
+guarantees that every resource we need from the server will be downloaded once and stored in the database, and does
+not flood the server with download requests.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">singleFunctionRunning</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">let</span> existingWorker = <span class="hljs-keyword">await</span> databaseFindFirst(<span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> <span class="hljs-literal">true</span>, WORKER_TABLE)
+    <span class="hljs-keyword">let</span> now = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>()
+    <span class="hljs-keyword">if</span> (existingWorker) {
+        <span class="hljs-comment">// check if stale</span>
+        <span class="hljs-keyword">let</span> timeDifference = <span class="hljs-built_in">Math</span>.abs(existingWorker.date.getTime() - now.getTime())
+        <span class="hljs-keyword">if</span> (timeDifference &lt; <span class="hljs-number">60</span> * <span class="hljs-number">1000</span>) {
+            <span class="hljs-keyword">return</span>
+        }
+    }
+
+    <span class="hljs-keyword">let</span> methodId = now.getTime()
+    <span class="hljs-keyword">await</span> databaseDeleteAll(WORKER_TABLE)
+    <span class="hljs-keyword">await</span> databaseSave(WORKER_TABLE, {<span class="hljs-string">'id'</span>: methodId})
+    <span class="hljs-keyword">let</span> running = <span class="hljs-literal">true</span>
+    <span class="hljs-keyword">while</span> (running) {
+        running = <span class="hljs-keyword">await</span> downloadFromStack()
+        <span class="hljs-keyword">await</span> databaseSave(WORKER_TABLE, {<span class="hljs-string">'id'</span>: methodId})
+    }
+    <span class="hljs-keyword">await</span> databaseDeleteAll(WORKER_TABLE)
+}
+</div></code></pre>
+<p>Our consumer, or worker, is the function called <code>singleFunctionRunning</code>. When this function is called, the first thing
+we do is check if there isn't another worker already running. We check this in the database, in the workers table,
+where the running worker stores its ID and the latest time it ran successfully. If there is already a running worker,
+and that worker is not stale, meaning that is has made progress in the last minute, the <code>singleFunctionRunning</code> will
+just exit without starting a new worker.</p>
+<p>If the inital check for a running worker is passed, the <code>singleFunctionRunning</code> will start a new worker. The worker will
+use the current timestamp as its ID. It will register itself in the workers table in the database. And then it will
+start working, calling the <code>downloadFromStack</code> method, which handles a single download task at a time, and returns
+<code>false</code> if no more download work is available, which will stop the worker. After every <code>downloadFromStack</code> method call,
+the worker will update its status in the database, to signal it is still running and it isn't blocked, killed or stale.
+When the worker finished running, it will remove itself from the database.</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">downloadFromStack</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">let</span> o = popFromDownloadStack()
+    <span class="hljs-keyword">if</span> (o) {
+        <span class="hljs-keyword">try</span> {
+            <span class="hljs-keyword">if</span> (o.kind === <span class="hljs-string">'book'</span>) <span class="hljs-keyword">await</span> downloadBook(o)
+            <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (o.kind === <span class="hljs-string">'bookResource'</span>) <span class="hljs-keyword">await</span> downloadBookResource(o)
+            <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (o.kind === <span class="hljs-string">'bookSection'</span>) <span class="hljs-keyword">await</span> downloadBookSection(o)
+            <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (o.kind === <span class="hljs-string">'comic'</span>) <span class="hljs-keyword">await</span> downloadComic(o)
+            <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (o.kind === <span class="hljs-string">'imageData'</span>) <span class="hljs-keyword">await</span> downloadImageData(o)
+        } <span class="hljs-keyword">catch</span> (error) {
+            <span class="hljs-keyword">if</span> (o.kind === <span class="hljs-string">'book'</span> || o.kind === <span class="hljs-string">'bookSection'</span> || o.kind === <span class="hljs-string">'comic'</span> || o.kind === <span class="hljs-string">'imageData'</span>) {
+                pushToDownloadStack(o)
+                <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>
+            } <span class="hljs-keyword">else</span> {
+                <span class="hljs-comment">// just ignore issue and continue</span>
+                <span class="hljs-keyword">return</span> <span class="hljs-literal">true</span>
+            }
+
+        }
+    }
+    <span class="hljs-keyword">return</span> o
+}
+</div></code></pre>
+<p>The <code>downloadFromStack</code> method also has some complex logic to handle failures and synchronize well with the worker. It
+will first grab a download task from the stack and execute the download, going to a different function based on the
+download task kind, but it will wait for that function to finish running. If any issue is encountered during the
+download, the download task that failed is pushed back into the stack, but the <code>downloadFromStack</code> function will return
+a <code>false</code>, which will kill the worker. This is done in order to stop the download process when the connection to the
+server may not be available. The download process will be retried the next time the <code>singleFunctionRunning</code> function is
+triggerred, and the connection to the server may have been fixed by then. For the <code>bookResource</code> download task, we
+completely ignore failures and don't try to download again, because e-books may have resources outside the server, on
+the internet, resources like publisher logos, which may no longer be available.</p>
+<p>The last step is to decide when to attempt to start the worker by calling the <code>singleFunctionRunning</code>. We do this in two
+places:</p>
+<ul>
+<li>on every <code>fetch</code> event detected by the service worker, meaning any time the user performs some action in the UI which
+results in communication with the server</li>
+<li>and right after we have downloaded the latest read books in the <code>handleLatestReadRequest</code> function, to start the
+process of downloading every book in the latest read list on the client device and make sure this device is always
+synchronized</li>
+</ul>
+<h2 id="conclusions">Conclusions</h2>
+<p>To give a better view on how the synchronization work described in this article works I have created a simplified
+sequence diagram that presents a few common operations happening in the application.</p>
+<p><img src="single_executor_sequence_diagram.png" alt="Single Executor Sequence Diagram"></p>
+<p>The simplified sequence diagram above presents the interaction of the <code>singleFunctionRunning</code> consumer with the other
+functionalities in the service worker, and the server. The diagram shows what happens when a second
+<code>singleFunctionRunning</code> function is called, while a previously invoked one is still active, and how this is handled
+in a way that still achieves the desired results, prioritizing the download of the book the user is most interested
+in at this moment.</p>
+<p>This implementation is not perfect, there are very specific cases in which we can still have the same resources
+downloaded multiple times. If the <code>singleFunctionRunning</code> is called multiple times from different threads at the
+exact right moment, we may end up with multiple instances doing the same work. On a single web page, this would not
+be an issue, but with a web application that has a service worker, that same service worker will service multiple
+pages of your app. The user could start multiple tabs of the app, all tabs interacting with the same single service
+worker. The strategy presented here is designed to both throttle the downloads from the server and minimize issues with
+downloading the same book resource multiple times. But if a new tab is opened in the exact right moment, and a second
+<code>singleFunctionRunning</code> is invoked precisely after the first <code>singleFunctionRunning</code> passed database verification but
+before it registered itself in the database, and if the database verfication of the second <code>singleFunctionRunning</code>
+passes as well, we may end up with two <code>singleFunctionRunning</code> instances. Without any form of synchronization mechanisms
+in Javascript, this approach is the best we can do. Of course, this could never happen if the browser is using a single
+thread to run your service worker, but I was not able to find a clear answer to this question yet.</p>
+<p>In practice, the solution presented here has proved successful, for now. The
+<a href="https://github.com/chronicweirdo/reader">Chronic Reader application</a> is running well with this implementation, and
+resource download to devices, both mobile and desktop, is running smoothly and efficiently.</p>
+
+</body>
+</html>
