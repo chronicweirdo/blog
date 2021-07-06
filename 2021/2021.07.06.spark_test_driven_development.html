@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spark Test-driven Development</title>
+  <meta name="description" content="Some example tests for Spark jobs, using embedded databases.">
+  <meta name="keywords" content="spark, test-driven, unit test, in-memory db">
+  <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico?">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2021.07.06 10:10 / spark / test-driven / unit test / in-memory db</p>
+<h1 id="spark-test-driven-development">Spark Test-driven Development</h1>
+<p>This short article will go over a method to develop <em>unit</em> tests for <a href="https://spark.apache.org/">Spark</a> jobs. One such
+unit test for Spark can be seen as having the following steps/components:</p>
+<ul>
+<li>use well known input data</li>
+<li>prepare the test environment</li>
+<li>run the Spark job under test, configured to write to an expected output location</li>
+<li>load and inspect the output data</li>
+</ul>
+<p>We start with test data, which will be part of our test code base. We have some operations to prepare the test
+environment, like removing outputs from old tests, or starting up embedded, in-memory databases, that can receive the
+outputs. After running the test, we look at the output location and verify that the data has been processed as expected.</p>
+<p>We'll start with the simple use-case, reading and writing to the file system, then move to writing data to
+<a href="http://hive.apache.org/">Hive</a> and <a href="https://www.mongodb.com/">Mongo</a> databases. The example is developed in
+<a href="https://scala-lang.org/">Scala</a>, with <a href="https://www.scala-sbt.org/">sbt</a> and the <a href="https://www.scalatest.org/">scalaTest</a>
+library.</p>
+<h2 id="hdfs-test">HDFS test</h2>
+<p>First, all our Spark jobs are written in a way that allows us to run them locally, based on an input parameter. This
+input parameter decides the way that the <code>SparkContext</code> is initialized. When we run Spark locally, we also want to
+stop the <code>SparkContext</code> at the end of the program.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">HdfsSparkJob</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+        <span class="hljs-keyword">val</span> argmap = getArgumentsMap(args)
+        <span class="hljs-keyword">val</span> local = argmap.getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-string">"false"</span>).toBoolean
+        <span class="hljs-comment">// read input parameters</span>
+        <span class="hljs-keyword">val</span> inputLocation = argmap.getOrElse(<span class="hljs-string">"input_location"</span>, <span class="hljs-string">""</span>)
+        <span class="hljs-keyword">val</span> outputLocation = argmap.getOrElse(<span class="hljs-string">"output_location"</span>, <span class="hljs-string">""</span>)
+
+        <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = (
+                <span class="hljs-keyword">if</span> (local) <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>)
+                <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder()
+            )
+            .config(<span class="hljs-string">"spark.sql.shuffle.partitions"</span>, <span class="hljs-number">12</span>)
+            <span class="hljs-comment">// spark configuration</span>
+            .getOrCreate()
+        
+        <span class="hljs-keyword">import</span> spark.implicits._
+
+        <span class="hljs-keyword">val</span> inputData = spark.read.parquet(inputLocation)
+
+        <span class="hljs-comment">// spark operations resulting in output data</span>
+
+        outputData
+            .write
+            .mode(<span class="hljs-string">"append"</span>)
+            .parquet(outputLocation)
+
+        <span class="hljs-keyword">if</span> (local) spark.stop()
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">getArgumentsMap</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Map</span>[<span class="hljs-type">String</span>, <span class="hljs-type">String</span>] = {
+        args
+        .map(a =&gt; {
+            <span class="hljs-keyword">val</span> firstEq = a.indexOf('=')
+            <span class="hljs-type">Seq</span>(a.substring(<span class="hljs-number">0</span>, firstEq), a.substring(firstEq + <span class="hljs-number">1</span>))
+        })
+        .filter(a =&gt; a(<span class="hljs-number">0</span>).nonEmpty &amp;&amp; a(<span class="hljs-number">1</span>).nonEmpty)
+        .map(a =&gt; a(<span class="hljs-number">0</span>) -&gt; a(<span class="hljs-number">1</span>))
+        .toMap
+    }
+}
+</div></code></pre>
+<p>The test for the job defined above will start by cleaning up any output data that may exist. Then, we run the
+<code>HdfsSparkJob</code> with the correct input and output configuration, in local mode. Once the job is finished, we initialize
+a new spark context to verify that the output location contains the correct results. The example test also gives you
+a method that can be used to verify the schema of the output.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">HdfsSparkJobTest</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">FlatSpec</span> <span class="hljs-keyword">with</span> <span class="hljs-title">Matchers</span> </span>{
+
+    <span class="hljs-keyword">val</span> <span class="hljs-type">INPUT_LOCATION</span> = <span class="hljs-string">"src/test/resources/input/hdfs_spark_job"</span>
+    <span class="hljs-keyword">val</span> <span class="hljs-type">OUTPUT_LOCATION</span> = <span class="hljs-string">"src/test/resources/output/hdfs_spark_job"</span>
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">cleanup</span></span>(): <span class="hljs-type">Unit</span> = {
+        <span class="hljs-type">FileUtils</span>.deleteDirectory(<span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(<span class="hljs-type">OUTPUT_LOCATION</span>))
+    }
+
+    <span class="hljs-string">"running hdfs spark job"</span> should <span class="hljs-string">"process the input data correctly"</span> in {
+        cleanup()
+        <span class="hljs-type">HdfsSparkJob</span>.main(<span class="hljs-type">Array</span>(
+            <span class="hljs-string">"local=true"</span>,
+            <span class="hljs-string">"input_location="</span> + <span class="hljs-type">INPUT_LOCATION</span>,
+            <span class="hljs-string">"output_location="</span> + <span class="hljs-type">OUTPUT_LOCATION</span>
+        ))
+
+        <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = <span class="hljs-type">SparkSession</span>.builder()
+            .master(<span class="hljs-string">"local[*]"</span>).getOrCreate()
+        
+        <span class="hljs-keyword">val</span> output = spark.read.parquet(<span class="hljs-type">OUTPUT_LOCATION</span>)
+        
+        output.count() should be (<span class="hljs-number">7</span>)
+
+        assertSchemaField[<span class="hljs-type">DoubleType</span>](output.schema, <span class="hljs-string">"sensor_value"</span>)
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">assertSchemaField</span></span>[<span class="hljs-type">T</span>:<span class="hljs-type">ClassTag</span>](parent: <span class="hljs-type">StructType</span>, name: <span class="hljs-type">String</span>) = {
+        <span class="hljs-keyword">val</span> field = parent.find(f =&gt; f.name == name)
+        field should not be <span class="hljs-type">None</span>
+        field.get.dataType mustBe a[<span class="hljs-type">T</span>]
+    }
+}
+</div></code></pre>
+<p>As seen in the test, both the input and output locations are relative to the project folder. The project structure
+would be the following:</p>
+<pre class="hljs"><code><div>- src
+    - main
+        - scala
+            - my.package
+                - HdfsSparkJob.scala
+    - test
+        - resources
+            - input
+                - hdfs_spark_job
+            - [output]
+                - [hdfs_spark_job]
+        - scala
+            - my.package
+                - HdfsSparkJobTest.scala
+- .gitignore
+- build.sbt
+</div></code></pre>
+<p>The output folder should not be checked in to source control, if you are using Git you should exclude everything under
+<code>output</code> in the <code>.gitignore</code> file.</p>
+<p>You can run the test above from within SBT, with <code>testOnly *HdfsSparkJobTest</code>.</p>
+<h2 id="hive-test">Hive test</h2>
+<p>This second Spark job is designed to write its output data into Hive. With locally run unit tests, we don't have a Hive
+database, but we can use an in-memory instance of <a href="https://db.apache.org/derby/">Apache Derby</a> as stand-in for the Hive
+database. When initializing the spark session in local mode, we configure it to use the in-memory derby instance. The
+spark job example here also shows how we can create or dynamically insert overwrite (by partition) a Hive table.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">HiveSparkJob</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+        <span class="hljs-keyword">val</span> argmap = getArgumentsMap(args)
+        <span class="hljs-keyword">val</span> local = argmap.getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-string">"false"</span>).toBoolean
+        <span class="hljs-comment">// read input parameters</span>
+        <span class="hljs-keyword">val</span> inputLocation = argmap.getOrElse(<span class="hljs-string">"input_location"</span>, <span class="hljs-string">""</span>)
+        <span class="hljs-keyword">val</span> outputLocation = argmap.getOrElse(<span class="hljs-string">"output_location"</span>, <span class="hljs-string">""</span>)
+        <span class="hljs-keyword">val</span> database = argmap.getOrElse(<span class="hljs-string">"database"</span>, <span class="hljs-string">"default"</span>)
+        <span class="hljs-keyword">val</span> table = argmap.getOrElse(<span class="hljs-string">"table"</span>, <span class="hljs-string">""</span>)
+        <span class="hljs-keyword">val</span> tempView = argmap.getOrElse(<span class="hljs-string">"temp_view"</span>, <span class="hljs-string">"temp"</span>)
+
+        <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = (
+                <span class="hljs-keyword">if</span> (local) <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>)
+                    .config(<span class="hljs-string">"spark.hadoop.javax.jdo.option.ConnectionDriverName"</span>, <span class="hljs-string">"org.apache.derby.jdbc.EmbeddedDriver"</span>)
+                    .config(<span class="hljs-string">"spark.hadoop.javax.jdo.option.ConnectionURL"</span>, <span class="hljs-string">"jdbc:derby:memory:default;create=true"</span>)
+                    .config(<span class="hljs-string">"spark.hadoop.javax.jdo.option.ConnectionUserName"</span>, <span class="hljs-string">"hiveuser"</span>)
+                    .config(<span class="hljs-string">"spark.hadoop.javax.jdo.option.ConnectionPassword"</span>, <span class="hljs-string">"hivepass"</span>)
+                <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder()
+            )
+            .config(<span class="hljs-string">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="hljs-string">"dynamic"</span>)
+            <span class="hljs-comment">// other settings</span>
+            .enableHiveSupport()
+            .getOrCreate()
+
+        <span class="hljs-keyword">val</span> inputData = spark.read.parquet(inputLocation)
+
+        <span class="hljs-comment">// spark operations</span>
+
+        output.createOrReplaceTempView(tempView)
+
+        <span class="hljs-keyword">val</span> tableExists = spark.sql(<span class="hljs-string">"show tables from "</span> + database)
+            .filter(col(<span class="hljs-string">"tableName"</span>) === table)
+            .count() == <span class="hljs-number">1</span>
+        
+        <span class="hljs-keyword">if</span> (tableExists) {
+            <span class="hljs-keyword">val</span> tableRow = spark.sql(<span class="hljs-string">"select * from "</span> + database + <span class="hljs-string">"."</span> + table + <span class="hljs-string">" limit 1"</span>)
+            <span class="hljs-keyword">val</span> columns = tableRow.columns.toSeq
+            spark.sql(
+                <span class="hljs-string">"insert overwrite table "</span> + database + <span class="hljs-string">"."</span> + table
+                + <span class="hljs-string">" select "</span> + columns.mkString(<span class="hljs-string">","</span>)
+                + <span class="hljs-string">" from "</span> + tempView
+            )
+        } <span class="hljs-keyword">else</span> {
+            spark.sql(<span class="hljs-string">s""</span><span class="hljs-string">"
+                create table if not exists $database.$table
+                using parquet partitioned by (${partitions.mkString("</span>,<span class="hljs-string">")})
+                options (path "</span>$outputL<span class="hljs-string">ocation")
+                as select * from <span class="hljs-subst">$tempView</span>
+            "</span><span class="hljs-string">""</span>)
+        }
+
+        <span class="hljs-keyword">if</span> (local) spark.stop()
+    }
+}
+</div></code></pre>
+<p>In this example, the output Hive table data is stored as parquet files, so like the previous test we can verify our
+output data by looking at those files.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">HiveSparkJobTest</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">FlatSpec</span> <span class="hljs-keyword">with</span> <span class="hljs-title">Matchers</span> </span>{
+    
+    <span class="hljs-keyword">val</span> <span class="hljs-type">INPUT_LOCATION</span> = <span class="hljs-string">"src/test/resources/input/hive_spark_job"</span>
+    <span class="hljs-keyword">val</span> <span class="hljs-type">OUTPUT_LOCATION</span> = <span class="hljs-string">"src/test/resources/output/hive_spark_job"</span>
+    <span class="hljs-keyword">val</span> <span class="hljs-type">TABLE</span> = <span class="hljs-string">"hive_spark_table"</span>
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">cleanup</span></span>() = {
+        <span class="hljs-comment">// delete output folder</span>
+    }
+
+    <span class="hljs-string">"running the hive spark job"</span> should <span class="hljs-string">"process data and create table and parquet files"</span> in {
+        cleanup()
+
+        <span class="hljs-type">HiveSparkJob</span>.main(<span class="hljs-type">Array</span>(
+            <span class="hljs-string">"local=true"</span>,
+            <span class="hljs-string">"input_location="</span> + <span class="hljs-type">INPUT_LOCATION</span>,
+            <span class="hljs-string">"output_location="</span> + <span class="hljs-type">OUTPUT_LOCATION</span>,
+            <span class="hljs-string">"table="</span> + <span class="hljs-type">TABLE</span>
+        ))
+
+        <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>).getOrCreate()
+
+        <span class="hljs-keyword">val</span> output = spark.read.parquet(<span class="hljs-type">OUTPUT_LOCATION</span>)
+
+        output.count() should be (<span class="hljs-number">3</span>)
+
+        <span class="hljs-comment">// other verifications</span>
+    }
+}
+</div></code></pre>
+<h2 id="mongo-test">Mongo test</h2>
+<p>The last test we'll look at works with a Spark job writing results in a Mongo database. I will not show the actual job,
+but for reference I will include the test, which will start an in-memory Mongo database before running the Spark job.
+After the Spark job finished running, we can keep the Mongo database running, connect to it and verify the output data.
+At the end of the test, we stop the Mongo daemon.
+The <a href="https://github.com/flapdoodle-oss/de.flapdoodle.embed.mongo">embedded Mongo from Flapdoodle</a> is used
+in this test.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MongoSparkJobTest</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">FlatSpec</span> <span class="hljs-keyword">with</span> <span class="hljs-title">Matchers</span> </span>{
+    
+    <span class="hljs-keyword">val</span> <span class="hljs-type">INPUT_LOCATION</span> = <span class="hljs-string">"src/test/resources/input/mongo_spark_job"</span>
+    <span class="hljs-keyword">val</span> <span class="hljs-type">DATABASE</span> = <span class="hljs-string">"test_db"</span>
+    <span class="hljs-keyword">val</span> <span class="hljs-type">COLLECTION_NAME</span> = <span class="hljs-string">"test_collection"</span>
+
+    <span class="hljs-comment">// cleanup code</span>
+
+    <span class="hljs-string">"running mongo spark job"</span> should <span class="hljs-string">"create mongo collection with data"</span> in {
+        cleanup()
+
+        <span class="hljs-keyword">val</span> starter = <span class="hljs-type">MongodStarter</span>.getDefaultInstance()
+        <span class="hljs-keyword">val</span> port = <span class="hljs-type">Network</span>.getFreeServerPort()
+        print(<span class="hljs-string">"mongo service port: "</span> + port)
+        <span class="hljs-keyword">val</span> mongodConfig = <span class="hljs-keyword">new</span> <span class="hljs-type">MongodConfigBuilder</span>()
+            .version(<span class="hljs-type">Version</span>.<span class="hljs-type">Main</span>.<span class="hljs-type">PRODUCTION</span>)
+            .net(<span class="hljs-keyword">new</span> <span class="hljs-type">Net</span>(port, <span class="hljs-type">Network</span>.localhostIsIPv6()))
+            .build()
+        <span class="hljs-keyword">val</span> mongodExecutable = starter.prepare(mongodConfig)
+        <span class="hljs-keyword">val</span> mongod = mongodExecutable.start()
+
+        <span class="hljs-keyword">val</span> mongoConnectionString = <span class="hljs-string">"mongodb://localhost:"</span> + port
+
+        <span class="hljs-type">MongoSparkJob</span>.main(<span class="hljs-type">Array</span>(
+            <span class="hljs-string">"local=true"</span>,
+            <span class="hljs-string">"mongo_connection="</span> + mongoConnectionString,
+            <span class="hljs-string">"database="</span> + <span class="hljs-type">DATABASE</span>,
+            <span class="hljs-string">"collection_name="</span> + <span class="hljs-type">COLLECTION_NAME</span>
+        ))
+
+        <span class="hljs-keyword">val</span> mongoClient = <span class="hljs-type">MongoClient</span>(mongoConnectionString)
+        <span class="hljs-keyword">val</span> db = mongoClient.getDatabase(<span class="hljs-type">DATABASE</span>)
+        <span class="hljs-keyword">val</span> collection = db.getCollection[<span class="hljs-type">Object</span>](<span class="hljs-type">COLLECTION_NAME</span>)
+
+        <span class="hljs-keyword">val</span> outputCount: <span class="hljs-type">Long</span> = <span class="hljs-type">Await</span>.result(collection.countDocuments().toFuture(), <span class="hljs-type">Duration</span>.<span class="hljs-type">Inf</span>)
+        outputCount should be (<span class="hljs-number">2</span>)
+
+        mongod.stop()
+    }
+}
+</div></code></pre>
+<p>These three tests can be starting points to a complex unit test setup that can improve the development of Spark
+pipelines in your project, improve the quality of your code and also make onboarding simpler for people new to your
+project and to Spark.</p>
+
+</body>
+</html>

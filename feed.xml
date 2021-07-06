@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2021.07.03T12:30:00+02:00</pubDate>
+        <pubDate>2021.07.06T10:10:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Spark Test-driven Development</title>
+            <description>Some example tests for Spark jobs, using embedded databases.</description>
+            <pubDate>2021.07.06T10:10:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2021/2021.07.06.spark_test_driven_development.html</link>
+            <category>spark</category>
+            <category>test-driven</category>
+            <category>unit test</category>
+            <category>in-memory db</category>
+        </item>
 
         <item>
             <title>Single Executor for Download Throttling</title>
