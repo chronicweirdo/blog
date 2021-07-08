@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spark Test-driven Development with API Integration</title>
+  <meta name="description" content="An example test for a Spark jobs that pulls data from an API.">
+  <meta name="keywords" content="spark, test-driven, unit test, mock api">
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2021.07.08 10:00 / spark / test-driven / unit test / mock api</p>
+<h1 id="spark-test-driven-development-with-api-integration">Spark Test-driven Development with API Integration</h1>
+<p>This very short article is an addition to the previous
+<a href="2021.07.06.spark_test_driven_development.html">Spark test driven development</a> article, where I showed you
+how to use in-memory databases as output locations for your <a href="https://spark.apache.org/">Spark</a> job tests. This time, we
+go over a method to mock an
+external API that our job is supposed to get data from. The API would provide two interfaces, one to get the index
+of the data available, and another to download the data files.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">object</span> <span class="hljs-title">ApiSparkJob</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">main</span></span>(args: <span class="hljs-type">Array</span>[<span class="hljs-type">String</span>]): <span class="hljs-type">Unit</span> = {
+        <span class="hljs-keyword">val</span> argmap = getArgumentsMap(args)
+        <span class="hljs-keyword">val</span> local = argmap.getOrElse(<span class="hljs-string">"local"</span>, <span class="hljs-string">"false"</span>).toBoolean
+        <span class="hljs-comment">// read input parameters</span>
+        <span class="hljs-keyword">val</span> indexUrl = argmap.getOrElse(<span class="hljs-string">"index_url"</span>, <span class="hljs-string">""</span>)
+        <span class="hljs-keyword">val</span> outputLocation = argmap.getOrElse(<span class="hljs-string">"output_location"</span>, <span class="hljs-string">""</span>)
+
+        <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = (
+                <span class="hljs-keyword">if</span> (local) <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>)
+                <span class="hljs-keyword">else</span> <span class="hljs-type">SparkSession</span>.builder()
+            )
+            <span class="hljs-comment">// spark configuration</span>
+            .getOrCreate()
+        
+        <span class="hljs-keyword">import</span> spark.implicits._
+
+        <span class="hljs-keyword">val</span> index: <span class="hljs-type">Dataset</span>[<span class="hljs-type">DataEntry</span>] = spark.crateDataset(downloadIndex(indexUrl))
+
+        <span class="hljs-keyword">val</span> data: <span class="hljs-type">Dataset</span>[<span class="hljs-type">DataFile</span>] = index.map(entry =&gt; downloadFile(entry.dataUrl))
+
+        <span class="hljs-comment">// transform your data</span>
+
+        output.write.mode(<span class="hljs-string">"append"</span>).parquet(outputLocation)
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">downloadIndex</span></span>(indexUrl: <span class="hljs-type">String</span>): <span class="hljs-type">List</span>[<span class="hljs-type">DataEntry</span>] = {
+        <span class="hljs-comment">// make rest call, download index json, parse it to objects</span>
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">downloadFile</span></span>(fileUrl: <span class="hljs-type">String</span>): <span class="hljs-type">DataFile</span> = {
+        <span class="hljs-comment">// make rest call to API to download the data file</span>
+    }
+}
+
+<span class="hljs-keyword">case</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">DataEntry</span>(<span class="hljs-params">
+    id: <span class="hljs-type">String</span>,
+    timestamp: <span class="hljs-type">Date</span>,
+    dataUrl: <span class="hljs-type">String</span>
+</span>)</span>
+
+<span class="hljs-keyword">case</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">DataFile</span>(<span class="hljs-params">
+    url: <span class="hljs-type">String</span>,
+    data: <span class="hljs-type">Array</span>[<span class="hljs-type">Byte</span>]
+</span>)</span>
+</div></code></pre>
+<p>You can see the very simple version of the Spark job loading data from an API. It downloads the index, then downloads
+each file in the index and holds it in memory as a <code>Byte</code> array. We can then perform transformations on those files,
+parse them, clean them up. Finally, the files get saved to HDFS as parquet files. Now we need to test this.</p>
+<p>In our test, we will need to mock the API interfaces. We can do this by putting up a web server at the beginning of the
+test that can serve an index file and several data files. The test begins with a cleanup step, then we start the mock
+server, we run the test, we stop the server and we verify the output. The web server is using another class to handle
+requests, the <code>MockApiHandler</code>.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ApiSparkJobTest</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">FlatSpec</span> <span class="hljs-keyword">with</span> <span class="hljs-title">Matchers</span> </span>{
+
+    <span class="hljs-keyword">val</span> <span class="hljs-type">INPUT</span> = <span class="hljs-string">"src/test/resources/input/api"</span>
+    <span class="hljs-keyword">val</span> <span class="hljs-type">OUTPUT</span> = <span class="hljs-string">"src/test/resources/output/api"</span>
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">cleanup</span></span>() = {
+        <span class="hljs-type">FileUtils</span>.deleteDirectory(<span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(<span class="hljs-type">OUTPUT</span>))
+    }
+
+    <span class="hljs-string">"running api spark job"</span> should <span class="hljs-string">"download and save data"</span> in {
+        cleanup()
+
+        <span class="hljs-keyword">val</span> port = <span class="hljs-number">8080</span>
+        <span class="hljs-keyword">val</span> serverRoot = <span class="hljs-string">s"http://localhost:<span class="hljs-subst">$port</span>"</span>
+        <span class="hljs-keyword">val</span> server = startMockServer(port, <span class="hljs-keyword">new</span> <span class="hljs-type">MockApiHandler</span>(<span class="hljs-type">INPUT</span>, serverRoot))
+        println(<span class="hljs-string">"started server..."</span>)
+
+        <span class="hljs-keyword">val</span> indexUrl = <span class="hljs-string">s"<span class="hljs-subst">$serverRoot</span>/index"</span>
+        <span class="hljs-type">ApiSparkJob</span>.main(<span class="hljs-type">Array</span>(
+            <span class="hljs-string">"local=true"</span>,
+            <span class="hljs-string">"index_url="</span> + indexUrl,
+            <span class="hljs-string">"output_location="</span> + <span class="hljs-type">OUTPUT</span>
+        ))
+
+        server.stop(<span class="hljs-number">0</span>)
+
+        <span class="hljs-keyword">implicit</span> <span class="hljs-keyword">val</span> spark: <span class="hljs-type">SparkSession</span> = <span class="hljs-type">SparkSession</span>.builder().master(<span class="hljs-string">"local[*]"</span>).getOrCreate()
+        <span class="hljs-keyword">val</span> output = spark.read.parquet(<span class="hljs-type">OUTPUT</span>)
+
+        output.count() should be (<span class="hljs-number">4</span>)
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">startMockServer</span></span>(port: <span class="hljs-type">Int</span>, handler: <span class="hljs-type">HttpHandler</span>) = {
+        <span class="hljs-keyword">val</span> executorPool = <span class="hljs-type">Executors</span>.newFixedThreadPool(<span class="hljs-number">10</span>).asInstanceOf[<span class="hljs-type">ThreadPoolExecutor</span>]
+        <span class="hljs-keyword">val</span> server = <span class="hljs-type">HttpServer</span>.create(<span class="hljs-keyword">new</span> <span class="hljs-type">InetSocketAddress</span>(<span class="hljs-string">"localhost"</span>, port), <span class="hljs-number">0</span>)
+
+        server.createContext(<span class="hljs-string">"/"</span>, handler)
+        server.setExecutor(executorPool)
+        server.start()
+        server
+    }
+}
+</div></code></pre>
+<p>The <code>MockApiHandler</code> class uses two regex matchers to decide if a call made to the server is trying to access the index
+or a data file. The <code>dataUrlMatcher</code> is also selecting the ID of the data file being accessed by parsing the URL.
+These matching operations are very elegantly handled with Scala Regex and pattern matching. If the URL matches something
+that is expected, we try to return a file from disk in the response.</p>
+<pre class="hljs"><code><div><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MockApiHandler</span>(<span class="hljs-params">dataLocation: <span class="hljs-type">String</span>, serverRoot: <span class="hljs-type">String</span></span>) <span class="hljs-keyword">extends</span> <span class="hljs-title">HttpHandler</span> </span>{
+
+    <span class="hljs-keyword">val</span> indexUrlMatcher = <span class="hljs-string">"^/index.*"</span>.r
+    <span class="hljs-keyword">val</span> dataUrlMatcher = <span class="hljs-string">"^/data/([0-9]+)"</span>.r
+
+    <span class="hljs-keyword">override</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">handle</span></span>(httpExchange: <span class="hljs-type">HttpExchange</span>): <span class="hljs-type">Unit</span> = {
+        <span class="hljs-keyword">val</span> method = httpExchange.getRequestMethod
+        <span class="hljs-keyword">val</span> url = httpExchange.getRequestURI.toString
+        println(<span class="hljs-string">s"request method <span class="hljs-subst">$method</span>, url <span class="hljs-subst">$url</span>"</span>)
+
+        <span class="hljs-keyword">val</span> (content, contentType, fileName) = (method, url) <span class="hljs-keyword">match</span> {
+            <span class="hljs-keyword">case</span> (<span class="hljs-string">"GET"</span>, indexUrlMatcher(_*)) =&gt;
+                <span class="hljs-keyword">val</span> fileName = <span class="hljs-string">"index.json"</span>
+                (readTemplate(fileName), <span class="hljs-string">"application/json"</span>, fileName)
+            <span class="hljs-keyword">case</span> (<span class="hljs-string">"GET"</span>, dataUrlMatcher(id)) =&gt; 
+                <span class="hljs-keyword">val</span> fileName = id + <span class="hljs-string">".txt"</span>
+                (readFile(fileName), <span class="hljs-string">"application/octet-stream"</span>, fileName)
+            <span class="hljs-keyword">case</span> _ =&gt;
+                (<span class="hljs-literal">null</span>, <span class="hljs-literal">null</span>, <span class="hljs-literal">null</span>)
+        }
+
+        <span class="hljs-keyword">if</span> (content != <span class="hljs-literal">null</span>) {
+            httpExchange.getResponseHeaders.add(<span class="hljs-string">"Content-Type"</span>, contentType)
+            <span class="hljs-keyword">if</span> (contentType == <span class="hljs-string">"application/octet-stream"</span>) {
+                httpExchange.getResponseHeaders.add(<span class="hljs-string">"Content-Disposition"</span>, <span class="hljs-string">s""</span><span class="hljs-string">"attachment; filename="</span>$fileN<span class="hljs-string">ame""</span><span class="hljs-string">""</span>)
+            }
+            httpExchange.sendResponseHeaders(<span class="hljs-number">200</span>, content.length)
+
+            <span class="hljs-keyword">val</span> outputStream = httpExchange.getResponseBody()
+            outputStream.write(content)
+            outputStream.flush()
+            outputStream.close()
+        } <span class="hljs-keyword">else</span> {
+            httpExchange.sendResponseHeaders(<span class="hljs-number">404</span>, <span class="hljs-number">0</span>)
+            httpExchange.close()
+        }
+    }
+
+    <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">readTemplate</span></span>(name: <span class="hljs-type">String</span>): <span class="hljs-type">Array</span>[<span class="hljs-type">Byte</span>] = {
+        <span class="hljs-keyword">val</span> bytes = readFileBytes(name)
+        <span class="hljs-keyword">val</span> template = <span class="hljs-keyword">new</span> <span class="hljs-type">String</span>(bytes, <span class="hljs-type">StandardCharsets</span>.<span class="hljs-type">UTF_8</span>)
+        <span class="hljs-keyword">val</span> contents = template.replaceAll(<span class="hljs-string">"ROOT"</span>, serverRoot)
+        contents.getBytes(<span class="hljs-type">StandardCharsets</span>.<span class="hljs-type">UTF_8</span>)
+    }
+
+    <span class="hljs-keyword">private</span> <span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">readFileBytes</span></span>(fileName: <span class="hljs-type">String</span>): <span class="hljs-type">Array</span>[<span class="hljs-type">Byte</span>] = {
+        <span class="hljs-keyword">val</span> path = dataLocation + <span class="hljs-string">"/"</span> + fileName
+        <span class="hljs-keyword">if</span> (<span class="hljs-keyword">new</span> <span class="hljs-type">File</span>(path).exists()) {
+            <span class="hljs-type">Files</span>.readAllBytes(<span class="hljs-type">Paths</span>.get(path))
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-literal">null</span>
+        }
+    }
+}
+</div></code></pre>
+<p>We have two types of files, the data files we return as they are, and the index file, which is a template where we must
+insert the mock server root URL. With data files, the response must also indicate this is an attachment that is supposed
+to be downloaded. If the file does not exist, we return a <code>404</code> response.</p>
+<p>For this test setup to work, we will need some test data in the input <code>src/test/resources/input/api</code> folder. We have the
+following files there:</p>
+<pre class="hljs"><code><div>- index.json
+- 1.txt
+- 2.txt
+- 3.txt
+- 4.txt
+</div></code></pre>
+<p>And the <code>index.json</code> file contains the following:</p>
+<pre class="hljs"><code><div>[
+    {
+        <span class="hljs-attr">"id"</span>: <span class="hljs-string">"1"</span>,
+        <span class="hljs-attr">"timestamp"</span>: <span class="hljs-string">"2021-07-08T08:01:00.000Z"</span>,
+        <span class="hljs-attr">"dataUrl"</span>: <span class="hljs-string">"ROOT/data/1"</span>
+    },
+    {
+        <span class="hljs-attr">"id"</span>: <span class="hljs-string">"2"</span>,
+        <span class="hljs-attr">"timestamp"</span>: <span class="hljs-string">"2021-07-08T08:02:00.000Z"</span>,
+        <span class="hljs-attr">"dataUrl"</span>: <span class="hljs-string">"ROOT/data/2"</span>
+    },
+    {
+        <span class="hljs-attr">"id"</span>: <span class="hljs-string">"3"</span>,
+        <span class="hljs-attr">"timestamp"</span>: <span class="hljs-string">"2021-07-08T08:03:00.000Z"</span>,
+        <span class="hljs-attr">"dataUrl"</span>: <span class="hljs-string">"ROOT/data/3"</span>
+    },
+    {
+        <span class="hljs-attr">"id"</span>: <span class="hljs-string">"4"</span>,
+        <span class="hljs-attr">"timestamp"</span>: <span class="hljs-string">"2021-07-08T08:04:00.000Z"</span>,
+        <span class="hljs-attr">"dataUrl"</span>: <span class="hljs-string">"ROOT/data/4"</span>
+    }
+]
+</div></code></pre>
+<p>This simple approach can help you mock and test Spark integrations with external APIs. All you need is to capture some
+of the APIs responses and make your <code>HttpHandler</code> return those responses when the code under test asks for them.</p>
+
+</body>
+</html>

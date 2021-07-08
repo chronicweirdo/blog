@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2021.07.06T10:10:00+02:00</pubDate>
+        <pubDate>2021.07.08T10:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Spark Test-driven Development with API Integration</title>
+            <description>An example test for a Spark jobs that pulls data from an API.</description>
+            <pubDate>2021.07.08T10:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2021/2021.07.08.spark_test_api_integration.html</link>
+            <category>spark</category>
+            <category>test-driven</category>
+            <category>unit test</category>
+            <category>mock api</category>
+        </item>
 
         <item>
             <title>Spark Test-driven Development</title>
