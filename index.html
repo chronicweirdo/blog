@@ -14,10 +14,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
   <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <script src="cycle_color.js"></script>
+  <script>
+      window.onload = function() {
+          let l = "0000ee"
+          let b = "0496ff"
+          let g = "2dc653"
+          let y = "f9c80e"
+          let r = "f94144"
+          let rr = "ee0000"
+          cycleColor("by", "color", [l, b, g, y, r, rr, r, y, g, b])
+      }
+  </script>
 </head>
 
 <body>
-<p class="header"><a href="http://cacoveanu.com/">by C.S.D.</a> / <a href="2015/2015.06.25.07.30.pleasure.figuring.things.out.html">About</a> / <a href="feed.xml">Subscribe</a></p>
+<p class="header"><a id="by" href="http://cacoveanu.com/">by C.S.D.</a> / <a href="2015/2015.06.25.07.30.pleasure.figuring.things.out.html">About</a> / <a href="feed.xml">Subscribe</a></p>
 <h1><em>A blog about programming and the pleasure of figuring things out.</em></h1>
 <p><a href="2021/2021.07.08.spark_test_api_integration.html">Spark Test-driven Development with API Integration</a> / spark / test-driven / unit test / mock api</p>
 <p><a href="2021/2021.07.06.spark_test_driven_development.html">Spark Test-driven Development</a> / spark / test-driven / unit test / in-memory db</p>
