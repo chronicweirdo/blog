@@ -20,3 +20,19 @@ body>* {
 p.header {
     font-family: 'Roboto Mono', monospace
 }
+
+#by {
+    color: black;
+}
+
+#c {
+    color: crimson;
+}
+
+#s {
+    color: seagreen;
+}
+
+#d {
+    color: dodgerblue;
+}
