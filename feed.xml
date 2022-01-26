@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2021.07.08T10:00:00+02:00</pubDate>
+        <pubDate>2022.01.26T12:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Progressive Web App on GitHub</title>
+            <description>This one shows you how to build a progressive web app and host it on GitHub. And you get a free calculator app as well.</description>
+            <pubDate>2022.01.26T12:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2022/2022.01.26.progressive_web_app_on_github.html</link>
+            <category>javascript</category>
+            <category>progressive web app</category>
+            <category>ux</category>
+            <category>github</category>
+        </item>
 
         <item>
             <title>Spark Test-driven Development with API Integration</title>

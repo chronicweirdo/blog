@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Progressive Web App on GitHub</title>
+  <meta name="description" content="This one shows you how to build a progressive web app and host it on GitHub. And you get a free calculator app as well.">
+  <meta name="keywords" content="javascript, progressive web app, ux, github">
+  <link rel="icon" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap" rel="stylesheet"> 
+  <link id="theme" rel="stylesheet" type="text/css" href="main.css">
+  <link id="theme" rel="stylesheet" type="text/css" href="code.css">
+</head>
+<body>
+<p class="header"><a class="home" href="../index.html">home</a> / 2022.01.26 12:00 / javascript / progressive web app / ux / github</p>
+<h1 id="progressive-web-app-on-github">Progressive Web App on GitHub</h1>
+<p>Recently I needed a more complex calculator than the iOS default. I needed
+an app where I can edit whole expressions, and maybe go back and correct parts
+of the expression. I needed something where I can use parantheses to nest
+calculations. Much of this functionality can be found in the iOS Calculator app,
+but it has surprisingly poor
+UX. When you enter something new, the previous calculation result dissapears
+from the UI, so you won't know what previous number you are applying your
+current operation to. If you want to nest operations with parantheses, the iOS
+Calculator has those, but to access them you need to disable the rotation lock
+of your phone and flip the phone in landscape. Even once you have access to the
+parantheses, you won't see the full expression you have typed, only the current
+number. The only way to know how many parantheses you have open, and where you
+are in the calculation, is to have a very good memory. Or use a piece of paper
+and have a good attention span.</p>
+<p>So the iOS Calculator wasn't a good option for me, which is why I started
+looking for a calculator app on the App Store. There are some options
+available, filled with ads, thus tracking, until you buy the app. Some of those
+options don't even let you buy the app, but offer a subscription. I have not
+checked in detail what may justify that approach, but from a general perspective
+paying a monthly subscription to use a simple calculator seems hilariously
+absurd.</p>
+<p>But because of the time wasted trying to understand how to use the default
+calculator app, and then trying to pick one of the weirdly monetized options
+available on the App Store, I had delay enough to realise I have another
+option. And since I generally try to solve my problems with something other than
+money whenever possible, I decided to make an exercises of it and implement my
+own approach to a calculator.</p>
+<p>I'll explain what this calculator app is in this article, looking at parts of
+the functionality and the code used to implement it, going over some UX/UI
+considerations, and explaining how you can make a web app work as a
+progressive web app that can be installed on your mobile device, as well as
+how you can &quot;host&quot; your app for free on GitHub Pages.</p>
+<h2 id="general-considerations">General considerations</h2>
+<p>Implementing a calculator should be easy enough with HTML and JavaScript. There
+are even options to evaluate JavaScript expressions easily (if not safely) so
+I wouldn't have to write my own expression parser. This app can then be served
+as a progressive web app on both iOS and Android. This means that you can put a
+link to the app on your mobile home screen, and the app is displayed visually
+similar to a native app (a separate browser window, no browser controls like
+an address bar). With modern JavaScript we even have access to local storage
+on the user's browser, so implementing a memory mechanism for the calculator
+would also be easy.</p>
+<p>Maybe the only possible complication would be to find a
+way to host this app. Before the app gets installed on your mobile as a
+progressive web app, it must be downloaded from a server. But a calculator
+app does not need a dynamic backend, all we need to do is to serve the static
+asset, a single web page, containing HTML, CSS, JavaScript. And a free
+way to serve static web pages would be to use GitHub Pages.</p>
+<h2 id="evaluating-expressions">Evaluating expressions</h2>
+<p>The correct way to evaluate a mathematical expression is to create a parser that
+will accept the expression, break it down into tokens, arrange those tokens
+into a syntax tree and then evaluate
+the tree. If you implement this from scratch, you decide what expressions are
+supported by your system and how they are computed. Every programming language
+has a parser that will do this work when evaluating your code. Some programming
+languages are interpreted, meaning the program is not converted into machine
+bytecode before being executed, but it is executed by evaluating the program
+language in real-time by some virtual machine. JavaScript is traditionally
+an interpreted language, and like many interpreted languages it offers us
+access to its own interpreter through the <code>eval</code> function.</p>
+<p>The <code>eval</code> function will take a string value and parse it and evaluate it.
+This means we can just give the <code>eval</code> function a string of a complex
+mathematical expression, with parantheses and all other mathematical functions
+supported by JavaScript, and the <code>eval</code> function will do all the work and give
+us the result. However, don't use <code>eval</code>! <code>eval</code> is seen as a risk because of
+multiple factors. First, it's a security risk. Any valid JavaScript code we pass
+to it will be evaluated and executed. If we pass user input to the <code>eval</code>
+function, we give our users the power to execute anything within our application
+context. <code>eval</code> is also run within the scope where it is invoked, giving
+malicious users opportunity to get information from and change information in
+that
+scope. Another problem is with the performance of the code executed within an
+<code>eval</code> call. While JavaScript is traditionally an interpreted language,
+with code served over the internet interpreted by the browser JavaScript engine,
+modern JavaScript engines have many optimizations focused on JavaScript execution
+performance, sometimes even compiling the JavaScript code to machine code to
+achieve better performance. This can't be done if the JavaScript engine doesn't
+know what the input code of the <code>eval</code> function will be.</p>
+<p>A <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!">better alternative</a>
+to evaluate JavaScript expressions is to use <code>window.Function()</code>. The main
+advantage here is that the code passed to <code>Function</code> will be executed in a new
+context, reducing the security impact. It can also be more efficient, especially
+if you use the <code>use strict</code> instruction. With this in mind, our expression
+evalutation can be done as follows:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">calculate</span>(<span class="hljs-params"></span>)</span>{
+    <span class="hljs-keyword">let</span> eq = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"equation"</span>)
+    <span class="hljs-keyword">let</span> resultElement = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"result"</span>)
+    resultElement.classList.remove(HAS_RESULT_CLASS)
+    <span class="hljs-keyword">try</span> {
+        <span class="hljs-keyword">let</span> expression = eq.value
+        <span class="hljs-keyword">let</span> result = <span class="hljs-built_in">Function</span>(<span class="hljs-string">'"use strict";return ('</span> + expression + <span class="hljs-string">')'</span>)()
+        resultElement.innerHTML = result
+        resultElement.classList.add(HAS_RESULT_CLASS)
+    } <span class="hljs-keyword">catch</span> (error) {
+        resultElement.innerHTML = <span class="hljs-string">"?"</span>
+    }
+    eq.focus()
+}
+</div></code></pre>
+<p>In order to compute whatever complex mathematical expression we have written in
+the <code>equation</code> element, all we have to do is to get the contents of that element
+and pass them to a new <code>Function</code> object, where they will be evaluated. If
+the evaluation is successful, we can put the result in the <code>result</code> element.
+If there is a problem with the evaluation, we must catch the error and
+we can clear the <code>result</code> element, or add some other sign that the computation
+failed.</p>
+<p>This very easily solves our problem of interpreting complex mathematical
+expressions, but even with this approach we are opening up the application to
+some risk, since any valid code written into the input field will be
+evaluated without additional validation. As an example, see how the following
+input changes the application background color:</p>
+<p><img src="calculator_hack.png" alt="changing application background"></p>
+<p>To make sure the app will not be susceptible to attacks like this, we must
+prevent user input from being evaluated if the user wrote anything in there that
+is not valid for our calcualtor app. Since this is still a basic calculator,
+without scientific functions, we can just make sure the input only contains
+numbers, parantheses, the decimal dot and the basic mathematical operations we
+support. We can do this check with the following function:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">validateInput</span>(<span class="hljs-params">expression</span>) </span>{
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">let</span> i = <span class="hljs-number">0</span>; i &lt; expression.length; i++) {
+        <span class="hljs-keyword">if</span> (! <span class="hljs-string">'0123456789.()+-*/ '</span>.includes(expression.charAt(i))) {
+            <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-built_in">Error</span>(<span class="hljs-string">"invalid input"</span>)
+        }
+    }
+}
+</div></code></pre>
+<h2 id="using-the-local-storage">Using the local storage</h2>
+<p>I also wanted to add a memory function to the calculator, but one more advanced
+than what the default app would have. This memory should allow the user to store
+more than one value. More than that, since this calculator is focused on complex
+expressions, users should be able to store the full expression in the
+calculator memory, then load and edit stored expressions at a later time. In
+addition, as a quality of life feature, users should have the option to give
+names and
+edit the names of the expressions stored in memory. And of course, delete
+memory entries that are no longer needed.</p>
+<p>All these features can be implemented using the local storage that modern
+browsers provide to web applications. There are two disadvantages to storing
+data just in the local storage of the browser. This data is only available on
+the
+device/browser that was used to store it. The app, when opened on another
+device, will have completely different memory entries. But for the purpose of
+this project syncing memory entries across devices is not necessary. This
+sync could only be done with a backend part of the app, which is not the purpose
+of the current project.</p>
+<p>The second disadvantage is that if the user cleans their browser history they
+will also delete the stored memory entries. But this problem can also only be
+solved with user accounts and a backend where these entries could be stored
+more permanently, again not the purpose of this project.</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">memSave</span>(<span class="hljs-params"></span>) </span>{
+    <span class="hljs-keyword">let</span> equation = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"equation"</span>).value
+    <span class="hljs-keyword">let</span> resultElement = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"result"</span>)
+    <span class="hljs-keyword">let</span> result = <span class="hljs-literal">null</span>
+    <span class="hljs-keyword">if</span> (resultElement.classList.contains(HAS_RESULT_CLASS)) {
+        result = resultElement.innerHTML
+    }
+    <span class="hljs-keyword">let</span> date = <span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>()
+    <span class="hljs-keyword">let</span> name = dateToString(date)
+    <span class="hljs-comment">// save this value</span>
+    <span class="hljs-keyword">let</span> val = {
+        <span class="hljs-attr">eq</span>: equation,
+        <span class="hljs-attr">res</span>: result,
+        <span class="hljs-attr">name</span>: name,
+        <span class="hljs-attr">ts</span>: date.getTime()
+    }
+    <span class="hljs-built_in">window</span>.localStorage.setItem(equation, <span class="hljs-built_in">JSON</span>.stringify(val))
+}
+</div></code></pre>
+<p>The above function will save the current expression and result, if it exists, to
+memory. We use <code>window.localStorage.setItem</code> to do this. The local storage is a
+key-value store that holds strings in both the key and value. To store an object
+there we will need to use <code>JSON.stringify</code> to serialize it to string. When
+loading the object string from memory we can parse it with <code>JSON.parse</code>. The
+key used for storing entries to memory is the expression itself. This way, if
+the user presses the &quot;M&quot; multiple times we don't create multiple memory
+entries for the same expression.</p>
+<p><img src="calculator_memory.png" alt="calculator memory"></p>
+<p>The memory screen is designed to be simple to use. When adding something to
+memory, the date and time are used as the label of that memory entry, but the
+displayed label is editable and can be changed to any text the user wants.
+Memory entries are sorted by their label, so the user can choose names that
+help them control the order of the stored expressions. All buttons are large,
+suited for touch screens. The delete button is clearly color coded with red.
+The memory UI does not display unnecessary elements. If the memory entry
+contains just a number, only a button with that number is present (see first
+entry in screenshot). Users can also store incomplete and thus invalid
+expressions to memory, to be loaded and completed later. When this is the case,
+we don't
+have a result, so only the button containing the expression is present (see last
+entry in screenshot). When the expression is valid and has a result, we have two
+buttons. The first one will insert the full expression in the main screen
+expression input area, the second will insert just the result. The result is
+a simple and intuitive design that packs a large amount of functionality.</p>
+<h2 id="ux-considerations">UX considerations</h2>
+<p>The target system for this app is a mobile device, and the design reflects this
+mainly in the use of large buttons. The UI also has buttons to move the caret
+left or right inside the expression field, for when touch-dragging the caret
+is not accurate enough. But the various input elements in the app
+must also be configured to expect touch input. I do this through some CSS
+settings, preparing UI elements for touch manipulation and disabling text
+hold-select for buttons:</p>
+<pre class="hljs"><code><div>* {
+    <span class="hljs-attribute">font-family</span>: <span class="hljs-string">'Roboto Mono'</span>, monospace;
+    <span class="hljs-attribute">padding</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">margin</span>: <span class="hljs-number">0</span>;
+    <span class="hljs-attribute">touch-action</span>: manipulation;
+}
+*<span class="hljs-selector-pseudo">:focus</span> {
+    <span class="hljs-attribute">outline</span>: none;
+}
+<span class="hljs-selector-tag">button</span> {
+    <span class="hljs-attribute">user-select</span>: none; <span class="hljs-comment">/* standard syntax */</span>
+    <span class="hljs-attribute">-webkit-user-select</span>: none; <span class="hljs-comment">/* webkit (safari, chrome) browsers */</span>
+    <span class="hljs-attribute">-moz-user-select</span>: none; <span class="hljs-comment">/* mozilla browsers */</span>
+    <span class="hljs-attribute">-khtml-user-select</span>: none; <span class="hljs-comment">/* webkit (konqueror) browsers */</span>
+    <span class="hljs-attribute">-ms-user-select</span>: none; <span class="hljs-comment">/* IE10+ */</span>
+}
+</div></code></pre>
+<p>The app is also providing its own keyboard, buttons with only the supported
+inputs, so when users select the text area holding the
+expression the mobile device should not display a keyboard. This is done with
+the following setup of the expression text area (see <code>inputmode</code>):</p>
+<pre class="hljs"><code><div><span class="hljs-tag">&lt;<span class="hljs-name">textarea</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"equation"</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"equation"</span> <span class="hljs-attr">inputmode</span>=<span class="hljs-string">"none"</span> <span class="hljs-attr">onchange</span>=<span class="hljs-string">"calculate()"</span> <span class="hljs-attr">onkeyup</span>=<span class="hljs-string">"calculate()"</span> <span class="hljs-attr">onfocus</span>=<span class="hljs-string">"calculate()"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">textarea</span>&gt;</span>
+</div></code></pre>
+<p>I also wanted to prevent information loss on a touchscreen when a button may be
+tapped by mistake. To prevent situations where a user deletes the typed
+expression by tapping the &quot;C&quot; button by mistake, or deletes a memory entry, I've
+made these deletion operations work only when a long press is used on their
+buttons. Here's how this long press is set up for a few of the buttons in the
+UI:</p>
+<pre class="hljs"><code><div><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">setupLongPress</span>(<span class="hljs-params">element, shortPressAction, longPressAction, 
+                        targetColor</span>) </span>{
+    element.onclick = <span class="hljs-literal">null</span>
+    <span class="hljs-keyword">let</span> pressStartTimestamp = <span class="hljs-literal">null</span>
+    <span class="hljs-keyword">let</span> pressCanceled = <span class="hljs-literal">false</span>
+    <span class="hljs-keyword">let</span> pressActivateThreshold = <span class="hljs-number">400</span>
+    <span class="hljs-keyword">let</span> pressCheckStep = <span class="hljs-number">100</span>
+    <span class="hljs-keyword">let</span> originalBackgroundColor = <span class="hljs-literal">null</span>
+
+    <span class="hljs-keyword">let</span> startPress = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+        <span class="hljs-keyword">if</span> (event) {
+            event.preventDefault()
+        }
+        <span class="hljs-keyword">if</span> (pressStartTimestamp == <span class="hljs-literal">null</span>) {
+            pressStartTimestamp = +<span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>()
+            originalBackgroundColor = decodeRgb(
+                <span class="hljs-built_in">window</span>.getComputedStyle(element, <span class="hljs-literal">null</span>)
+                .getPropertyValue(<span class="hljs-string">'background-color'</span>)
+            )
+        }
+        <span class="hljs-keyword">if</span> (pressCanceled) {
+            pressStartTimestamp = <span class="hljs-literal">null</span>
+            pressCanceled = <span class="hljs-literal">false</span>
+            element.style.backgroundColor = encodeRgb(
+                originalBackgroundColor
+            )
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>
+        } <span class="hljs-keyword">else</span> {
+            <span class="hljs-keyword">let</span> diff = +<span class="hljs-keyword">new</span> <span class="hljs-built_in">Date</span>() - pressStartTimestamp
+            <span class="hljs-keyword">if</span> (diff &gt;= pressActivateThreshold) {
+                <span class="hljs-keyword">if</span> (longPressAction) longPressAction()
+                pressStartTimestamp = <span class="hljs-literal">null</span>
+                pressCanceled = <span class="hljs-literal">false</span>
+                element.style.backgroundColor = encodeRgb(
+                    originalBackgroundColor
+                )
+                <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>
+            } <span class="hljs-keyword">else</span> {
+                <span class="hljs-keyword">let</span> newColor = transitionRgb(
+                    originalBackgroundColor,
+                    targetColor,
+                    diff/pressActivateThreshold
+                )
+                element.style.backgroundColor = encodeRgb(newColor)
+                setTimeout(startPress, pressCheckStep)
+            }
+        }
+    }
+    <span class="hljs-keyword">let</span> endPress = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">event</span>) </span>{
+        <span class="hljs-keyword">if</span> (event) {
+            event.preventDefault()
+        }
+        <span class="hljs-keyword">if</span> (pressStartTimestamp != <span class="hljs-literal">null</span>) {
+            <span class="hljs-keyword">if</span> (shortPressAction) shortPressAction()
+            pressCanceled = <span class="hljs-literal">true</span>
+        }
+    }
+    
+    element.addEventListener(<span class="hljs-string">"touchstart"</span>, startPress, <span class="hljs-literal">false</span>)
+    element.addEventListener(<span class="hljs-string">"touchend"</span>, endPress, <span class="hljs-literal">false</span>)
+    element.addEventListener(<span class="hljs-string">"mousedown"</span>, startPress, <span class="hljs-literal">false</span>)
+    element.addEventListener(<span class="hljs-string">"mouseup"</span>, endPress, <span class="hljs-literal">false</span>)
+}
+</div></code></pre>
+<p>These long press buttons can have two different actions, one for normal
+press/tap, and another one for long press. We decide if it's a long or a short
+press by counting the time the user holds the button. If this time is above some
+threshold it's
+considered a long press. A good threshold for this is 400 milliseconds. The
+<code>startPress</code> function will save the press start timestamp, and then keep
+invoking itself through the <code>setTimeout</code> function and checking for two things:
+if the press threshold has been exceeded and if the user canceled the press.
+If the threshold has been exceeded, the long press action is invoked; if not,
+the short press action is invoked. The <code>endPress</code> function cancels the press
+action. This long press functionality also visually informs the user that they
+are pressing the button by transitioning the button background color towards a
+desired <code>targetColor</code>, this transition being computed by the <code>transitionRgb</code>
+function.</p>
+<pre class="hljs"><code><div><span class="hljs-selector-id">#controls</span> {
+    <span class="hljs-attribute">display</span>: grid;
+    <span class="hljs-attribute">grid-template-columns</span>: <span class="hljs-built_in">repeat</span>(<span class="hljs-number">4</span>, <span class="hljs-number">25%</span>);
+    <span class="hljs-attribute">grid-template-rows</span>: <span class="hljs-number">44%</span> <span class="hljs-built_in">repeat</span>(<span class="hljs-number">7</span>, <span class="hljs-number">8%</span>);
+    <span class="hljs-attribute">grid-template-areas</span>: 
+        <span class="hljs-string">'eqa eqa eqa eqa'</span>
+        <span class="hljs-string">'equ res res res'</span>
+        <span class="hljs-string">'cls lef rig mps'</span>
+        <span class="hljs-string">'bsp pop pcl mem'</span>
+        <span class="hljs-string">'b7 b8 b9 div'</span>
+        <span class="hljs-string">'b4 b5 b6 mul'</span>
+        <span class="hljs-string">'b1 b2 b3 min'</span>
+        <span class="hljs-string">'b0 b0 pt pls'</span>
+        ;
+}
+
+<span class="hljs-keyword">@media</span> (<span class="hljs-attribute">orientation:</span> landscape)
+{
+    <span class="hljs-selector-id">#controls</span> {
+        <span class="hljs-attribute">grid-template-columns</span>: <span class="hljs-number">60%</span> <span class="hljs-built_in">repeat</span>(<span class="hljs-number">4</span>, <span class="hljs-number">10%</span>);
+        <span class="hljs-attribute">grid-template-rows</span>: <span class="hljs-built_in">repeat</span>(<span class="hljs-number">7</span>, auto);
+        <span class="hljs-attribute">grid-template-areas</span>: 
+            <span class="hljs-string">'eqa equ res res res'</span>
+            <span class="hljs-string">'eqa cls lef rig mps'</span>
+            <span class="hljs-string">'eqa bsp pop pcl mem'</span>
+            <span class="hljs-string">'eqa b7 b8 b9 div'</span>
+            <span class="hljs-string">'eqa b4 b5 b6 mul'</span>
+            <span class="hljs-string">'eqa b1 b2 b3 min'</span>
+            <span class="hljs-string">'eqa b0 b0 pt pls'</span>
+            ;
+    }
+    <span class="hljs-selector-id">#controls</span><span class="hljs-selector-class">.left</span> {
+        <span class="hljs-attribute">grid-template-columns</span>: <span class="hljs-built_in">repeat</span>(<span class="hljs-number">4</span>, <span class="hljs-number">10%</span>) <span class="hljs-number">60%</span>;
+        <span class="hljs-attribute">grid-template-rows</span>: <span class="hljs-built_in">repeat</span>(<span class="hljs-number">7</span>, auto);
+        <span class="hljs-attribute">grid-template-areas</span>: 
+            <span class="hljs-string">'equ res res res eqa'</span>
+            <span class="hljs-string">'cls lef rig mps eqa'</span>
+            <span class="hljs-string">'bsp pop pcl mem eqa'</span>
+            <span class="hljs-string">'b7 b8 b9 div eqa'</span>
+            <span class="hljs-string">'b4 b5 b6 mul eqa'</span>
+            <span class="hljs-string">'b1 b2 b3 min eqa'</span>
+            <span class="hljs-string">'b0 b0 pt pls eqa'</span>
+            ;
+    }
+}
+</div></code></pre>
+<p>Another touchscreen scenario was to make the application usable in landscape
+mode. For this I have different CSS setups for portrait and landscape modes,
+with landscape mode having two separate configurations, one for right-handed
+users and
+another for left-handed users. This is done using CSS <code>display: grid;</code> with
+clear grid areas occupied be each element in the UI. These areas are
+rearranged based on the screen orientation and
+a class for left-handed setup, only in landscape mode.
+Switching between the right-handed and
+left-handed modes is done with a long press on the caret move buttons. The
+landscape mode is also saved to the local storage so the preferred setup
+is reaplied next time the user opens the app.</p>
+<p><img src="calculator_left_handed.png" alt="left handed mode for calculator"></p>
+<h2 id="making-your-web-page-a-progressive-web-app">Making your web page a progressive web app</h2>
+<p>To add functionality for users to install this app as a progressive web app,
+we must first add a
+manifest file, a JSON file that contains information about the app, including
+its icons, theme color and app URL.</p>
+<pre class="hljs"><code><div>{
+  <span class="hljs-attr">"name"</span>: <span class="hljs-string">"chronicalc"</span>,
+  <span class="hljs-attr">"description"</span>: <span class="hljs-string">"The Chronicalc web app is an advanced calculator that can be installed as a progressive web app."</span>,
+  <span class="hljs-attr">"lang"</span>: <span class="hljs-string">"en-US"</span>,
+  <span class="hljs-attr">"icons"</span>: [
+    {
+      <span class="hljs-attr">"src"</span>: <span class="hljs-string">"shortcut192.png"</span>,
+      <span class="hljs-attr">"sizes"</span>: <span class="hljs-string">"192x192"</span>,
+      <span class="hljs-attr">"type"</span>: <span class="hljs-string">"image/png"</span>
+    }
+  ],
+  <span class="hljs-attr">"start_url"</span>: <span class="hljs-string">"https://chronicweirdo.github.io/calculator/"</span>,
+  <span class="hljs-attr">"display"</span>: <span class="hljs-string">"standalone"</span>,
+  <span class="hljs-attr">"theme_color"</span>: <span class="hljs-string">"#1a1a1a"</span>
+}
+</div></code></pre>
+<p>Then, we must refer this manifest file from our main HTML page, and also include
+some extra information, like icons, theme color, to ensure the website is also
+functioning in sync withe the progressive web app setup. The <code>viewport</code> entry is
+also important to try and prevent
+some functionality in mobile browsers that is very useful for classic, document
+style web pages, but not appropriate for a single screen web app; features like
+pinch zooming or double tap zooming.</p>
+<pre class="hljs"><code><div><span class="hljs-meta">&lt;!DOCTYPE <span class="hljs-meta-keyword">html</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">html</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">head</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">charset</span>=<span class="hljs-string">"utf-8"</span>/&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"viewport"</span>
+          <span class="hljs-attr">content</span>=<span class="hljs-string">"user-scalable=no, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, height=device-height"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"apple-mobile-web-app-capable"</span> <span class="hljs-attr">content</span>=<span class="hljs-string">"yes"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"apple-mobile-web-app-status-bar-style"</span> <span class="hljs-attr">content</span>=<span class="hljs-string">"black"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">name</span>=<span class="hljs-string">"theme-color"</span> <span class="hljs-attr">content</span>=<span class="hljs-string">"#1a1a1a"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">link</span> <span class="hljs-attr">rel</span>=<span class="hljs-string">"manifest"</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"manifest.json"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">link</span> <span class="hljs-attr">rel</span>=<span class="hljs-string">"shortcut icon"</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"shortcut192.png"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">link</span> <span class="hljs-attr">rel</span>=<span class="hljs-string">"icon"</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"shortcut192.png"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">link</span> <span class="hljs-attr">rel</span>=<span class="hljs-string">"icon"</span> <span class="hljs-attr">sizes</span>=<span class="hljs-string">"192x192"</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"shortcut192.png"</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">link</span> <span class="hljs-attr">rel</span>=<span class="hljs-string">"apple-touch-icon"</span> <span class="hljs-attr">href</span>=<span class="hljs-string">"shortcut192.png"</span>&gt;</span>
+</div></code></pre>
+<p>With these settings, you can next add your app to the home screen of your
+preferred mobile device and have it work similarly to a native app.</p>
+<p>And of course, to serve this app to the world you can use GitHub Pages. Go on
+your GitHub project page and, under the &quot;Settings&quot; tab select the Pages section.
+Configure the branch you want to use for GitHub Pages, probably the &quot;master&quot;
+branch. Then you GitHub Pages link will be available, and you can use this link
+to open the app on your mobile device, and then install it as a progressive
+web app.</p>
+<p><img src="calculator_github_pages.png" alt="github pages"></p>
+<p>If you want to look at the code in more detail, the project link is
+<a href="https://github.com/chronicweirdo/calculator">https://github.com/chronicweirdo/calculator</a>,
+and if you want to install the calculator app and start using it now, the app
+can be accessed at <a href="https://chronicweirdo.github.io/calculator/">https://chronicweirdo.github.io/calculator/</a></p>
+
+</body>
+</html>
