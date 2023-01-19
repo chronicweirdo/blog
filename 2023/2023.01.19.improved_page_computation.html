@@ -48,24 +48,24 @@ split them. Special elements that must be included whole on a page, like images
 and tables, are considered to represent a single position in our book and the
 <code>findSpaceAfter</code> method will know not to split their data.</p>
 <pre class="hljs"><code><div><span class="hljs-keyword">async</span> #computeMaximalPage(start) {
-        <span class="hljs-keyword">let</span> previousEnd = <span class="hljs-literal">null</span>;
-        <span class="hljs-keyword">let</span> end = <span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.book.findSpaceAfter(start);
-        <span class="hljs-keyword">this</span>.shadowElement.innerHTML = <span class="hljs-string">""</span>;
+    <span class="hljs-keyword">let</span> previousEnd = <span class="hljs-literal">null</span>;
+    <span class="hljs-keyword">let</span> end = <span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.book.findSpaceAfter(start);
+    <span class="hljs-keyword">this</span>.shadowElement.innerHTML = <span class="hljs-string">""</span>;
 
-        <span class="hljs-keyword">while</span> ((<span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.#overflowTriggerred()) == <span class="hljs-literal">false</span> 
-            &amp;&amp; previousEnd != end &amp;&amp; end != <span class="hljs-literal">null</span>) {
+    <span class="hljs-keyword">while</span> ((<span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.#overflowTriggerred()) == <span class="hljs-literal">false</span> 
+        &amp;&amp; previousEnd != end &amp;&amp; end != <span class="hljs-literal">null</span>) {
 
-            previousEnd = end;
-            end = <span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.book.findSpaceAfter(previousEnd);
-            <span class="hljs-keyword">let</span> html = <span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.book.getContentsAt(start, end);
-            <span class="hljs-keyword">this</span>.shadowElement.innerHTML = html;
-        }
-        <span class="hljs-keyword">if</span> (previousEnd != <span class="hljs-literal">null</span>) {
-            <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Page(start, previousEnd);
-        } <span class="hljs-keyword">else</span> {
-            <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Page(start, start);
-        }
+        previousEnd = end;
+        end = <span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.book.findSpaceAfter(previousEnd);
+        <span class="hljs-keyword">let</span> html = <span class="hljs-keyword">await</span> <span class="hljs-keyword">this</span>.book.getContentsAt(start, end);
+        <span class="hljs-keyword">this</span>.shadowElement.innerHTML = html;
     }
+    <span class="hljs-keyword">if</span> (previousEnd != <span class="hljs-literal">null</span>) {
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Page(start, previousEnd);
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Page(start, start);
+    }
+}
 </div></code></pre>
 <p>The first obvious problem with this algorithm is that we always start with one
 word and keep adding words until we find our page. But we can infer that, for a
