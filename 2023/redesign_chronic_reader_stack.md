@@ -1,0 +1,1 @@
+- advantages of splitting the chronic reader app into three different components

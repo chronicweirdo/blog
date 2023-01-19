@@ -10,6 +10,16 @@
         <generator>cacoveanu</generator>
 
         <item>
+            <title>Improving Page Computation in Ebooks</title>
+            <description>Rewriting the page computation algorithm for the web based Chronic Reader application.</description>
+            <pubDate>2023.01.19T14:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2023/2023.01.19.improved_page_computation.html</link>
+            <category>javascript</category>
+            <category>epub</category>
+            <category>algorithm</category>
+        </item>
+
+        <item>
             <title>Progressive Web App on GitHub</title>
             <description>This one shows you how to build a progressive web app and host it on GitHub. And you get a free calculator app as well.</description>
             <pubDate>2022.01.26T12:00:00+02:00</pubDate>
