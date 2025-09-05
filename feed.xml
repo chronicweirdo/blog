@@ -6,8 +6,19 @@
         <description>A blog about programming and the pleasure of figuring things out. By Silviu Dan Cacoveanu.</description>
         <link>https://blog.cacoveanu.com/</link>
         <atom:link href="https://blog.cacoveanu.com/feed.xml" rel="self" type="application/rss+xml"/>
-        <pubDate>2022.01.26T12:00:00+02:00</pubDate>
+        <pubDate>2025.09.05T09:00:00+02:00</pubDate>
         <generator>cacoveanu</generator>
+
+        <item>
+            <title>Running a Python Build Inside Docker</title>
+            <description>Leveraging Docker virtualization to build artefacts other than Docker images.</description>
+            <pubDate>2025.09.05T09:00:00+02:00</pubDate>
+            <link>https://blog.cacoveanu.com/2025/2025.09.05.python_build_in_docker.html</link>
+            <category>docker</category>
+            <category>build</category>
+            <category>cicd</category>
+            <category>python</category>
+        </item>
 
         <item>
             <title>Improving Page Computation in Ebooks</title>
